@@ -4,6 +4,7 @@ from urllib.parse import urljoin
 import urllib3
 from utils.filters import is_junk
 from datetime import datetime, timedelta
+import re
 
 urllib3.disable_warnings()
 
@@ -20,33 +21,30 @@ def parse():
             r = requests.get(u, headers=HEADERS, timeout=30, verify=False)
             s = BeautifulSoup(r.text, 'html.parser')
 
-            for announce in s.select('.announce'):
-                title_tag = announce.select_one('.announce__title')
-                link_tag = announce.select_one('a')
-                date_tag = announce.select_one('.announce__date')
-
-                if not title_tag:
+            for a in s.find_all('a'):
+                t = a.get_text(strip=True)
+                if len(t) < 30 or t in seen or is_junk(t):
                     continue
 
-                t = title_tag.get_text(strip=True)
-                if len(t) < 20 or t in seen or is_junk(t):
-                    continue
-
+                # Парсим дату из начала: "14.07.2026Название..."
                 date_str = ""
-                if date_tag:
+                match = re.match(r'(\d{2}\.\d{2}\.\d{4})', t)
+                if match:
                     try:
-                        date_str = datetime.strptime(date_tag.get_text(strip=True), '%d.%m.%Y').strftime('%Y-%m-%d')
+                        date_str = datetime.strptime(match.group(1), '%d.%m.%Y').strftime('%Y-%m-%d')
                         news_date = datetime.strptime(date_str, '%Y-%m-%d')
                         if news_date < cutoff:
                             continue
                     except:
                         pass
+                    # Убираем дату из заголовка
+                    t = re.sub(r'^\d{2}\.\d{2}\.\d{4}', '', t).strip()
 
                 seen.add(t)
                 news.append({
                     'source': 'Минпромторг',
                     'title': t,
-                    'url': urljoin(u, link_tag.get('href', '')),
+                    'url': urljoin(u, a.get('href', '')),
                     'date': date_str
                 })
         except:

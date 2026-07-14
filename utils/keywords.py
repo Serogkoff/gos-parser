@@ -12,6 +12,8 @@ def search_keywords(news_list):
         text = item['title'].lower()
         matched = [kw for kw in KEYWORDS if kw.lower() in text]
         if matched:
-            item['keywords'] = matched
-            found.append(item)
+            # Копируем ВСЕ поля из item
+            copy = dict(item)
+            copy['keywords'] = matched
+            found.append(copy)
     return found
