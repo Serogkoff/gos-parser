@@ -2,16 +2,7 @@ from utils.filters import is_junk
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-
-# Служебные слова, которые НЕ являются новостями
-SKIP_WORDS = [
-    "office@", "статистика", "использование материалов", "сообщить об ошибке",
-    "контакты", "пресс-служба", "подписаться", "рассылка","аккредитация", "телефон",
-    "факс", "email","реестр", "адрес", "карта сайта", "поиск", "вход", "регистрация",
-    "личный кабинет", "чат-бот", "версия для слабовидящих", "старая версия",
-    "об организации", "противодействие коррупции", "вакансии", "открытое министерство",
-]
-
+import re
 
 def parse():
     news, seen = [], set()
@@ -27,15 +18,14 @@ def parse():
                     s = BeautifulSoup(page.content(), 'html.parser')
                     for a in s.find_all('a'):
                         t = a.get_text(strip=True)
-                        if len(t) < 20 or t in seen or is_junk(t): continue
-
-                        # Пропускаем служебные ссылки
-                        if any(w in t.lower() for w in SKIP_WORDS):
+                        # Убираем цифры в конце
+                        t = re.sub(r'\d+$', '', t).strip()
+                        # Убираем даты в начале: "20 июня", "12 апреля", "18 декабря 2025"
+                        t = re.sub(r'^\d{1,2}\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s*\d{0,4}', '', t).strip()
+                        # Убираем "Новость Минцифры", "Медиаконтент"
+                        t = re.sub(r'^(Новость Минцифры|Медиаконтент)\s*', '', t).strip()
+                        if len(t) < 20 or t in seen or is_junk(t):
                             continue
-                        # Пропускаем email и телефоны
-                        if '@' in t or t.replace('+', '').replace('-', '').replace(' ', '').isdigit():
-                            continue
-
                         seen.add(t)
                         news.append({'source': 'Минцифры', 'title': t, 'url': urljoin(u, a.get('href', ''))})
                 except:
