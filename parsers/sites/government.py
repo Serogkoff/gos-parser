@@ -1,3 +1,4 @@
+from utils.filters import is_junk
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
@@ -14,7 +15,7 @@ def parse():
             soup = BeautifulSoup(resp.text, 'html.parser')
             for a in soup.find_all('a'):
                 t = a.get_text(strip=True)
-                if len(t) < 20 or t in seen: continue
+                if len(t) < 20 or t in seen or is_junk(t): continue
                 seen.add(t)
                 news.append({'source': 'Правительство РФ', 'title': t, 'url': urljoin(url, a.get('href',''))})
         except: pass

@@ -1,3 +1,4 @@
+from utils.filters import is_junk
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
@@ -16,7 +17,7 @@ def parse():
                     s = BeautifulSoup(page.content(), 'html.parser')
                     for a in s.find_all('a'):
                         t = a.get_text(strip=True)
-                        if len(t) < 20 or t in seen: continue
+                        if len(t) < 20 or t in seen or is_junk(t): continue
                         seen.add(t)
                         news.append({'source': 'Сахалинская обл.', 'title': t, 'url': urljoin(u, a.get('href',''))})
                 except: pass

@@ -1,3 +1,4 @@
+from utils.filters import is_junk
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
@@ -26,7 +27,7 @@ def parse():
                     s = BeautifulSoup(page.content(), 'html.parser')
                     for a in s.find_all('a'):
                         t = a.get_text(strip=True)
-                        if len(t) < 20 or t in seen: continue
+                        if len(t) < 20 or t in seen or is_junk(t): continue
 
                         # Пропускаем служебные ссылки
                         if any(w in t.lower() for w in SKIP_WORDS):

@@ -1,3 +1,4 @@
+from utils.filters import is_junk
 """
 ПАРСЕР МИД РФ
 """
