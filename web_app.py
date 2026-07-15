@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, request
+from flask import Flask, render_template_string
 import json, os
 
 app = Flask(__name__)
@@ -18,56 +18,57 @@ button:hover{background:#004499}
 .filters{margin:15px 0}
 </style></head><body>
 <h1>📰 Новости госорганов РФ</h1>
-<div class="stats">📊 Всего: <b>{{total}}</b> | 🔴 Совпадений: <b>{{found}}</b> | 📡 Источник: <b>{{source_filter or 'Все'}}</b></div>
-
+<div class="stats">📊 Всего: <b>{{total}}</b> | 🔴 Совпадений: <b>{{found}}</b> | 📡 {{source_filter or 'Все источники'}}</div>
 <div class="filters">
 <a href="/"><button>📋 Все</button></a>
 <a href="/found"><button>🔴 Совпадения</button></a>
 <hr>
 {% for src in sources %}
-<a href="/?source={{src}}"><button>{{src}}</button></a>
+<a href="/filter/{{src}}"><button>{{src}}</button></a>
 {% endfor %}
 </div>
-
 {% for item in news %}
 <div class="item" onclick="window.open('{{item.url}}', '_blank')">
 <div class="source">📌 {{item.source}}</div>
 <div class="date">🕒 {{item.date or item.parsed_date or ''}}</div>
 <div>{{item.title[:120]}}</div>
 {% if item.keywords %}<div class="keywords">🔑 {{', '.join(item.keywords)}}</div>{% endif %}
-</div>{% endfor %}
+</div>
+{% endfor %}
 </body></html>"""
 
 
-def get_all_news():
-    if os.path.exists('all_news.json'):
-        with open('all_news.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return []
-
-
-def get_found_news():
-    if os.path.exists('found_news.json'):
-        with open('found_news.json', 'r', encoding='utf-8') as f:
+def load_news(filename):
+    if os.path.exists(filename):
+        with open(filename, 'r', encoding='utf-8') as f:
             return json.load(f)
     return []
 
 
 @app.route('/')
 def index():
-    all_news = get_all_news()
-    found = get_found_news()
-    source = request.args.get('source', '')
-
-    if source:
-        news = [n for n in all_news if n.get('source') == source]
-    else:
-        news = all_news[-100:]
-
+    all_news = load_news('all_news.json')
+    found = load_news('found_news.json')
     sources = sorted(set(n.get('source', '') for n in all_news))
 
     return render_template_string(HTML,
-                                  news=news[-100:],
+                                  news=all_news,
+                                  total=len(all_news),
+                                  found=len(found),
+                                  source_filter='',
+                                  sources=sources
+                                  )
+
+
+@app.route('/filter/<path:source>')
+def filter_source(source):
+    all_news = load_news('all_news.json')
+    found = load_news('found_news.json')
+    news = [n for n in all_news if n.get('source') == source]
+    sources = sorted(set(n.get('source', '') for n in all_news))
+
+    return render_template_string(HTML,
+                                  news=news,
                                   total=len(all_news),
                                   found=len(found),
                                   source_filter=source,
@@ -76,13 +77,13 @@ def index():
 
 
 @app.route('/found')
-def found():
-    all_news = get_all_news()
-    found = get_found_news()
+def found_page():
+    all_news = load_news('all_news.json')
+    found = load_news('found_news.json')
     sources = sorted(set(n.get('source', '') for n in all_news))
 
     return render_template_string(HTML,
-                                  news=found[-100:],
+                                  news=found,
                                   total=len(all_news),
                                   found=len(found),
                                   source_filter='',

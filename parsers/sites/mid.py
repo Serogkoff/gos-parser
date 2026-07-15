@@ -45,3 +45,4 @@ def parse():
         print(f"  ❌ {str(e)[:60]}")
 
     return news
+

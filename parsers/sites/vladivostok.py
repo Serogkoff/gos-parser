@@ -6,7 +6,6 @@ from utils.filters import is_junk
 from datetime import datetime, timedelta
 
 urllib3.disable_warnings()
-
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 MONTHS = {
@@ -20,45 +19,32 @@ def parse():
     news, seen = [], set()
     cutoff = datetime.now() - timedelta(days=30)
 
-    for p in range(2):
+    for p in range(3):
         u = f"https://www.vlc.ru/event/news/?PAGEN_1={p + 1}" if p else "https://www.vlc.ru/event/news/"
         try:
             r = requests.get(u, headers=HEADERS, timeout=30, verify=False)
             s = BeautifulSoup(r.text, 'html.parser')
-
             for card in s.select('.card-body'):
-                title_tag = card.select_one('h2 a, .card-title')
-                if not title_tag:
-                    title_tag = card.select_one('a')
+                a = card.select_one('a[href]')
                 date_tag = card.select_one('.card-date')
-
-                if not title_tag:
-                    continue
-
-                t = title_tag.get_text(strip=True)
-                if len(t) < 20 or t in seen or is_junk(t):
-                    continue
+                if not a: continue
+                t = a.get_text(strip=True)
+                if len(t) < 20 or t in seen or is_junk(t): continue
 
                 date_str = ""
                 if date_tag:
                     try:
-                        parts = date_tag.get_text(strip=True).split()  # "14 июля 2026"
-                        day, month_name, year = parts
-                        month = MONTHS[month_name.lower()]
-                        date_str = f"{year}-{month:02d}-{int(day):02d}"
-                        news_date = datetime.strptime(date_str, '%Y-%m-%d')
-                        if news_date < cutoff:
-                            continue
+                        parts = date_tag.get_text(strip=True).split()
+                        d, m, y = int(parts[0]), MONTHS[parts[1].lower()], int(parts[2])
+                        news_date = datetime(y, m, d)
+                        if news_date < cutoff: continue
+                        date_str = news_date.strftime("%Y-%m-%d")
                     except:
                         pass
 
                 seen.add(t)
-                news.append({
-                    'source': 'Адм. Владивостока',
-                    'title': t,
-                    'url': urljoin(u, title_tag.get('href', '')),
-                    'date': date_str
-                })
+                news.append(
+                    {'source': 'Владивосток', 'title': t, 'url': urljoin(u, a.get('href', '')), 'date': date_str})
         except:
             pass
 
