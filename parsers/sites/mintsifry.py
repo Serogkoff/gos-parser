@@ -61,6 +61,9 @@ def parse():
                                 except:
                                     pass
 
+                        if not date_str:
+                            continue
+
                         seen.add(t)
                         news.append({
                             'source': 'Минцифры',

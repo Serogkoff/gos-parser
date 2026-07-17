@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 
 def parse():
-    news, seen_urls = [], set()
+    news, seen_titles = [], set()
     cutoff = datetime.now() - timedelta(days=30)
 
     try:
@@ -20,7 +20,6 @@ def parse():
                     page.wait_for_timeout(2000)
                     s = BeautifulSoup(page.content(), 'html.parser')
 
-                    # Ищем все time с datetime
                     for time_tag in s.find_all('time', attrs={'datetime': True}):
                         date_str = time_tag['datetime'][:10]
                         try:
@@ -30,7 +29,6 @@ def parse():
                         except:
                             continue
 
-                        # Ищем ближайшую ссылку
                         container = time_tag.find_parent('div')
                         if not container:
                             continue
@@ -39,16 +37,15 @@ def parse():
                             continue
 
                         t = a.get_text(strip=True)
-                        full_url = urljoin(u, a['href'])
 
-                        if len(t) < 20 or is_junk(t) or full_url in seen_urls:
+                        if len(t) < 20 or is_junk(t) or t in seen_titles:
                             continue
 
-                        seen_urls.add(full_url)
+                        seen_titles.add(t)
                         news.append({
                             'source': 'Минэнерго',
                             'title': t,
-                            'url': full_url,
+                            'url': urljoin(u, a['href']),
                             'date': date_str
                         })
                 except:
