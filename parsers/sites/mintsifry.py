@@ -38,7 +38,6 @@ def parse():
                         if len(t) < 20 or t in seen or is_junk(t):
                             continue
 
-                        # Ищем дату рядом
                         date_str = ""
                         parent = item.find_parent('div')
                         if parent:
@@ -48,14 +47,17 @@ def parse():
                                     text = date_el.get_text(strip=True).lower()
                                     parts = text.split()
                                     if len(parts) >= 2:
-                                        day = parts[0]
+                                        day = int(parts[0])
                                         month_name = parts[1]
                                         month = MONTHS.get(month_name, 1)
-                                        year = str(datetime.now().year)
-                                        date_str = f"{year}-{month:02d}-{int(day):02d}"
-                                        news_date = datetime.strptime(date_str, '%Y-%m-%d')
+                                        year = datetime.now().year
+                                        news_date = datetime(year, month, day)
+                                        if news_date > datetime.now():
+                                            year -= 1
+                                            news_date = datetime(year, month, day)
                                         if news_date < cutoff:
                                             continue
+                                        date_str = news_date.strftime("%Y-%m-%d")
                                 except:
                                     pass
 
