@@ -31,34 +31,40 @@ def parse():
 
                     for a in s.find_all('a'):
                         t = a.get_text(strip=True)
-                        if len(t) < 30 or t in seen or is_junk(t):
+                        href = a.get('href', '')
+
+                        if '/press/' not in href or len(t) < 30 or t in seen or is_junk(t):
                             continue
 
-                        # Ищем дату — проверяем начало текста на "DD месяц YYYY"
+                        news_url = urljoin(u, href)
                         date_str = ""
-                        match = re.match(
-                            r'(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})',
-                            t)
-                        if match:
-                            day, month_name, year = match.groups()
-                            month = MONTHS.get(month_name, 1)
-                            date_str = f"{year}-{month:02d}-{int(day):02d}"
-                            try:
-                                news_date = datetime.strptime(date_str, '%Y-%m-%d')
-                                if news_date < cutoff:
-                                    continue
-                            except:
-                                pass
-                            # Убираем дату из заголовка
-                            t = re.sub(
-                                r'^\d{1,2}\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+\d{4}\s*',
-                                '', t).strip()
+
+                        # Заходим на страницу новости за датой
+                        try:
+                            page.goto(news_url, wait_until="networkidle", timeout=15000)
+                            page.wait_for_timeout(1000)
+                            s2 = BeautifulSoup(page.content(), 'html.parser')
+                            date_el = s2.select_one('.date, [class*=date], time, .published')
+                            if date_el:
+                                raw = date_el.get_text(strip=True)
+                                match = re.search(
+                                    r'(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})',
+                                    raw.lower())
+                                if match:
+                                    day, month_name, year = int(match.group(1)), match.group(2), int(match.group(3))
+                                    month = MONTHS[month_name]
+                                    news_date = datetime(year, month, day)
+                                    if news_date < cutoff:
+                                        continue
+                                    date_str = news_date.strftime("%Y-%m-%d")
+                        except:
+                            pass
 
                         seen.add(t)
                         news.append({
                             'source': 'Минпросвещения',
                             'title': t,
-                            'url': urljoin(u, a.get('href', '')),
+                            'url': news_url,
                             'date': date_str
                         })
                 except:

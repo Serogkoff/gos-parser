@@ -19,7 +19,13 @@ def parse():
 
             for a in soup.find_all('a'):
                 t = a.get_text(strip=True)
-                if len(t) < 20 or t in seen or is_junk(t): continue
+                href = a.get('href', '')
+
+                # Только ссылки на новости
+                if '/news/' not in href:
+                    continue
+                if len(t) < 20 or t in seen or is_junk(t):
+                    continue
 
                 date_str = ""
                 parent = a.find_parent('div') or a.find_parent('li')
@@ -27,20 +33,18 @@ def parse():
                     time_tag = parent.find('time')
                     if time_tag and time_tag.get('datetime'):
                         date_str = time_tag['datetime'][:10]
-
-                if date_str:
-                    try:
-                        news_date = datetime.strptime(date_str, '%Y-%m-%d')
-                        if news_date < cutoff:
-                            continue
-                    except:
-                        pass
+                        try:
+                            news_date = datetime.strptime(date_str, '%Y-%m-%d')
+                            if news_date < cutoff:
+                                continue
+                        except:
+                            pass
 
                 seen.add(t)
                 news.append({
                     'source': 'Правительство РФ',
                     'title': t,
-                    'url': urljoin(url, a.get('href', '')),
+                    'url': urljoin(url, href),
                     'date': date_str
                 })
         except:

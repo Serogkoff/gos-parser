@@ -14,7 +14,6 @@ MONTHS = {
     'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12
 }
 
-
 def parse():
     news, seen = [], set()
     cutoff = datetime.now() - timedelta(days=30)
@@ -29,7 +28,6 @@ def parse():
                 title_tag = item.select_one('.news-item__title a')
                 date_tag = item.select_one('.news-item__date')
 
-                # Только если есть дата — это новость, а не раздел
                 if not title_tag or not date_tag:
                     continue
 
@@ -37,10 +35,12 @@ def parse():
                 if len(t) < 20 or t in seen or is_junk(t):
                     continue
 
+                raw = date_tag.get_text(strip=True)
                 date_str = ""
                 try:
-                    parts = date_tag.get_text(strip=True).split()
-                    day, month_name, year = int(parts[0]), parts[1].lower(), int(parts[2])
+                    parts = raw.split()
+                    day, month_name = int(parts[0]), parts[1].lower()
+                    year = int(parts[2][:4])
                     month = MONTHS[month_name]
                     news_date = datetime(year, month, day)
                     if news_date < cutoff:
