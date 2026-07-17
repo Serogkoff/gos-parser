@@ -8,7 +8,7 @@ HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 
 def parse():
-    news, seen = [], set()
+    news, seen_urls = [], set()
     cutoff = datetime.now() - timedelta(days=30)
 
     for p in range(2):
@@ -19,7 +19,12 @@ def parse():
 
             for a in s.find_all('a'):
                 t = a.get_text(strip=True)
-                if len(t) < 20 or t in seen or is_junk(t):
+                href = a.get('href', '')
+                full_url = urljoin(u, href)
+
+                if '/news/' not in href:
+                    continue
+                if len(t) < 20 or is_junk(t) or full_url in seen_urls:
                     continue
 
                 date_str = ""
@@ -35,11 +40,11 @@ def parse():
                         except:
                             pass
 
-                seen.add(t)
+                seen_urls.add(full_url)
                 news.append({
                     'source': 'Трутнев',
                     'title': t,
-                    'url': urljoin(u, a.get('href', '')),
+                    'url': full_url,
                     'date': date_str
                 })
         except:
