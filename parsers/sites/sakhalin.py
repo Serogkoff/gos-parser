@@ -1,9 +1,11 @@
-from utils.filters import is_junk
-from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin
 import re
+from urllib.parse import urljoin
 from datetime import datetime, timedelta
+
+from utils.filters import is_junk
+from utils.js_client import fetch_soup_js
+
+SOURCE_NAME = "Сахалинская обл."
 
 MONTHS = {
     'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4,
@@ -16,54 +18,46 @@ def parse():
     news, seen = [], set()
     cutoff = datetime.now() - timedelta(days=30)
 
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            for pg in range(2):
-                u = f"https://sakhalin.gov.ru/news?page={pg + 1}" if pg else "https://sakhalin.gov.ru/news"
+    for pg in range(2):
+        u = f"https://sakhalin.gov.ru/news?page={pg + 1}" if pg else "https://sakhalin.gov.ru/news"
+
+        soup = fetch_soup_js(u, SOURCE_NAME, wait_ms=3000, timeout_ms=60000)
+        if soup is None:
+            continue
+
+        for a in soup.find_all('a'):
+            t = a.get_text(strip=True)
+            if len(t) < 20 or t in seen or is_junk(t):
+                continue
+
+            # Парсим дату из текста
+            date_str = ""
+            match = re.search(
+                r'(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)',
+                t.lower())
+            if match:
+                day, month_name = match.groups()
+                month = MONTHS.get(month_name, 1)
+                year = str(datetime.now().year)
+                date_str = f"{year}-{month:02d}-{int(day):02d}"
                 try:
-                    page.goto(u, wait_until="networkidle", timeout=60000)
-                    page.wait_for_timeout(3000)
-                    s = BeautifulSoup(page.content(), 'html.parser')
-
-                    for a in s.find_all('a'):
-                        t = a.get_text(strip=True)
-                        if len(t) < 20 or t in seen or is_junk(t):
-                            continue
-
-                        # Парсим дату из текста
-                        date_str = ""
-                        match = re.search(
-                            r'(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)',
-                            t.lower())
-                        if match:
-                            day, month_name = match.groups()
-                            month = MONTHS.get(month_name, 1)
-                            year = str(datetime.now().year)
-                            date_str = f"{year}-{month:02d}-{int(day):02d}"
-                            try:
-                                news_date = datetime.strptime(date_str, '%Y-%m-%d')
-                                if news_date < cutoff:
-                                    continue
-                            except:
-                                pass
-                            # Убираем дату из заголовка
-                            t = re.sub(
-                                r'\d{1,2}\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s*\d{0,4}\s*',
-                                '', t, flags=re.IGNORECASE).strip()
-
-                        seen.add(t)
-                        news.append({
-                            'source': 'Сахалинская обл.',
-                            'title': t,
-                            'url': urljoin(u, a.get('href', '')),
-                            'date': date_str
-                        })
+                    news_date = datetime.strptime(date_str, '%Y-%m-%d')
+                    if news_date < cutoff:
+                        continue
                 except:
                     pass
-            browser.close()
-    except:
-        pass
+                # Убираем дату из заголовка
+                t = re.sub(
+                    r'\d{1,2}\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s*\d{0,4}\s*',
+                    '', t, flags=re.IGNORECASE).strip()
+
+            seen.add(t)
+            news.append({
+                'source': SOURCE_NAME,
+                'title': t,
+                'url': urljoin(u, a.get('href', '')),
+                'date': date_str
+            })
+
     print(f"  ✅ {len(news)}")
     return news

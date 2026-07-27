@@ -1,6 +1,14 @@
 import time
 from datetime import datetime
 
+from config import (
+    MAX_RETRIES,
+    PAUSE_BETWEEN_REQUESTS,
+    PROJECT_VERSION,
+    UPDATE_INTERVAL,
+)
+from utils.news import deduplicate_news
+from utils.status import print_status_table, save_parser_status
 from utils.storage import save_results, load_existing_urls
 from utils.keywords import search_keywords
 
@@ -63,6 +71,7 @@ SITES = [
 
 
 def safe_parse(parser_func, max_retries=2):
+    last_error = ""
     for attempt in range(1, max_retries + 1):
         try:
             news = parser_func()
@@ -70,27 +79,34 @@ def safe_parse(parser_func, max_retries=2):
                 raise ValueError("Парсер вернул None")
             if not isinstance(news, list):
                 raise TypeError(f"Парсер вернул {type(news).__name__}, ожидался list")
-            return news
+            return news, ""
         except Exception as error:
+            last_error = f"{type(error).__name__}: {str(error)[:200]}"
             print(f"  ❌ попытка {attempt}/{max_retries}: {type(error).__name__}: {str(error)[:100]}")
             if attempt < max_retries:
                 time.sleep(3)
-    return []
+    return [], last_error
 
 
 def run_once():
     existing_urls = load_existing_urls()
 
     print("=" * 70)
-    print(f"🚀 Парсер | {datetime.now():%Y-%m-%d %H:%M:%S} | В базе: {len(existing_urls)}")
+    print(
+        f"🚀 Парсер v{PROJECT_VERSION} | "
+        f"{datetime.now():%Y-%m-%d %H:%M:%S} | В базе: {len(existing_urls)}"
+    )
     print("=" * 70)
 
     all_news = []
     found_news = []
+    parser_statuses = []
 
     for name, parser_func in SITES:
         print(f"\n{name}:")
-        news = safe_parse(parser_func, max_retries=2)
+        started = time.perf_counter()
+        news, error = safe_parse(parser_func, max_retries=MAX_RETRIES)
+        duration = time.perf_counter() - started
         all_news.extend(news)
         matches = search_keywords(news)
         print(f"  📰 Новостей: {len(news)}")
@@ -99,8 +115,22 @@ def run_once():
             print(f"  🎯 Совпадений: {len(matches)}")
         else:
             print("  Совпадений нет")
-        time.sleep(2)
 
+        parser_statuses.append({
+            "source": name,
+            "status": "error" if error else ("ok" if news else "empty"),
+            "news_count": len(news),
+            "with_date": sum(bool(item.get("date")) for item in news),
+            "matches_count": len(matches),
+            "duration_seconds": round(duration, 2),
+            "error": error,
+        })
+        time.sleep(PAUSE_BETWEEN_REQUESTS)
+
+    all_news = deduplicate_news(all_news)
+    found_news = deduplicate_news(found_news)
+    save_parser_status(parser_statuses, PROJECT_VERSION)
+    print_status_table(parser_statuses)
     new_found = save_results(all_news, found_news, existing_urls)
 
     print("\n" + "=" * 70)
@@ -123,8 +153,8 @@ def main():
     while True:
         try:
             run_once()
-            print("\n⏳ Следующая проверка через 5 минут...")
-            time.sleep(300)
+            print(f"\n⏳ Следующая проверка через {UPDATE_INTERVAL // 60} минут...")
+            time.sleep(UPDATE_INTERVAL)
         except KeyboardInterrupt:
             print("\n🛑 Парсер остановлен пользователем")
             break

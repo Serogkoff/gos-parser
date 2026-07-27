@@ -1,48 +1,40 @@
-from utils.filters import is_junk
-"""
-ПАРСЕР МИД РФ
-"""
+from utils.http_client import fetch_soup
+from utils.news import deduplicate_news
 
-import requests
-from bs4 import BeautifulSoup
+SOURCE_NAME = "МИД РФ"
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-}
 
 def parse():
     url = "https://www.mid.ru/ru/rss"
     news = []
 
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=30)
+    # Встроенный parser не требует отдельной установки lxml.
+    # Для поиска простых тегов entry/item его возможностей достаточно.
+    soup = fetch_soup(url, SOURCE_NAME, parser="html.parser")
+    if soup is None:
+        return news
 
-        if response.status_code != 200:
-            print(f"  ⚠ Статус: {response.status_code}")
-            return news
+    entries = soup.find_all('entry') or soup.find_all('item')
 
-        # BeautifulSoup вместо xml.etree — терпимее к битому XML
-        soup = BeautifulSoup(response.content, 'xml')
-        entries = soup.find_all('entry')
+    for entry in entries[:60]:
+        title = entry.find('title')
+        link = entry.find('link')
+        published = entry.find('published') or entry.find('pubdate') or entry.find('updated')
 
-        for entry in entries[:60]:
-            title = entry.find('title')
-            link = entry.find('link')
+        title_text = title.text.strip() if title and title.text else ''
+        link_text = ""
+        if link:
+            link_text = link.get('href', '') or link.get_text(strip=True)
+        date_text = published.get_text(strip=True) if published else ""
 
-            title_text = title.text.strip() if title and title.text else ''
-            link_text = link.get('href', '') if link else ''
+        if title_text and link_text:
+            news.append({
+                'source': SOURCE_NAME,
+                'title': title_text,
+                'url': link_text,
+                'date': date_text[:10] if date_text[:4].isdigit() else "",
+            })
 
-            if title_text:
-                news.append({
-                    'source': 'МИД РФ',
-                    'title': title_text,
-                    'url': link_text,
-                })
-
-        print(f"  ✅ {len(news)}")
-
-    except Exception as e:
-        print(f"  ❌ {str(e)[:60]}")
-
+    news = deduplicate_news(news)
+    print(f"  ✅ {len(news)}")
     return news
-

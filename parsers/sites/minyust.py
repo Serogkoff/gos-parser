@@ -1,13 +1,10 @@
-import requests
-from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-import urllib3
-from utils.filters import is_junk
 from datetime import datetime, timedelta
 
-urllib3.disable_warnings()
+from utils.filters import is_junk
+from utils.http_client import fetch_soup
 
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+SOURCE_NAME = "Минюст"
 
 MONTHS = {
     'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4,
@@ -22,45 +19,44 @@ def parse():
 
     for p in range(2):
         u = f"https://minjust.gov.ru/ru/events/list/?PAGEN_1={p + 1}" if p else "https://minjust.gov.ru/ru/events/list/"
-        try:
-            r = requests.get(u, headers=HEADERS, timeout=30, verify=False)
-            s = BeautifulSoup(r.text, 'html.parser')
 
-            for block in s.select('.news-day-block'):
-                date_tag = block.select_one('.news-day-block-date .day')
-                year_tag = block.select_one('.news-day-block-date .year')
+        soup = fetch_soup(u, SOURCE_NAME)
+        if soup is None:
+            continue
 
-                for li in block.select('.news-day-block-events li'):
-                    a = li.find('a')
-                    if not a:
-                        continue
+        for block in soup.select('.news-day-block'):
+            date_tag = block.select_one('.news-day-block-date .day')
+            year_tag = block.select_one('.news-day-block-date .year')
 
-                    t = a.get_text(strip=True)
-                    if len(t) < 20 or t in seen or is_junk(t):
-                        continue
+            for li in block.select('.news-day-block-events li'):
+                a = li.find('a')
+                if not a:
+                    continue
 
-                    date_str = ""
-                    if date_tag and year_tag:
-                        try:
-                            day, month_name = date_tag.get_text(strip=True).split()
-                            year = year_tag.get_text(strip=True).split()[0]
-                            month = MONTHS[month_name.lower()]
-                            date_str = f"{year}-{month:02d}-{int(day):02d}"
-                            news_date = datetime.strptime(date_str, '%Y-%m-%d')
-                            if news_date < cutoff:
-                                continue
-                        except:
-                            pass
+                t = a.get_text(strip=True)
+                if len(t) < 20 or t in seen or is_junk(t):
+                    continue
 
-                    seen.add(t)
-                    news.append({
-                        'source': 'Минюст',
-                        'title': t,
-                        'url': urljoin(u, a.get('href', '')),
-                        'date': date_str
-                    })
-        except:
-            pass
+                date_str = ""
+                if date_tag and year_tag:
+                    try:
+                        day, month_name = date_tag.get_text(strip=True).split()
+                        year = year_tag.get_text(strip=True).split()[0]
+                        month = MONTHS[month_name.lower()]
+                        date_str = f"{year}-{month:02d}-{int(day):02d}"
+                        news_date = datetime.strptime(date_str, '%Y-%m-%d')
+                        if news_date < cutoff:
+                            continue
+                    except:
+                        pass
+
+                seen.add(t)
+                news.append({
+                    'source': SOURCE_NAME,
+                    'title': t,
+                    'url': urljoin(u, a.get('href', '')),
+                    'date': date_str
+                })
 
     print(f"  ✅ {len(news)}")
     return news

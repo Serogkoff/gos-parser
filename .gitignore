@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 *.json
 .venv/
+.idea/
+parser_errors.log
+.env
+.DS_Store
+.pytest_cache/

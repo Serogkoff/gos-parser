@@ -1,13 +1,12 @@
-import requests
-from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-import urllib3
-from utils.filters import is_junk
+import re
 from datetime import datetime, timedelta
 
-urllib3.disable_warnings()
+from utils.dates import parse_date
+from utils.filters import is_junk
+from utils.http_client import fetch_soup
 
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+SOURCE_NAME = "Минздрав"
 
 
 def parse():
@@ -16,40 +15,30 @@ def parse():
 
     for p in range(2):
         u = f"https://minzdrav.gov.ru/news?page={p + 1}" if p else "https://minzdrav.gov.ru/news"
-        try:
-            r = requests.get(u, headers=HEADERS, timeout=30, verify=False)
-            s = BeautifulSoup(r.text, 'html.parser')
 
-            for item in s.select('.media-news-item'):
-                title_tag = item.select_one('.media-body a')
-                time_tag = item.select_one('time')
+        soup = fetch_soup(u, SOURCE_NAME)
+        if soup is None:
+            continue
 
-                if not title_tag:
-                    continue
-
-                t = title_tag.get_text(strip=True)
-                if len(t) < 20 or t in seen or is_junk(t):
-                    continue
-
-                date_str = ""
-                if time_tag and time_tag.get('datetime'):
-                    date_str = time_tag['datetime'][:10]
-                    try:
-                        news_date = datetime.strptime(date_str, '%Y-%m-%d')
-                        if news_date < cutoff:
-                            continue
-                    except:
-                        pass
-
-                seen.add(t)
-                news.append({
-                    'source': 'Минздрав',
-                    'title': t,
-                    'url': urljoin(u, title_tag.get('href', '')),
-                    'date': date_str
-                })
-        except:
-            pass
+        for title_tag in soup.select('a[href*="/news/"]'):
+            href = title_tag.get('href', '')
+            match = re.search(r"/news/(20\d{2})/(\d{1,2})/(\d{1,2})/", href)
+            if not match:
+                continue
+            t = title_tag.get_text(" ", strip=True)
+            full_url = urljoin(u, href)
+            date_str = parse_date("-".join(match.groups()))
+            if not date_str or datetime.strptime(date_str, "%Y-%m-%d") < cutoff:
+                continue
+            if len(t) < 20 or full_url in seen or is_junk(t):
+                continue
+            seen.add(full_url)
+            news.append({
+                'source': SOURCE_NAME,
+                'title': t,
+                'url': full_url,
+                'date': date_str
+            })
 
     print(f"  ✅ {len(news)}")
     return news

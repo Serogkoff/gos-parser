@@ -2,18 +2,10 @@ import re
 from datetime import datetime, timedelta
 from urllib.parse import urljoin
 
-import requests
-import urllib3
-from bs4 import BeautifulSoup
-
 from utils.filters import is_junk
+from utils.http_client import fetch_soup
 
-
-urllib3.disable_warnings()
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0"
-}
+SOURCE_NAME = "Минкульт"
 
 MONTHS = {
     "января": 1,
@@ -61,20 +53,11 @@ def parse():
                 f"?PAGEN_1={page}"
             )
 
+        soup = fetch_soup(url, SOURCE_NAME)
+        if soup is None:
+            continue
+
         try:
-            response = requests.get(
-                url,
-                headers=HEADERS,
-                timeout=30,
-                verify=False,
-            )
-            response.raise_for_status()
-
-            soup = BeautifulSoup(
-                response.text,
-                "html.parser",
-            )
-
             for link_tag in soup.find_all("a", href=True):
                 raw_text = link_tag.get_text(
                     " ",
@@ -125,17 +108,11 @@ def parse():
                 seen.add(title)
 
                 news.append({
-                    "source": "Минкульт",
+                    "source": SOURCE_NAME,
                     "title": title,
                     "url": urljoin(url, href),
                     "date": date_str,
                 })
-
-        except requests.RequestException as error:
-            print(
-                f"  ⚠ Страница {page}: "
-                f"{type(error).__name__}: {error}"
-            )
 
         except Exception as error:
             print(
