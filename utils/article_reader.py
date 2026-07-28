@@ -1,5 +1,8 @@
 """Безопасное извлечение текста публикации для локальной страницы просмотра."""
 
+import re
+from urllib.parse import urljoin, urlsplit
+
 from bs4 import BeautifulSoup
 
 from utils.http_client import fetch_soup
@@ -24,13 +27,22 @@ SKIP_PARTS = (
 
 
 def extract_article(url, fallback_title=""):
-    soup = fetch_soup(url, "Просмотр новости", timeout=25, verify=False)
+    fetch_url = url
+    if _is_minobrnauki_url(url):
+        fetch_url = url.rstrip("/") + "/"
+
+    soup = fetch_soup(fetch_url, "Просмотр новости", timeout=25, verify=False)
     if soup is None:
         return {
             "title": fallback_title,
             "paragraphs": [],
             "error": "Сайт ведомства сейчас не отдал текст публикации.",
         }
+
+    if _is_minobrnauki_url(url):
+        article = _extract_minobrnauki_card(soup, fetch_url, fallback_title)
+        if article:
+            return article
 
     for tag in soup(["script", "style", "noscript", "nav", "footer", "form", "aside"]):
         tag.decompose()
@@ -56,6 +68,154 @@ def extract_article(url, fallback_title=""):
         "paragraphs": best[:100],
         "error": "" if best else "Не удалось выделить текст публикации автоматически.",
     }
+
+
+def _is_minobrnauki_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return hostname == "minobrnauki.gov.ru" or hostname.endswith(".minobrnauki.gov.ru")
+
+
+def _extract_minobrnauki_card(soup, url, fallback_title):
+    """
+    У Минобрнауки адрес с ID публикации открывает общий список новостей.
+    Поэтому ищем на странице только карточку с тем же числовым ID.
+    """
+    target_path = urlsplit(url).path.rstrip("/")
+    target_id = target_path.rsplit("/", 1)[-1]
+    if not target_id.isdigit():
+        return None
+
+    # Страница Минобрнауки визуально похожа на общий список, но сведения
+    # выбранной публикации сервер помещает в Open Graph-метаданные.
+    og_url = soup.select_one("meta[property='og:url']")
+    og_title = soup.select_one("meta[property='og:title']")
+    og_description = soup.select_one("meta[property='og:description']")
+    metadata_url = og_url.get("content", "") if og_url else ""
+    metadata_path = urlsplit(metadata_url).path.rstrip("/")
+    description = (
+        " ".join(og_description.get("content", "").split())
+        if og_description
+        else ""
+    )
+
+    if (
+        metadata_path.rsplit("/", 1)[-1] == target_id
+        and len(description) >= 45
+    ):
+        title = fallback_title
+        if not title and og_title:
+            title = " ".join(og_title.get("content", "").split())
+        return {
+            "title": title,
+            "paragraphs": [description],
+            "error": "",
+        }
+
+    target_link = None
+    for link in soup.select("a[href]"):
+        link_path = urlsplit(urljoin(url, link.get("href", ""))).path.rstrip("/")
+        if link_path.rsplit("/", 1)[-1] == target_id:
+            target_link = link
+            break
+
+    if target_link is None:
+        return None
+
+    card = target_link.find_parent(class_="news-item")
+    if card is None:
+        card = _nearest_news_container(target_link, fallback_title)
+    if card is None:
+        return None
+
+    for tag in card(["script", "style", "noscript", "nav", "form", "button"]):
+        tag.decompose()
+
+    paragraphs = []
+    seen = set()
+    selectors = (
+        ".news-item-text",
+        ".news-item__text",
+        ".news-item-description",
+        ".news-item__description",
+        ".news-item-preview",
+        ".news-item__preview",
+        ".news-list__text",
+        ".preview-text",
+        ".description",
+        "p",
+    )
+    for selector in selectors:
+        found_for_selector = []
+        for node in card.select(selector):
+            text = _clean_minobrnauki_text(
+                node.get_text(" ", strip=True),
+                fallback_title,
+            )
+            folded = text.casefold()
+            if len(text) >= 45 and folded not in seen:
+                seen.add(folded)
+                found_for_selector.append(text)
+        if found_for_selector:
+            paragraphs.extend(found_for_selector)
+            break
+
+    if not paragraphs:
+        text = _clean_minobrnauki_text(
+            card.get_text(" ", strip=True),
+            fallback_title,
+        )
+        if len(text) >= 45:
+            paragraphs.append(text)
+
+    if not paragraphs:
+        return None
+
+    return {
+        "title": fallback_title,
+        "paragraphs": paragraphs[:20],
+        "error": "",
+    }
+
+
+def _nearest_news_container(link, fallback_title):
+    title_key = " ".join(fallback_title.casefold().split())[:60]
+    parent = link.parent
+
+    for _ in range(7):
+        if parent is None or getattr(parent, "name", "") in {"main", "body", "html"}:
+            break
+        classes = " ".join(parent.get("class", [])).casefold()
+        text = " ".join(parent.get_text(" ", strip=True).casefold().split())
+        if (
+            any(part in classes for part in ("news", "item", "card"))
+            and (not title_key or title_key in text)
+        ):
+            return parent
+        parent = parent.parent
+    return None
+
+
+def _clean_minobrnauki_text(value, fallback_title):
+    text = " ".join(str(value).split())
+    if fallback_title:
+        text = text.replace(fallback_title, " ")
+    text = re.sub(
+        r"^\s*\d{1,2}\s+"
+        r"(?:января|февраля|марта|апреля|мая|июня|июля|августа|"
+        r"сентября|октября|ноября|декабря)\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\s+", " ", text).strip(" —|")
+    if text.casefold() in {
+        "наука",
+        "образование",
+        "молодежная политика",
+        "новости министерства",
+    }:
+        return ""
+    return text
 
 
 def _first_text(*tags):

@@ -1,7 +1,12 @@
+import re
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 TRACKING_PARAMETERS = {"fbclid", "gclid", "yclid"}
+MINOBRNAUKI_ARTICLE_PATH = re.compile(
+    r"^/press-center/news/[^/]+/\d+$",
+    re.IGNORECASE,
+)
 
 
 def normalize_url(url):
@@ -24,6 +29,17 @@ def normalize_url(url):
         if not key.lower().startswith("utm_") and key.lower() not in TRACKING_PARAMETERS
     ]
     path = parts.path.rstrip("/") or "/"
+    hostname = (parts.hostname or "").casefold()
+    if (
+        (
+            hostname == "minobrnauki.gov.ru"
+            or hostname.endswith(".minobrnauki.gov.ru")
+        )
+        and MINOBRNAUKI_ARTICLE_PATH.fullmatch(path)
+    ):
+        # Для страниц публикаций Минобрнауки завершающий слеш обязателен:
+        # без него сайт возвращает общий список новостей.
+        path += "/"
     return urlunsplit(
         (parts.scheme.lower(), parts.netloc.lower(), path, urlencode(query), "")
     )
