@@ -5,7 +5,6 @@ from pathlib import Path
 from urllib.parse import quote
 
 from flask import Flask, abort, jsonify, render_template_string, request
-
 from utils.article_reader import extract_article
 from utils.keywords import (
     add_keyword,
@@ -132,18 +131,24 @@ HTML = """
         .empty{min-height:300px;display:grid;place-content:center;gap:8px;color:var(--muted);text-align:center}
         .empty strong{color:var(--ink)}
         .sidebar{display:grid;gap:16px}.panel{overflow:hidden}
-        .panel-title{min-height:58px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
-        .panel-title button{border:0;color:var(--muted);background:transparent;font-size:20px}
+        .panel-title{min-height:58px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line)}
+        .panel-title-actions{display:flex;align-items:center;gap:8px}
+        .panel-title button{border:0;color:var(--muted);background:transparent}
+        .panel-title .collapse-button{font-size:20px}
+        .mark-all-read{padding:5px 7px;border-radius:4px!important;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+        .mark-all-read:hover{color:var(--coral-dark);background:#fff3ed}
         .source-list{padding-top:10px}
         .source-row{
-            width:100%;min-height:40px;padding:0 18px;display:grid;grid-template-columns:20px 1fr auto;
+            width:100%;min-height:40px;padding:0 18px;display:grid;grid-template-columns:20px minmax(0,1fr) auto auto;
             align-items:center;gap:9px;border:0;color:#4f4a43;background:transparent;text-align:left;font-size:13px
         }
         .source-row:hover{background:#fff8f2}
         .check{width:16px;height:16px;display:grid;place-items:center;color:#fff;border:1px solid #bdb5a9;border-radius:3px;font-size:11px}
         .source-row.active .check{border-color:var(--coral);background:var(--coral)}
         .source-row b{min-width:28px;padding:3px 5px;color:#827b71;border:1px solid var(--line);border-radius:5px;background:#f8f4ed;text-align:center;font-size:10px;font-weight:500}
-        .more-sources{width:100%;min-height:44px;margin-top:6px;padding:0 18px;border:0;border-top:1px solid var(--line);color:var(--muted);background:transparent;text-align:left;font-size:12px}
+        .unread-count{min-width:28px;color:var(--green);text-align:right;font-size:11px;font-weight:700}
+        .unread-count:empty{display:none}
+        .unread-label{margin-left:auto;padding:3px 6px;color:var(--green);border:1px solid rgba(62,118,85,.35);border-radius:4px;background:rgba(62,118,85,.08);font-size:10px;text-transform:uppercase;letter-spacing:.04em}
         .coverage{padding-top:18px}.coverage>h2,.coverage dl{padding:0 20px}
         .coverage dl{margin:14px 0 16px}.coverage dl div{min-height:31px;display:flex;align-items:center;justify-content:space-between}
         .coverage dt,.coverage dd{margin:0;color:#686158;font-size:12px}.coverage dt{display:flex;align-items:center;gap:8px}.coverage dd{color:var(--ink)}
@@ -238,7 +243,8 @@ HTML = """
             <div id="news-list">
             {% for item in news %}
                 <article class="news-card {{'match' if item.keywords else ''}}"
-                         data-id="{{item.url}}" data-search="{{(item.title + ' ' + item.source + ' ' + (item.keywords|join(' ')))|lower}}">
+                         data-id="{{item.url}}" data-source="{{item.source}}"
+                         data-search="{{(item.title + ' ' + item.source + ' ' + (item.keywords|join(' ')))|lower}}">
                     {% if item.keywords %}
                     <div class="match-label">✣ Совпадение с ключевыми словами</div>
                     {% endif %}
@@ -250,8 +256,17 @@ HTML = """
                             {% elif item.parsed_date %}Получено {{item.parsed_date}}
                             {% endif %}
                         </time>
+                        <span class="unread-label hidden">Новая</span>
                     </div>
-                    <h3><a href="/article?url={{item.url|urlencode}}">{{item.title}}</a></h3>
+                    {% if item.source == 'МИД РФ' %}
+                    <h3>
+                        <a href="{{item.url}}" target="_blank" rel="noopener noreferrer" data-read-url="{{item.url}}">
+                            {{item.title}}
+                        </a>
+                    </h3>
+                    {% else %}
+                    <h3><a href="/article?url={{item.url|urlencode}}" data-read-url="{{item.url}}">{{item.title}}</a></h3>
+                    {% endif %}
                     {% if item.keywords %}
                     <div class="chips">{% for keyword in item.keywords %}<span>{{keyword}}</span>{% endfor %}</div>
                     {% endif %}
@@ -262,17 +277,28 @@ HTML = """
 
         <aside class="sidebar" id="sidebar">
             <section class="panel">
-                <header class="panel-title"><h2>Источники</h2><button id="collapse-sources" type="button">−</button></header>
+                <header class="panel-title">
+                    <h2>Источники</h2>
+                    <div class="panel-title-actions">
+                        <button class="mark-all-read" id="mark-all-read" type="button">Прочитать всё</button>
+                        <button class="collapse-button" id="collapse-sources" type="button" aria-label="Свернуть список">−</button>
+                    </div>
+                </header>
                 <div class="source-list" id="source-list">
                     <a class="source-row {{'active' if not source_filter else ''}}" href="/">
-                        <span class="check">{{'✓' if not source_filter else ''}}</span><span>Все источники</span><b>{{sources|length}}</b>
+                        <span class="check">{{'✓' if not source_filter else ''}}</span>
+                        <span>Все источники</span>
+                        <b>{{total}}</b>
+                        <span class="unread-count" data-unread-source="__all__"></span>
                     </a>
-                    {% for src, count in sources[:8] %}
+                    {% for src, count in sources %}
                     <a class="source-row {{'active' if src == source_filter else ''}}" href="/filter/{{src|urlencode}}">
-                        <span class="check">{{'✓' if src == source_filter else ''}}</span><span>{{src}}</span><b>{{count}}</b>
+                        <span class="check">{{'✓' if src == source_filter else ''}}</span>
+                        <span>{{src}}</span>
+                        <b>{{count}}</b>
+                        <span class="unread-count" data-unread-source="{{src}}"></span>
                     </a>
                     {% endfor %}
-                    {% if sources|length > 8 %}<div class="more-sources">Ещё {{sources|length - 8}} источников доступны в списке сверху</div>{% endif %}
                 </div>
             </section>
 
@@ -310,8 +336,63 @@ HTML = """
     const emptyState = document.getElementById('empty-state');
     const savedButton = document.getElementById('saved-only');
     const savedCount = document.getElementById('saved-count');
+    const newsIndex = {{news_index|tojson}};
     let savedOnly = false;
     let saved = new Set(JSON.parse(localStorage.getItem('monitor-saved') || '[]'));
+    const unreadStorageKey = 'monitor-unread-v1';
+    let unreadState;
+
+    try{
+        unreadState = JSON.parse(localStorage.getItem(unreadStorageKey) || 'null');
+    }catch(error){
+        unreadState = null;
+    }
+
+    if(!unreadState || !Array.isArray(unreadState.known) || !Array.isArray(unreadState.unread)){
+        // Первый запуск: существующие материалы считаются уже прочитанными.
+        unreadState = {known: newsIndex.map(item => item.url), unread: []};
+    }else{
+        const known = new Set(unreadState.known);
+        const unreadNews = new Set(unreadState.unread);
+        newsIndex.forEach(item => {
+            if(item.url && !known.has(item.url)){
+                known.add(item.url);
+                unreadNews.add(item.url);
+            }
+        });
+        unreadState = {known: [...known], unread: [...unreadNews]};
+    }
+    localStorage.setItem(unreadStorageKey, JSON.stringify(unreadState));
+    let unread = new Set(unreadState.unread);
+
+    function saveUnread(){
+        unreadState.unread = [...unread];
+        localStorage.setItem(unreadStorageKey, JSON.stringify(unreadState));
+    }
+
+    function refreshUnread(){
+        const counts = {};
+        newsIndex.forEach(item => {
+            if(unread.has(item.url)){
+                counts[item.source] = (counts[item.source] || 0) + 1;
+            }
+        });
+        document.querySelectorAll('[data-unread-source]').forEach(badge => {
+            const source = badge.dataset.unreadSource;
+            const count = source === '__all__' ? unread.size : (counts[source] || 0);
+            badge.textContent = count ? '+' + count : '';
+        });
+        cards.forEach(card => {
+            const label = card.querySelector('.unread-label');
+            if(label) label.classList.toggle('hidden', !unread.has(card.dataset.id));
+        });
+    }
+
+    function markRead(url){
+        if(!unread.delete(url)) return;
+        saveUnread();
+        refreshUnread();
+    }
 
     function refreshSavedIcons(){
         document.querySelectorAll('[data-save]').forEach(button => {
@@ -343,6 +424,14 @@ HTML = """
             localStorage.setItem('monitor-saved', JSON.stringify([...saved]));
             refreshSavedIcons(); applyFilters();
         });
+    });
+    document.querySelectorAll('[data-read-url]').forEach(link => {
+        link.addEventListener('click', () => markRead(link.dataset.readUrl));
+    });
+    document.getElementById('mark-all-read').addEventListener('click', () => {
+        unread.clear();
+        saveUnread();
+        refreshUnread();
     });
     search.addEventListener('input', applyFilters);
     savedButton.addEventListener('click', () => {
@@ -417,6 +506,8 @@ HTML = """
         await changeKeyword('POST', input.value); input.value = '';
     });
     refreshSavedIcons();
+    refreshUnread();
+    applyFilters();
 </script>
 </body>
 </html>
@@ -486,6 +577,14 @@ def render_news_page(news, mode="all", source_filter=""):
         total=len(all_news),
         found_count=len(found_news),
         sources=sources,
+        news_index=[
+            {
+                "url": item.get("url", ""),
+                "source": item.get("source", "Неизвестный источник"),
+            }
+            for item in all_news
+            if item.get("url")
+        ],
         source_filter=source_filter,
         mode=mode,
         health_total=total_sources,
