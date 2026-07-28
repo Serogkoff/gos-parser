@@ -60,6 +60,52 @@ class DeduplicateNewsTests(unittest.TestCase):
         ]
         self.assertEqual(len(deduplicate_news(items)), 1)
 
+    def test_removes_duplicate_source_title_with_different_urls(self):
+        items = [
+            {
+                "source": "МЧС",
+                "title": "Спасатели МЧС России провели учения",
+                "url": "https://mchs.gov.ru/news/first",
+            },
+            {
+                "source": "МЧС",
+                "title": "Спасатели МЧС России — провели учения!",
+                "url": "https://mchs.gov.ru/news/second",
+            },
+        ]
+        self.assertEqual(len(deduplicate_news(items)), 1)
+
+    def test_keeps_same_title_from_different_sources(self):
+        items = [
+            {
+                "source": "МЧС",
+                "title": "Ведомства провели совместное совещание",
+                "url": "https://mchs.gov.ru/news/1",
+            },
+            {
+                "source": "Минюст",
+                "title": "Ведомства провели совместное совещание",
+                "url": "https://minjust.gov.ru/news/1",
+            },
+        ]
+        self.assertEqual(len(deduplicate_news(items)), 2)
+
+    def test_merges_same_source_title_when_url_changes(self):
+        old = [{
+            "source": "Минэнерго",
+            "title": "Министерство опубликовало новый доклад",
+            "url": "https://minenergo.gov.ru/news/old",
+        }]
+        new = [{
+            "source": "Минэнерго",
+            "title": "Министерство опубликовало новый доклад",
+            "url": "https://minenergo.gov.ru/news/new",
+            "date": "2026-07-28",
+        }]
+        merged = merge_news(old, new)
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["date"], "2026-07-28")
+
 
 class ParseDateTests(unittest.TestCase):
     def test_russian_date_without_year(self):

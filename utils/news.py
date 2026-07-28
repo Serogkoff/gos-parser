@@ -3,6 +3,12 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 TRACKING_PARAMETERS = {"fbclid", "gclid", "yclid"}
+TITLE_DEDUP_SOURCES = {
+    "мчс",
+    "минэнерго",
+    "минэкономразвития",
+    "минюст",
+}
 
 MINOBRNAUKI_ARTICLE_PATH = re.compile(
     r"^/press-center/news/[^/]+/\d+$",
@@ -90,19 +96,14 @@ def deduplicate_news(items):
         if not is_valid_news_item(item):
             continue
 
-        normalized = normalize_url(item.get("url", ""))
-
-        key = normalized or (
-            item.get("source", "").strip().lower(),
-            item.get("title", "").strip().lower(),
-        )
-
-        if key in seen:
+        keys = _identity_keys(item)
+        if any(key in seen for key in keys):
             continue
 
-        seen.add(key)
+        seen.update(keys)
 
         copy = dict(item)
+        normalized = normalize_url(item.get("url", ""))
         if normalized:
             copy["url"] = normalized
 
@@ -129,17 +130,20 @@ def merge_news(existing, incoming):
     """Обновляет старые записи новыми полями, не создавая повторов."""
     result = deduplicate_news(existing)
 
-    positions = {
-        normalize_url(item.get("url", "")): index
-        for index, item in enumerate(result)
-        if item.get("url")
-    }
+    positions = {}
+    for index, item in enumerate(result):
+        for key in _identity_keys(item):
+            positions.setdefault(key, index)
 
     for item in deduplicate_news(incoming):
-        key = normalize_url(item.get("url", ""))
+        keys = _identity_keys(item)
+        existing_index = next(
+            (positions[key] for key in keys if key in positions),
+            None,
+        )
 
-        if key and key in positions:
-            current = result[positions[key]]
+        if existing_index is not None:
+            current = result[existing_index]
 
             for field, value in item.items():
                 if value and (
@@ -147,13 +151,40 @@ def merge_news(existing, incoming):
                     or not current.get(field)
                 ):
                     current[field] = value
-        else:
-            if key:
-                positions[key] = len(result)
 
+            for key in _identity_keys(current):
+                positions[key] = existing_index
+        else:
+            new_index = len(result)
             result.append(item)
+            for key in keys:
+                positions[key] = new_index
 
     return result
+
+
+def _identity_keys(item):
+    """Возвращает все безопасные признаки одной и той же публикации."""
+    source = str(item.get("source", "")).strip().casefold()
+    title = _normalize_title(item.get("title", ""))
+    normalized_url = normalize_url(item.get("url", ""))
+    keys = []
+
+    if normalized_url:
+        keys.append(("url", normalized_url))
+
+    if source in TITLE_DEDUP_SOURCES and title:
+        keys.append(("source-title", source, title))
+
+    if not keys:
+        keys.append(("source-title", source, title))
+
+    return keys
+
+
+def _normalize_title(title):
+    value = str(title or "").casefold().replace("ё", "е")
+    return " ".join(re.findall(r"[a-zа-я0-9]+", value, flags=re.IGNORECASE))
 
 
 def sort_news_by_publication(items):
