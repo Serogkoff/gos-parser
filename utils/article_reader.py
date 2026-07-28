@@ -6,6 +6,7 @@ from urllib.parse import urljoin, urlsplit
 from bs4 import BeautifulSoup
 
 from utils.http_client import fetch_soup
+from utils.js_client import fetch_soup_js
 
 
 CONTAINER_SELECTORS = (
@@ -22,16 +23,40 @@ CONTAINER_SELECTORS = (
 
 SKIP_PARTS = (
     "cookie", "подпис", "социальн", "поделиться", "обратн", "телефон",
-    "адрес", "наверх", "наверх", "навигац",
+    "адрес", "наверх", "навигац", "все материалы сайта доступны по лицензии",
+    "creative commons",
 )
+
+GENERIC_TITLES = {
+    "новости",
+    "публикации пресс-центра",
+    "пресс-центр",
+    "новости и пресс-релизы",
+}
 
 
 def extract_article(url, fallback_title=""):
     fetch_url = url
-    if _is_minobrnauki_url(url):
+    if _is_minobrnauki_url(url) or _is_mnr_url(url):
         fetch_url = url.rstrip("/") + "/"
 
-    soup = fetch_soup(fetch_url, "Просмотр новости", timeout=25, verify=False)
+    if _is_mnr_url(url):
+        soup = fetch_soup_js(
+            fetch_url,
+            "Просмотр Минприроды",
+            wait_ms=2500,
+            timeout_ms=45000,
+        )
+        if soup is None:
+            soup = fetch_soup(
+                fetch_url,
+                "Просмотр Минприроды",
+                timeout=30,
+                verify=False,
+            )
+    else:
+        soup = fetch_soup(fetch_url, "Просмотр новости", timeout=25, verify=False)
+
     if soup is None:
         return {
             "title": fallback_title,
@@ -44,6 +69,11 @@ def extract_article(url, fallback_title=""):
         if article:
             return article
 
+    if _is_mnr_url(url):
+        article = _extract_mnr_article(soup, fallback_title)
+        if article:
+            return article
+
     for tag in soup(["script", "style", "noscript", "nav", "footer", "form", "aside"]):
         tag.decompose()
 
@@ -52,6 +82,8 @@ def extract_article(url, fallback_title=""):
         soup.select_one("[itemprop='headline']"),
         soup.select_one("meta[property='og:title']"),
     ) or fallback_title
+    if fallback_title and title.casefold().strip() in GENERIC_TITLES:
+        title = fallback_title
 
     best = []
     for selector in CONTAINER_SELECTORS:
@@ -73,6 +105,102 @@ def extract_article(url, fallback_title=""):
 def _is_minobrnauki_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
     return hostname == "minobrnauki.gov.ru" or hostname.endswith(".minobrnauki.gov.ru")
+
+
+def _is_mnr_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return hostname == "mnr.gov.ru" or hostname.endswith(".mnr.gov.ru")
+
+
+def _extract_mnr_article(soup, fallback_title):
+    """Извлекает публикацию Минприроды без списка соседних новостей."""
+    for selector in (
+        "header",
+        "nav",
+        "footer",
+        "aside",
+        "form",
+        ".breadcrumbs",
+        ".breadcrumb",
+        ".pagination",
+        ".pager",
+        ".news-list",
+        ".news-listing",
+        ".news-items",
+        ".sidebar",
+        ".side-menu",
+        ".menu",
+    ):
+        for node in soup.select(selector):
+            node.decompose()
+
+    title = fallback_title or _first_text(
+        soup.select_one("meta[property='og:title']"),
+        soup.select_one("h1"),
+        soup.select_one("[itemprop='headline']"),
+    )
+
+    best = []
+    for selector in (
+        "[itemprop='articleBody']",
+        ".news-detail__content",
+        ".news-detail__text",
+        ".news-detail",
+        ".detail-text",
+        ".article__content",
+        ".article-content",
+        "article",
+    ):
+        for container in soup.select(selector):
+            paragraphs = _clean_mnr_paragraphs(container, title)
+            if sum(map(len, paragraphs)) > sum(map(len, best)):
+                best = paragraphs
+
+    if best:
+        return {
+            "title": title,
+            "paragraphs": best[:100],
+            "error": "",
+        }
+
+    description_tag = soup.select_one("meta[property='og:description']")
+    description = (
+        " ".join(description_tag.get("content", "").split())
+        if description_tag
+        else ""
+    )
+    if len(description) >= 45:
+        return {
+            "title": title,
+            "paragraphs": [description],
+            "error": "",
+        }
+
+    return None
+
+
+def _clean_mnr_paragraphs(container, title):
+    paragraphs = []
+    seen = set()
+    title_key = " ".join(title.casefold().split()) if title else ""
+
+    for node in container.select("p, li"):
+        text = " ".join(node.get_text(" ", strip=True).split())
+        folded = text.casefold()
+
+        if len(text) < 45:
+            continue
+        if title_key and folded == title_key:
+            continue
+        if any(part in folded for part in SKIP_PARTS):
+            continue
+        if "новости и пресс-релизы" in folded:
+            continue
+        if folded not in seen:
+            seen.add(folded)
+            paragraphs.append(text)
+
+    return paragraphs
 
 
 def _extract_minobrnauki_card(soup, url, fallback_title):
