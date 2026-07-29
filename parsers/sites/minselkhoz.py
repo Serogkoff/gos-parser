@@ -1,8 +1,10 @@
-from urllib.parse import urljoin
 from datetime import datetime, timedelta
+import re
+from urllib.parse import urlsplit
 
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
+from utils.parser_links import find_article_url
 
 SOURCE_NAME = "Минсельхоз"
 
@@ -11,6 +13,20 @@ MONTHS = {
     'мая': 5, 'июня': 6, 'июля': 7, 'августа': 8,
     'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12
 }
+
+ARTICLE_PATH = re.compile(
+    r"^/press-service/news/[^/]+/?$",
+    re.IGNORECASE,
+)
+
+
+def _is_article_url(url):
+    parts = urlsplit(url)
+    hostname = (parts.hostname or "").casefold()
+    return (
+        (hostname == "mcx.gov.ru" or hostname.endswith(".mcx.gov.ru"))
+        and ARTICLE_PATH.fullmatch(parts.path) is not None
+    )
 
 
 def parse():
@@ -35,6 +51,10 @@ def parse():
             if len(t) < 20 or t in seen or is_junk(t):
                 continue
 
+            article_url = find_article_url(item, u, _is_article_url)
+            if not article_url:
+                continue
+
             date_str = ""
             if date_tag:
                 try:
@@ -52,7 +72,7 @@ def parse():
             news.append({
                 'source': SOURCE_NAME,
                 'title': t,
-                'url': urljoin(u, title_tag.get('href', '')),
+                'url': article_url,
                 'date': date_str
             })
 

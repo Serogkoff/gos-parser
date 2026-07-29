@@ -2,6 +2,7 @@ import unittest
 
 from utils.news import (
     deduplicate_news,
+    is_valid_news_item,
     merge_news,
     normalize_url,
     sort_news_by_publication,
@@ -16,6 +17,16 @@ class NormalizeUrlTests(unittest.TestCase):
 
     def test_preserves_root_slash(self):
         self.assertEqual(normalize_url("https://example.com"), "https://example.com/")
+
+    def test_preserves_required_article_slashes(self):
+        urls = (
+            "https://mcx.gov.ru/press-service/news/test",
+            "https://minstroyrf.gov.ru/press/test",
+            "https://minvr.gov.ru/press-center/news/test",
+        )
+        for url in urls:
+            with self.subTest(url=url):
+                self.assertTrue(normalize_url(url).endswith("/"))
 
 
 class DeduplicateNewsTests(unittest.TestCase):
@@ -105,6 +116,35 @@ class DeduplicateNewsTests(unittest.TestCase):
         merged = merge_news(old, new)
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0]["date"], "2026-07-28")
+
+    def test_replaces_cached_list_url_with_real_article_url(self):
+        old = [{
+            "source": "Минстрой",
+            "title": "Министерство сообщило о новом проекте",
+            "url": "https://minstroyrf.gov.ru/press/",
+        }]
+        new = [{
+            "source": "Минстрой",
+            "title": "Министерство сообщило о новом проекте",
+            "url": (
+                "https://minstroyrf.gov.ru/press/"
+                "ministerstvo-soobshchilo-o-novom-proekte/"
+            ),
+            "date": "2026-07-29",
+        }]
+        merged = merge_news(old, new)
+        self.assertEqual(len(merged), 1)
+        self.assertIn(
+            "ministerstvo-soobshchilo-o-novom-proekte",
+            merged[0]["url"],
+        )
+
+    def test_rejects_list_url_for_fixed_sources(self):
+        self.assertFalse(is_valid_news_item({
+            "source": "Минтранс",
+            "title": "Служебная запись",
+            "url": "https://mintrans.gov.ru/press-center/news",
+        }))
 
 
 class ParseDateTests(unittest.TestCase):

@@ -34,9 +34,57 @@ GENERIC_TITLES = {
     "новости и пресс-релизы",
 }
 
+VERIFIED_ARTICLE_SELECTORS = {
+    "mcx.gov.ru": (
+        "[itemprop='articleBody']",
+        ".news-detail__content",
+        ".newsDetail__content",
+        ".news-detail",
+        ".newsDetail",
+        ".detail-text",
+        ".article__content",
+    ),
+    "minstroyrf.gov.ru": (
+        "[itemprop='articleBody']",
+        ".news-detail__content",
+        ".news-detail",
+        ".detail-new",
+        ".detail-text",
+        ".article-content",
+    ),
+    "minvr.gov.ru": (
+        "[itemprop='articleBody']",
+        ".article__body",
+        ".article__content",
+        ".news-detail__content",
+        ".news-detail",
+        ".detail-text",
+    ),
+    "mintrans.gov.ru": (
+        "[itemprop='articleBody']",
+        ".news-detail__content",
+        ".news-detail",
+        ".news-content",
+        ".detail-text",
+        ".article-content",
+        "article",
+    ),
+}
+
+ARTICLE_MENU_PARTS = (
+    "о министерстве положение руководство",
+    "деятельность национальные проекты",
+    "пресс-центр все новости",
+    "пресс-центр новости",
+    "государственные услуги государственные программы",
+    "обращения граждан и организаций контакты",
+    "онлайн-сервисы все сервисы",
+)
+
 
 def extract_article(url, fallback_title=""):
     fetch_url = url
+    verified_selectors = _verified_article_selectors(url)
     if _is_minobrnauki_url(url) or _is_mnr_url(url):
         fetch_url = url.rstrip("/") + "/"
 
@@ -56,6 +104,13 @@ def extract_article(url, fallback_title=""):
             )
     else:
         soup = fetch_soup(fetch_url, "Просмотр новости", timeout=25, verify=False)
+        if soup is None and verified_selectors:
+            soup = fetch_soup_js(
+                fetch_url,
+                "Просмотр новости",
+                wait_ms=1500,
+                timeout_ms=40000,
+            )
 
     if soup is None:
         return {
@@ -73,6 +128,13 @@ def extract_article(url, fallback_title=""):
         article = _extract_mnr_article(soup, fallback_title)
         if article:
             return article
+
+    if verified_selectors:
+        return _extract_verified_article(
+            soup,
+            fallback_title,
+            verified_selectors,
+        )
 
     for tag in soup(["script", "style", "noscript", "nav", "footer", "form", "aside"]):
         tag.decompose()
@@ -110,6 +172,163 @@ def _is_minobrnauki_url(url):
 def _is_mnr_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
     return hostname == "mnr.gov.ru" or hostname.endswith(".mnr.gov.ru")
+
+
+def _verified_article_selectors(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    for required_host, selectors in VERIFIED_ARTICLE_SELECTORS.items():
+        if hostname == required_host or hostname.endswith(f".{required_host}"):
+            return selectors
+    return ()
+
+
+def _extract_verified_article(soup, fallback_title, selectors):
+    """
+    Извлекает текст только если страница подтверждает заголовок публикации.
+
+    Это не даёт общему разделу новостей или странице ошибки превратиться
+    во «внутренний текст» из пунктов меню.
+    """
+    page_titles = [
+        _first_text(soup.select_one("h1")),
+        _first_text(soup.select_one("[itemprop='headline']")),
+        _first_text(soup.select_one("meta[property='og:title']")),
+    ]
+    page_titles = [title for title in page_titles if title]
+
+    if fallback_title:
+        title_confirmed = any(
+            _titles_match(fallback_title, page_title)
+            for page_title in page_titles
+        )
+    else:
+        title_confirmed = bool(page_titles)
+
+    title = fallback_title or (page_titles[0] if page_titles else "")
+    if not title_confirmed:
+        return {
+            "title": title,
+            "paragraphs": [],
+            "error": (
+                "Сайт открыл общий раздел вместо публикации. "
+                "Используйте кнопку «Открыть оригинал»."
+            ),
+        }
+
+    for tag in soup(
+        ["script", "style", "noscript", "nav", "footer", "form", "aside"]
+    ):
+        tag.decompose()
+
+    candidates = []
+    for selector in selectors:
+        candidates.extend(soup.select(selector))
+
+    matching_heading = next(
+        (
+            heading
+            for heading in soup.select("h1, [itemprop='headline']")
+            if _titles_match(
+                fallback_title or page_titles[0],
+                heading.get_text(" ", strip=True),
+            )
+        ),
+        None,
+    )
+    current = matching_heading.parent if matching_heading else None
+    for _ in range(5):
+        if current is None or getattr(current, "name", "") in {
+            "main",
+            "body",
+            "html",
+        }:
+            break
+        if current.select("p, li, blockquote"):
+            candidates.append(current)
+            break
+        current = current.parent
+
+    best = []
+    for container in candidates:
+        paragraphs = _verified_paragraphs(container, title)
+        if sum(map(len, paragraphs)) > sum(map(len, best)):
+            best = paragraphs
+
+    if best:
+        return {
+            "title": title,
+            "paragraphs": best[:100],
+            "error": "",
+        }
+
+    description_tag = soup.select_one("meta[property='og:description']")
+    description = (
+        " ".join(description_tag.get("content", "").split())
+        if description_tag
+        else ""
+    )
+    if len(description) >= 45:
+        return {
+            "title": title,
+            "paragraphs": [description],
+            "error": "",
+        }
+
+    return {
+        "title": title,
+        "paragraphs": [],
+        "error": (
+            "Заголовок найден, но сайт не отдал текст публикации. "
+            "Используйте кнопку «Открыть оригинал»."
+        ),
+    }
+
+
+def _titles_match(expected, actual):
+    expected_key = _title_key(expected)
+    actual_key = _title_key(actual)
+    return (
+        len(expected_key) >= 12
+        and (
+            expected_key in actual_key
+            or actual_key in expected_key
+        )
+    )
+
+
+def _title_key(value):
+    return " ".join(
+        re.findall(
+            r"[a-zа-я0-9]+",
+            str(value or "").casefold().replace("ё", "е"),
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _verified_paragraphs(container, title):
+    result = []
+    seen = set()
+    title_key = _title_key(title)
+
+    for node in container.select("p, li, blockquote"):
+        text = " ".join(node.get_text(" ", strip=True).split())
+        folded = text.casefold()
+        normalized = _title_key(text)
+
+        if len(text) < 45:
+            continue
+        if title_key and normalized == title_key:
+            continue
+        if any(part in folded for part in SKIP_PARTS):
+            continue
+        if any(part in folded for part in ARTICLE_MENU_PARTS):
+            continue
+        if normalized not in seen:
+            seen.add(normalized)
+            result.append(text)
+
+    return result
 
 
 def _extract_mnr_article(soup, fallback_title):

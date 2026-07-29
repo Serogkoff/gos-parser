@@ -94,6 +94,54 @@ class ArticleCleanupTests(unittest.TestCase):
             ],
         )
 
+    def test_verified_source_extracts_only_article_body(self):
+        soup = BeautifulSoup(
+            """
+            <html>
+                <head>
+                    <meta property="og:title"
+                          content="Минстрой сообщил о новом проекте">
+                </head>
+                <body>
+                    <h1>Минстрой сообщил о новом проекте</h1>
+                    <div class="news-detail">
+                        <p>Министерство представило новый проект развития
+                        городской инфраструктуры в российских регионах.</p>
+                    </div>
+                </body>
+            </html>
+            """,
+            "html.parser",
+        )
+        with patch("utils.article_reader.fetch_soup", return_value=soup):
+            article = extract_article(
+                "https://minstroyrf.gov.ru/press/novyy-proekt/",
+                "Минстрой сообщил о новом проекте",
+            )
+
+        self.assertEqual(len(article["paragraphs"]), 1)
+        self.assertIn("городской инфраструктуры", article["paragraphs"][0])
+
+    def test_verified_source_rejects_general_news_page(self):
+        soup = BeautifulSoup(
+            """
+            <main>
+                <h1>Публикации пресс-центра</h1>
+                <p>О министерстве Положение Руководство Департаменты
+                Государственные закупки и государственные услуги.</p>
+            </main>
+            """,
+            "html.parser",
+        )
+        with patch("utils.article_reader.fetch_soup", return_value=soup):
+            article = extract_article(
+                "https://minstroyrf.gov.ru/press/novyy-proekt/",
+                "Минстрой сообщил о новом проекте",
+            )
+
+        self.assertEqual(article["paragraphs"], [])
+        self.assertIn("общий раздел", article["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

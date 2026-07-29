@@ -8,6 +8,10 @@ TITLE_DEDUP_SOURCES = {
     "минэнерго",
     "минэкономразвития",
     "минюст",
+    "минсельхоз",
+    "минстрой",
+    "минвостокразвития",
+    "минтранс",
 }
 
 MINOBRNAUKI_ARTICLE_PATH = re.compile(
@@ -19,6 +23,40 @@ MNR_ARTICLE_PATH = re.compile(
     r"^/press/news/[^/]+$",
     re.IGNORECASE,
 )
+
+TRAILING_SLASH_ARTICLE_RULES = (
+    (
+        "mcx.gov.ru",
+        re.compile(r"^/press-service/news/[^/]+$", re.IGNORECASE),
+    ),
+    (
+        "minstroyrf.gov.ru",
+        re.compile(r"^/press/[^/]+$", re.IGNORECASE),
+    ),
+    (
+        "minvr.gov.ru",
+        re.compile(r"^/press-center/news/[^/]+$", re.IGNORECASE),
+    ),
+)
+
+SOURCE_ARTICLE_RULES = {
+    "Минсельхоз": (
+        "mcx.gov.ru",
+        re.compile(r"^/press-service/news/[^/]+/?$", re.IGNORECASE),
+    ),
+    "Минстрой": (
+        "minstroyrf.gov.ru",
+        re.compile(r"^/press/[^/]+/?$", re.IGNORECASE),
+    ),
+    "Минвостокразвития": (
+        "minvr.gov.ru",
+        re.compile(r"^/press-center/news/[^/]+/?$", re.IGNORECASE),
+    ),
+    "Минтранс": (
+        "mintrans.gov.ru",
+        re.compile(r"^/press-center/news/\d+/?$", re.IGNORECASE),
+    ),
+}
 
 
 def normalize_url(url):
@@ -73,6 +111,18 @@ def normalize_url(url):
         # Минприроды также требует завершающий слеш.
         path += "/"
 
+    else:
+        for required_host, article_path in TRAILING_SLASH_ARTICLE_RULES:
+            if (
+                (
+                    hostname == required_host
+                    or hostname.endswith(f".{required_host}")
+                )
+                and article_path.fullmatch(path)
+            ):
+                path += "/"
+                break
+
     return urlunsplit(
         (
             parts.scheme.lower(),
@@ -122,6 +172,18 @@ def is_valid_news_item(item):
 
     if source == "СК РФ":
         return "/news/item/" in url or "/news/detail/" in url
+
+    if source in SOURCE_ARTICLE_RULES:
+        required_host, article_path = SOURCE_ARTICLE_RULES[source]
+        parts = urlsplit(url)
+        hostname = (parts.hostname or "").casefold()
+        return (
+            (
+                hostname == required_host
+                or hostname.endswith(f".{required_host}")
+            )
+            and article_path.fullmatch(parts.path) is not None
+        )
 
     return True
 
