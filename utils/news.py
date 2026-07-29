@@ -26,6 +26,11 @@ MNR_ARTICLE_PATH = re.compile(
     re.IGNORECASE,
 )
 
+SLEDCOM_ARTICLE_PATH = re.compile(
+    r"^/news/(?:item|detail)/\d+$",
+    re.IGNORECASE,
+)
+
 TRAILING_SLASH_ARTICLE_RULES = (
     (
         "mcx.gov.ru",
@@ -72,17 +77,6 @@ def normalize_url(url):
 
     parts = urlsplit(url)
 
-    if parts.netloc.lower() == "sledcom.ru" and "/news/item/" in parts.path:
-        return urlunsplit(
-            (
-                parts.scheme.lower(),
-                parts.netloc.lower(),
-                parts.path.rstrip("/"),
-                "",
-                "",
-            )
-        )
-
     query = [
         (key, value)
         for key, value in parse_qsl(parts.query, keep_blank_values=True)
@@ -111,6 +105,16 @@ def normalize_url(url):
         and MNR_ARTICLE_PATH.fullmatch(path)
     ):
         # Минприроды также требует завершающий слеш.
+        path += "/"
+
+    elif (
+        (
+            hostname == "sledcom.ru"
+            or hostname.endswith(".sledcom.ru")
+        )
+        and SLEDCOM_ARTICLE_PATH.fullmatch(path)
+    ):
+        # Без завершающего слеша СК возвращает общий раздел «Новости».
         path += "/"
 
     else:

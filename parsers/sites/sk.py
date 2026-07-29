@@ -7,6 +7,7 @@ from utils.dates import (
 )
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
+from utils.news import normalize_url
 
 SOURCE_NAME = "СК РФ"
 
@@ -24,7 +25,9 @@ def parse():
         for a in soup.select('a[href*="/news/item/"], a[href*="/news/detail/"]'):
             t = a.get_text(strip=True)
             href = a.get('href', '')
-            full_url = urljoin(u, href).split('?', 1)[0]
+            full_url = normalize_url(
+                urljoin(u, href).split('?', 1)[0]
+            )
             if len(t) < 20 or full_url in seen or is_junk(t):
                 continue
             seen.add(full_url)

@@ -31,10 +31,24 @@ class NormalizeUrlTests(unittest.TestCase):
             "https://mcx.gov.ru/press-service/news/test",
             "https://minstroyrf.gov.ru/press/test",
             "https://minvr.gov.ru/press-center/news/test",
+            "https://sledcom.ru/news/item/2111766",
         )
         for url in urls:
             with self.subTest(url=url):
                 self.assertTrue(normalize_url(url).endswith("/"))
+
+    def test_sledcom_article_variants_normalize_to_same_url(self):
+        without_slash = normalize_url(
+            "https://sledcom.ru/news/item/2111766"
+        )
+        with_slash = normalize_url(
+            "https://sledcom.ru/news/item/2111766/"
+        )
+        self.assertEqual(without_slash, with_slash)
+        self.assertEqual(
+            with_slash,
+            "https://sledcom.ru/news/item/2111766/",
+        )
 
 
 class DeduplicateNewsTests(unittest.TestCase):
