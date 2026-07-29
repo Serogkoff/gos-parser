@@ -12,8 +12,9 @@ from utils.source_groups import (
 
 
 class SourceGroupTests(unittest.TestCase):
-    def test_assigns_ria_to_agencies(self):
+    def test_assigns_news_agencies_to_agencies_group(self):
         self.assertEqual(source_group("РИА Новости"), AGENCIES_GROUP)
+        self.assertEqual(source_group("ТАСС"), AGENCIES_GROUP)
         self.assertEqual(source_group("МЧС"), GOVERNMENT_GROUP)
 
     def test_filters_news_without_losing_fields(self):
@@ -51,6 +52,14 @@ class SourceGroupPageTests(unittest.TestCase):
                     "date": "2026-07-29",
                     "section": "Политика",
                 },
+                {
+                    "source": "ТАСС",
+                    "title": "Материал ТАСС",
+                    "url": "https://tass.ru/politika/123456",
+                    "date": "2026-07-29",
+                    "section": "Политика",
+                    "summary": "Официальный анонс публикации ТАСС.",
+                },
             ],
             "found_news.json": [],
             "parser_status.json": {
@@ -58,6 +67,7 @@ class SourceGroupPageTests(unittest.TestCase):
                 "sources": [
                     {"source": "МЧС", "status": "ok"},
                     {"source": "РИА Новости", "status": "ok"},
+                    {"source": "ТАСС", "status": "ok"},
                 ],
             },
         }
@@ -74,6 +84,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Новости информагентств", html)
         self.assertIn("Госструктуры", html)
         self.assertIn("Материал информационного агентства", html)
+        self.assertIn("Материал ТАСС", html)
         self.assertIn("Политика", html)
         self.assertNotIn("Материал государственного ведомства", html)
 
@@ -97,6 +108,17 @@ class SourceGroupPageTests(unittest.TestCase):
         header = html[header_start:header_end]
         self.assertIn("Госструктуры", header)
         self.assertIn("Информагентства", header)
+
+    def test_tass_article_uses_official_rss_summary(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get(
+                "/article?url=https%3A%2F%2Ftass.ru%2Fpolitika%2F123456"
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Материал ТАСС", html)
+        self.assertIn("Официальный анонс публикации ТАСС.", html)
 
 
 if __name__ == "__main__":

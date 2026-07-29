@@ -643,7 +643,7 @@ def render_news_page(
 
     if source_group == AGENCIES_GROUP:
         group_title = "Новости информагентств"
-        group_eyebrow = "РИА Новости · далее ТАСС и Интерфакс"
+        group_eyebrow = "РИА Новости · ТАСС · далее Интерфакс"
         group_home = "/agencies"
         group_found = "/agencies/found"
         source_base = "/agencies/filter/"
@@ -762,7 +762,17 @@ def article_page():
     )
     if item is None:
         abort(404)
-    article = extract_article(url, item.get("title", ""))
+    if item.get("source") == "ТАСС" and item.get("summary"):
+        # Открытая RSS-лента ТАСС отдаёт официальный анонс публикации.
+        # Сам сайт защищает полные тексты от автоматической загрузки,
+        # поэтому не создаём лишний запрос и показываем доступный анонс.
+        article = {
+            "title": item.get("title", ""),
+            "paragraphs": [item["summary"]],
+            "error": "",
+        }
+    else:
+        article = extract_article(url, item.get("title", ""))
     back_url = request.referrer if request.referrer and request.host in request.referrer else "/"
     return render_template_string(
         ARTICLE_HTML, article=article, item=item, back_url=back_url
