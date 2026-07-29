@@ -1,6 +1,9 @@
 from urllib.parse import urljoin
 
-from utils.dates import date_from_ancestors, date_from_element, parse_date
+from utils.dates import (
+    date_from_document,
+    date_from_news_card,
+)
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
 
@@ -23,18 +26,17 @@ def parse():
             if len(t) < 20 or full_url in seen or is_junk(t):
                 continue
             seen.add(full_url)
-            date_str = date_from_ancestors(a)
+            card_date = date_from_news_card(
+                a,
+                r"/news/(?:item|detail)/",
+            )
+            date_str = card_date
             if not date_str:
                 detail = fetch_soup(full_url, SOURCE_NAME, timeout=15)
-                if detail is not None:
-                    meta = detail.select_one(
-                        'meta[property="article:published_time"], '
-                        'meta[name="date"], meta[itemprop="datePublished"]'
-                    )
-                    if meta:
-                        date_str = parse_date(meta.get("content", ""))
-                    if not date_str:
-                        date_str = date_from_element(detail)
+                date_str = date_from_document(
+                    detail,
+                    prefer_visible=True,
+                )
             news.append({
                 'source': SOURCE_NAME,
                 'title': t,

@@ -1,6 +1,8 @@
 import re
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from utils.dates import validate_publication_date
+
 
 TRACKING_PARAMETERS = {"fbclid", "gclid", "yclid"}
 TITLE_DEDUP_SOURCES = {
@@ -156,6 +158,8 @@ def deduplicate_news(items):
         normalized = normalize_url(item.get("url", ""))
         if normalized:
             copy["url"] = normalized
+        if copy.get("date"):
+            copy["date"] = validate_publication_date(copy["date"])
 
         result.append(copy)
 

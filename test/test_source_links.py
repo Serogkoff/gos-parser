@@ -3,7 +3,13 @@ from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 
-from parsers.sites import minselkhoz, minstroy, mintrans, minvostok
+from parsers.sites import (
+    minselkhoz,
+    minstroy,
+    mintsifry,
+    mintrans,
+    minvostok,
+)
 from parsers.sites.minselkhoz import _is_article_url as is_mcx_article
 from parsers.sites.minstroy import _is_article_url as is_minstroy_article
 from parsers.sites.mintrans import _is_article_url as is_mintrans_article
@@ -166,6 +172,79 @@ class ParserCardTests(unittest.TestCase):
         )
         self.assertEqual(len(news), 1)
         self.assertTrue(news[0]["url"].endswith("/12628"))
+
+    def test_mintsifry_keeps_the_date_of_each_card(self):
+        soup = BeautifulSoup(
+            """
+            <main class="main__container">
+                <article>
+                    <time>29 июля 2026</time>
+                    <a href="/news/segodnyashnyaya-publikacziya">
+                        Минцифры представило сегодняшний цифровой проект
+                    </a>
+                </article>
+                <article>
+                    <time>28 июля 2026</time>
+                    <a href="/news/vcherashnyaya-publikacziya">
+                        Минцифры рассказало о вчерашней важной инициативе
+                    </a>
+                </article>
+            </main>
+            """,
+            "html.parser",
+        )
+        with patch.object(mintsifry, "fetch_soup_js", return_value=soup):
+            news = mintsifry.parse()
+
+        self.assertEqual(len(news), 2)
+        self.assertEqual(
+            [item["date"] for item in news],
+            ["2026-07-29", "2026-07-28"],
+        )
+
+    def test_mintsifry_prefers_date_inside_link_over_page_date(self):
+        soup = BeautifulSoup(
+            """
+            <main class="main__container">
+                <div class="page-date">28 июля 2026</div>
+                <a href="/news/pozdravlenie-s-10-000-m-nomerom">
+                    <span>24 июля</span>
+                    <strong>
+                        Поздравление с 10 000-м номером Российской газеты
+                    </strong>
+                </a>
+            </main>
+            """,
+            "html.parser",
+        )
+        with patch.object(mintsifry, "fetch_soup_js", return_value=soup):
+            news = mintsifry.parse()
+
+        self.assertEqual(len(news), 1)
+        self.assertEqual(news[0]["date"], "2026-07-24")
+
+    def test_mintsifry_falls_back_to_http_when_browser_fails(self):
+        soup = BeautifulSoup(
+            """
+            <main class="main__container">
+                <a href="/news/rezervnaya-zagruzka">
+                    <span>24 июля</span>
+                    <strong>
+                        Минцифры опубликовало материал через резервную загрузку
+                    </strong>
+                </a>
+            </main>
+            """,
+            "html.parser",
+        )
+        with (
+            patch.object(mintsifry, "fetch_soup_js", return_value=None),
+            patch.object(mintsifry, "fetch_soup", return_value=soup),
+        ):
+            news = mintsifry.parse()
+
+        self.assertEqual(len(news), 1)
+        self.assertEqual(news[0]["date"], "2026-07-24")
 
 
 if __name__ == "__main__":

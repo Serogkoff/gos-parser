@@ -12,7 +12,7 @@ from utils.keywords import (
     rebuild_found_news,
     remove_keyword,
 )
-from utils.news import sort_news_by_publication
+from utils.news import deduplicate_news, sort_news_by_publication
 
 
 app = Flask(__name__)
@@ -554,7 +554,10 @@ def load_json(filename, default):
         return default
     try:
         with path.open("r", encoding="utf-8") as file:
-            return json.load(file)
+            data = json.load(file)
+        if filename in {"all_news.json", "found_news.json"} and isinstance(data, list):
+            return deduplicate_news(data)
+        return data
     except (OSError, json.JSONDecodeError):
         return default
 

@@ -1,7 +1,7 @@
 from urllib.parse import urljoin, urlsplit
 import re
 
-from utils.dates import date_from_ancestors
+from utils.dates import date_from_document, date_from_news_card
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
 
@@ -30,12 +30,20 @@ def parse():
             if len(t) < 30 or full_url in seen or is_junk(t):
                 continue
 
+            date_str = date_from_news_card(
+                a,
+                r"/press/\d+",
+            )
+            if not date_str:
+                detail = fetch_soup(full_url, SOURCE_NAME, timeout=15)
+                date_str = date_from_document(detail)
+
             seen.add(full_url)
             news.append({
                 'source': SOURCE_NAME,
                 'title': t,
                 'url': full_url,
-                'date': date_from_ancestors(a),
+                'date': date_str,
             })
 
     with_date = sum(bool(item.get("date")) for item in news)

@@ -1,18 +1,13 @@
 import re
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from datetime import datetime, timedelta
 
+from utils.dates import date_from_document, date_from_news_card
 from utils.filters import is_junk
+from utils.http_client import fetch_soup
 from utils.js_client import fetch_soup_js
 
 SOURCE_NAME = "Сахалинская обл."
-
-MONTHS = {
-    'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4,
-    'мая': 5, 'июня': 6, 'июля': 7, 'августа': 8,
-    'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12
-}
-
 
 def parse():
     news, seen = [], set()
@@ -27,35 +22,46 @@ def parse():
 
         for a in soup.find_all('a'):
             t = a.get_text(strip=True)
+            full_url = urljoin(u, a.get('href', ''))
+            path = urlsplit(full_url).path.rstrip("/")
+            if not path.startswith("/news/"):
+                continue
             if len(t) < 20 or t in seen or is_junk(t):
                 continue
 
-            # Парсим дату из текста
-            date_str = ""
-            match = re.search(
-                r'(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)',
-                t.lower())
-            if match:
-                day, month_name = match.groups()
-                month = MONTHS.get(month_name, 1)
-                year = str(datetime.now().year)
-                date_str = f"{year}-{month:02d}-{int(day):02d}"
-                try:
-                    news_date = datetime.strptime(date_str, '%Y-%m-%d')
-                    if news_date < cutoff:
-                        continue
-                except:
-                    pass
-                # Убираем дату из заголовка
-                t = re.sub(
-                    r'\d{1,2}\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s*\d{0,4}\s*',
-                    '', t, flags=re.IGNORECASE).strip()
+            date_str = date_from_news_card(
+                a,
+                r"/news/",
+            )
+            if not date_str:
+                detail = fetch_soup(
+                    full_url,
+                    SOURCE_NAME,
+                    timeout=15,
+                )
+                date_str = date_from_document(detail)
+
+            if date_str:
+                news_date = datetime.strptime(date_str, "%Y-%m-%d")
+                if news_date < cutoff:
+                    continue
+
+            # Убираем только служебную дату в начале карточки. Даты внутри
+            # заголовка ("завершить к 1 сентября") должны сохраниться.
+            t = re.sub(
+                r'^\s*\d{1,2}\s+'
+                r'(января|февраля|марта|апреля|мая|июня|июля|августа|'
+                r'сентября|октября|ноября|декабря)\s*\d{0,4}\s*',
+                '',
+                t,
+                flags=re.IGNORECASE,
+            ).strip()
 
             seen.add(t)
             news.append({
                 'source': SOURCE_NAME,
                 'title': t,
-                'url': urljoin(u, a.get('href', '')),
+                'url': full_url,
                 'date': date_str
             })
 
