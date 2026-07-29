@@ -12,21 +12,74 @@ from utils.news import deduplicate_news
 
 SOURCE_NAME = "РИА Новости"
 FEED_URL = "https://ria.ru/lenta/"
+SECTION_URLS = (
+    ("Политика", "https://ria.ru/politics/"),
+    ("В мире", "https://ria.ru/world/"),
+    ("Экономика", "https://ria.ru/economy/"),
+    ("Общество", "https://ria.ru/society/"),
+    ("Происшествия", "https://ria.ru/incidents/"),
+    ("Наука", "https://ria.ru/science/"),
+    ("Культура", "https://ria.ru/culture/"),
+    ("Туризм", "https://ria.ru/tourism/"),
+    ("Спорт", "https://ria.ru/sport/"),
+)
+SECTIONS_PER_RUN = 3
 RIA_URL_DATE = re.compile(r"/(20\d{2})(\d{2})(\d{2})/")
+_section_cache = {}
+_next_section_index = 0
 
 
 def parse():
-    soup = fetch_soup(FEED_URL, SOURCE_NAME, timeout=30)
-    if soup is None:
+    latest_soup = fetch_soup(FEED_URL, SOURCE_NAME, timeout=30)
+    latest_news = (
+        _parse_ria_cards(latest_soup, section="Последние новости")
+        if latest_soup is not None
+        else []
+    )
+
+    _refresh_next_sections()
+
+    cached_news = [
+        item
+        for section_news in _section_cache.values()
+        for item in section_news
+    ]
+    # Кэш рубрик идёт первым, чтобы у совпавшей новости сохранилось точное
+    # название раздела, а не общее «Последние новости».
+    news = deduplicate_news([*cached_news, *latest_news])
+
+    if not news:
         print("  ✅ 0")
         return []
 
-    news = _parse_ria_cards(soup)
     print(f"  ✅ {len(news)}")
     return news
 
 
-def _parse_ria_cards(soup, now=None):
+def _refresh_next_sections():
+    """
+    Обновляет за один запуск только часть основных рубрик.
+
+    За три трехминутных цикла парсер обходит все девять разделов.
+    Это защищает РИА и сам парсер от серии долгих запросов подряд.
+    """
+    global _next_section_index
+
+    if not SECTION_URLS:
+        return
+
+    for _ in range(min(SECTIONS_PER_RUN, len(SECTION_URLS))):
+        section, url = SECTION_URLS[_next_section_index]
+        _next_section_index = (_next_section_index + 1) % len(SECTION_URLS)
+        soup = fetch_soup(url, f"{SOURCE_NAME} · {section}", timeout=30)
+        if soup is not None:
+            _section_cache[section] = _parse_ria_cards(
+                soup,
+                section=section,
+            )
+
+
+def _parse_ria_cards(soup, now=None, section=""):
     """Преобразует карточки ленты РИА в общий формат проекта."""
     now = now or datetime.now()
     news = []
@@ -54,14 +107,75 @@ def _parse_ria_cards(soup, now=None):
         )
         raw_date = date_node.get_text(" ", strip=True) if date_node else ""
 
-        news.append({
-            "source": SOURCE_NAME,
-            "title": title,
-            "url": url,
-            "date": _parse_ria_date(url, raw_date, now=now),
-        })
+        item = _build_ria_item(
+            title,
+            url,
+            raw_date,
+            section=section,
+            now=now,
+        )
+        if item:
+            news.append(item)
+
+    # У разделов «Спорт» и «Туризм» другой шаблон карточек.
+    for link in soup.select(
+        "a.cell-list__item-link[href], "
+        "a.cell-list-f__main-link[href], "
+        "a.cell-list-f__item-link[href]"
+    ):
+        title_node = link.select_one(
+            ".cell-list__item-title, "
+            ".cell-list-f__main-title, "
+            ".cell-list-f__item-title"
+        )
+        title = " ".join(
+            (
+                title_node.get_text(" ", strip=True)
+                if title_node
+                else link.get("title", "")
+            ).split()
+        )
+        raw_date_node = link.select_one(".cell-info__date")
+        raw_date = (
+            raw_date_node.get_text(" ", strip=True)
+            if raw_date_node
+            else ""
+        )
+        item = _build_ria_item(
+            title,
+            urljoin(FEED_URL, link.get("href", "")),
+            raw_date,
+            section=section,
+            now=now,
+        )
+        if item:
+            news.append(item)
 
     return deduplicate_news(news)
+
+
+def _build_ria_item(title, url, raw_date, section, now):
+    title = " ".join(str(title).split())
+    if (
+        len(title) < 10
+        or not url.startswith(("https://ria.ru/", "http://ria.ru/"))
+        or is_junk(title)
+    ):
+        return None
+
+    publication_date = _parse_ria_date(url, raw_date, now=now)
+    if publication_date:
+        parsed = datetime.strptime(publication_date, "%Y-%m-%d")
+        if parsed < now - timedelta(days=30):
+            return None
+
+    return {
+        "source": SOURCE_NAME,
+        "title": title,
+        "url": url,
+        "date": publication_date,
+        "section": section,
+    }
 
 
 def _parse_ria_date(url, raw_date="", now=None):

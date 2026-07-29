@@ -13,6 +13,12 @@ from utils.keywords import (
     remove_keyword,
 )
 from utils.news import deduplicate_news, sort_news_by_publication
+from utils.source_groups import (
+    AGENCIES_GROUP,
+    GOVERNMENT_GROUP,
+    filter_news_by_group,
+    source_group as get_source_group,
+)
 
 
 app = Flask(__name__)
@@ -25,7 +31,7 @@ HTML = """
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Монитор — новости ведомств</title>
+    <title>Монитор — новости</title>
     <style>
         :root{
             --paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;
@@ -73,7 +79,16 @@ HTML = """
         .intro{padding-top:38px;border-bottom:1px solid var(--line)}
         .eyebrow{margin:0 0 10px;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
         h1{margin:0;font-size:clamp(38px,4vw,58px);line-height:1;letter-spacing:-.055em;font-weight:720}
-        .tabs{display:flex;gap:28px;margin-top:28px}
+        .section-switch{display:flex;flex-wrap:wrap;gap:10px;margin-top:25px}
+        .section-link{
+            min-height:44px;padding:0 16px;display:flex;align-items:center;gap:9px;
+            color:#625c54;border:1px solid #c9c1b5;border-radius:6px;
+            background:rgba(255,252,246,.45);font-size:14px;font-weight:650
+        }
+        .section-link span{min-width:24px;padding:2px 6px;border-radius:999px;background:#ece6dc;text-align:center;font-size:10px}
+        .section-link.active{color:#fff;border-color:var(--ink);background:var(--ink)}
+        .section-link.active span{color:var(--ink);background:var(--surface)}
+        .tabs{display:flex;gap:28px;margin-top:20px}
         .tab{position:relative;padding:0 2px 16px;color:var(--muted);font-size:17px;font-weight:610}
         .tab span{margin-left:6px;font-variant-numeric:tabular-nums}
         .tab:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;background:var(--coral);transform:scaleX(0);transition:transform .18s}
@@ -201,11 +216,19 @@ HTML = """
     </header>
 
     <section class="intro">
-        <p class="eyebrow">Агрегатор официальных источников</p>
-        <h1>Новости ведомств</h1>
+        <p class="eyebrow">{{group_eyebrow}}</p>
+        <h1>{{group_title}}</h1>
+        <nav class="section-switch" aria-label="Разделы источников">
+            <a class="section-link {{'active' if source_group == 'government' else ''}}" href="/">
+                Госорганы <span>{{government_total}}</span>
+            </a>
+            <a class="section-link {{'active' if source_group == 'agencies' else ''}}" href="/agencies">
+                Информагентства <span>{{agencies_total}}</span>
+            </a>
+        </nav>
         <nav class="tabs">
-            <a class="tab {{'active' if mode == 'all' else ''}}" href="/">Все <span>{{total}}</span></a>
-            <a class="tab {{'active' if mode == 'found' else ''}}" href="/found">Совпадения <span>{{found_count}}</span></a>
+            <a class="tab {{'active' if mode == 'all' else ''}}" href="{{group_home}}">Все <span>{{total}}</span></a>
+            <a class="tab {{'active' if mode == 'found' else ''}}" href="{{group_found}}">Совпадения <span>{{found_count}}</span></a>
         </nav>
     </section>
 
@@ -251,6 +274,7 @@ HTML = """
                     <button class="save" type="button" aria-label="Сохранить новость" data-save="{{item.url}}">♡</button>
                     <div class="meta">
                         <span>{{item.source}}</span><i></i>
+                        {% if item.section %}<span>{{item.section}}</span><i></i>{% endif %}
                         <time>
                             {% if item.date %}{{item.date}}
                             {% elif item.parsed_date %}Получено {{item.parsed_date}}
@@ -285,14 +309,14 @@ HTML = """
                     </div>
                 </header>
                 <div class="source-list" id="source-list">
-                    <a class="source-row {{'active' if not source_filter else ''}}" href="/">
+                    <a class="source-row {{'active' if not source_filter else ''}}" href="{{group_home}}">
                         <span class="check">{{'✓' if not source_filter else ''}}</span>
                         <span>Все источники</span>
                         <b>{{total}}</b>
                         <span class="unread-count" data-unread-source="__all__"></span>
                     </a>
                     {% for src, count in sources %}
-                    <a class="source-row {{'active' if src == source_filter else ''}}" href="/filter/{{src|urlencode}}">
+                    <a class="source-row {{'active' if src == source_filter else ''}}" href="{{source_base}}{{src|urlencode}}">
                         <span class="check">{{'✓' if src == source_filter else ''}}</span>
                         <span>{{src}}</span>
                         <b>{{count}}</b>
@@ -337,6 +361,8 @@ HTML = """
     const savedButton = document.getElementById('saved-only');
     const savedCount = document.getElementById('saved-count');
     const newsIndex = {{news_index|tojson}};
+    const groupHome = {{group_home|tojson}};
+    const sourceBase = {{source_base|tojson}};
     let savedOnly = false;
     let saved = new Set(JSON.parse(localStorage.getItem('monitor-saved') || '[]'));
     const unreadStorageKey = 'monitor-unread-v1';
@@ -372,14 +398,16 @@ HTML = """
 
     function refreshUnread(){
         const counts = {};
+        let groupUnreadCount = 0;
         newsIndex.forEach(item => {
             if(unread.has(item.url)){
+                groupUnreadCount++;
                 counts[item.source] = (counts[item.source] || 0) + 1;
             }
         });
         document.querySelectorAll('[data-unread-source]').forEach(badge => {
             const source = badge.dataset.unreadSource;
-            const count = source === '__all__' ? unread.size : (counts[source] || 0);
+            const count = source === '__all__' ? groupUnreadCount : (counts[source] || 0);
             badge.textContent = count ? '+' + count : '';
         });
         cards.forEach(card => {
@@ -429,7 +457,7 @@ HTML = """
         link.addEventListener('click', () => markRead(link.dataset.readUrl));
     });
     document.getElementById('mark-all-read').addEventListener('click', () => {
-        unread.clear();
+        newsIndex.forEach(item => unread.delete(item.url));
         saveUnread();
         refreshUnread();
     });
@@ -448,7 +476,7 @@ HTML = """
         event.currentTarget.textContent = list.classList.contains('hidden') ? '+' : '−';
     });
     function goToSource(source){
-        window.location.href = source ? '/filter/' + encodeURIComponent(source) : '/';
+        window.location.href = source ? sourceBase + encodeURIComponent(source) : groupHome;
     }
     function updateClocks(){
         document.querySelectorAll('[data-clock]').forEach(clock => {
@@ -562,38 +590,88 @@ def load_json(filename, default):
         return default
 
 
-def render_news_page(news, mode="all", source_filter=""):
+def render_news_page(
+    news,
+    mode="all",
+    source_filter="",
+    source_group=GOVERNMENT_GROUP,
+):
     all_news = load_json("all_news.json", [])
     found_news = load_json("found_news.json", [])
     status = load_json("parser_status.json", {})
 
-    counts = Counter(item.get("source", "Неизвестный источник") for item in all_news)
+    government_news = filter_news_by_group(all_news, GOVERNMENT_GROUP)
+    agency_news = filter_news_by_group(all_news, AGENCIES_GROUP)
+    group_news = filter_news_by_group(all_news, source_group)
+    group_found_news = filter_news_by_group(found_news, source_group)
+    news = filter_news_by_group(news, source_group)
+
+    counts = Counter(
+        item.get("source", "Неизвестный источник")
+        for item in group_news
+    )
     sources = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
 
-    summary = status.get("summary", {})
-    total_sources = summary.get("total_sources", len(sources))
-    ok_sources = summary.get("ok", total_sources)
+    status_sources = [
+        item
+        for item in status.get("sources", [])
+        if get_source_group(item.get("source", "")) == source_group
+    ]
+    total_sources = len(status_sources) or len(sources)
+    ok_sources = sum(
+        item.get("status") == "ok"
+        for item in status_sources
+    )
+    if not status_sources:
+        ok_sources = total_sources
+
+    if source_group == AGENCIES_GROUP:
+        group_title = "Новости информагентств"
+        group_eyebrow = "РИА Новости · далее ТАСС и Интерфакс"
+        group_home = "/agencies"
+        group_found = "/agencies/found"
+        source_base = "/agencies/filter/"
+    else:
+        group_title = "Новости госорганов"
+        group_eyebrow = "Агрегатор официальных источников"
+        group_home = "/"
+        group_found = "/found"
+        source_base = "/filter/"
 
     return render_template_string(
         HTML,
         news=sort_news_by_publication(news),
-        total=len(all_news),
-        found_count=len(found_news),
+        total=len(group_news),
+        found_count=len(group_found_news),
         sources=sources,
         news_index=[
             {
                 "url": item.get("url", ""),
                 "source": item.get("source", "Неизвестный источник"),
             }
-            for item in all_news
+            for item in group_news
             if item.get("url")
         ],
         source_filter=source_filter,
         mode=mode,
+        source_group=source_group,
+        group_title=group_title,
+        group_eyebrow=group_eyebrow,
+        group_home=group_home,
+        group_found=group_found,
+        source_base=source_base,
+        government_total=len(government_news),
+        agencies_total=len(agency_news),
         health_total=total_sources,
         health_ok=ok_sources,
-        health_empty=summary.get("empty", 0),
-        health_errors=summary.get("errors", 0),
+        health_empty=sum(
+            item.get("status") == "empty"
+            for item in status_sources
+        ),
+        health_errors=sum(
+            item.get("status") == "error"
+            for item in status_sources
+        ),
         status_time=status.get("generated_at", ""),
     )
 
@@ -605,19 +683,58 @@ def urlencode_filter(value):
 
 @app.route("/")
 def index():
-    return render_news_page(load_json("all_news.json", []))
+    return render_news_page(
+        load_json("all_news.json", []),
+        source_group=GOVERNMENT_GROUP,
+    )
 
 
 @app.route("/found")
 def found_page():
-    return render_news_page(load_json("found_news.json", []), mode="found")
+    return render_news_page(
+        load_json("found_news.json", []),
+        mode="found",
+        source_group=GOVERNMENT_GROUP,
+    )
 
 
 @app.route("/filter/<path:source>")
 def filter_source(source):
     all_news = load_json("all_news.json", [])
     news = [item for item in all_news if item.get("source") == source]
-    return render_news_page(news, source_filter=source)
+    return render_news_page(
+        news,
+        source_filter=source,
+        source_group=get_source_group(source),
+    )
+
+
+@app.route("/agencies")
+def agencies_page():
+    return render_news_page(
+        load_json("all_news.json", []),
+        source_group=AGENCIES_GROUP,
+    )
+
+
+@app.route("/agencies/found")
+def agencies_found_page():
+    return render_news_page(
+        load_json("found_news.json", []),
+        mode="found",
+        source_group=AGENCIES_GROUP,
+    )
+
+
+@app.route("/agencies/filter/<path:source>")
+def agencies_filter_source(source):
+    all_news = load_json("all_news.json", [])
+    news = [item for item in all_news if item.get("source") == source]
+    return render_news_page(
+        news,
+        source_filter=source,
+        source_group=AGENCIES_GROUP,
+    )
 
 
 @app.route("/article")

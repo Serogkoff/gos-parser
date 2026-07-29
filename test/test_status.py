@@ -45,6 +45,45 @@ class ParserStatusTests(unittest.TestCase):
             "2026-07-27 10:00:00",
         )
 
+    def test_merges_independent_source_groups(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "parser_status.json"
+            with patch.object(status, "STATUS_FILE", path):
+                status.save_parser_status(
+                    [{
+                        "source": "Правительство РФ",
+                        "status": "ok",
+                        "news_count": 5,
+                        "with_date": 5,
+                        "matches_count": 1,
+                        "duration_seconds": 1.0,
+                        "error": "",
+                    }],
+                    "test",
+                    now=datetime(2026, 7, 29, 10, 0),
+                    merge=True,
+                )
+                merged = status.save_parser_status(
+                    [{
+                        "source": "РИА Новости",
+                        "status": "ok",
+                        "news_count": 20,
+                        "with_date": 20,
+                        "matches_count": 2,
+                        "duration_seconds": 2.0,
+                        "error": "",
+                    }],
+                    "test",
+                    now=datetime(2026, 7, 29, 10, 3),
+                    merge=True,
+                )
+
+        self.assertEqual(merged["summary"]["total_sources"], 2)
+        self.assertEqual(
+            {item["source"] for item in merged["sources"]},
+            {"Правительство РФ", "РИА Новости"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

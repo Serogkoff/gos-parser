@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+from threading import RLock
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +12,7 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 ALL_NEWS_FILE = PROJECT_DIR / "all_news.json"
 FOUND_NEWS_FILE = PROJECT_DIR / "found_news.json"
 logger = get_logger("storage")
+STORAGE_LOCK = RLock()
 
 
 def _load_json(path):
@@ -57,6 +59,11 @@ def load_existing_urls():
 
 
 def save_results(all_news, found_news, existing_urls):
+    with STORAGE_LOCK:
+        return _save_results(all_news, found_news, existing_urls)
+
+
+def _save_results(all_news, found_news, existing_urls):
     all_news = deduplicate_news(all_news)
     found_news = deduplicate_news(found_news)
     new_all = [

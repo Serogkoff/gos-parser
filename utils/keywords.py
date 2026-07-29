@@ -4,7 +4,13 @@ import json
 from pathlib import Path
 
 from config import KEYWORDS
-from utils.storage import ALL_NEWS_FILE, FOUND_NEWS_FILE, _load_json, _write_json_atomic
+from utils.storage import (
+    ALL_NEWS_FILE,
+    FOUND_NEWS_FILE,
+    STORAGE_LOCK,
+    _load_json,
+    _write_json_atomic,
+)
 
 
 KEYWORDS_FILE = Path(__file__).resolve().parent.parent / "keywords.json"
@@ -67,6 +73,7 @@ def search_keywords(news_list, keywords=None):
 
 def rebuild_found_news():
     """Пересобирает раздел «Совпадения» после изменения списка слов."""
-    found = search_keywords(_load_json(ALL_NEWS_FILE))
-    _write_json_atomic(FOUND_NEWS_FILE, found)
+    with STORAGE_LOCK:
+        found = search_keywords(_load_json(ALL_NEWS_FILE))
+        _write_json_atomic(FOUND_NEWS_FILE, found)
     return found

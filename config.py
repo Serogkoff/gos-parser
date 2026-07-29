@@ -1,4 +1,4 @@
-PROJECT_VERSION = "2026.07.29.13"
+PROJECT_VERSION = "2026.07.29.14"
 
 KEYWORDS = [
     "Курил", "Сахалин", "Владивосток", "Хабаровск", "Камчатка", "Дальний Восток",
@@ -9,5 +9,8 @@ KEYWORDS = [
 ]
 
 PAUSE_BETWEEN_REQUESTS = 2
-UPDATE_INTERVAL = 300
+GOVERNMENT_UPDATE_INTERVAL = 300
+AGENCY_UPDATE_INTERVAL = 180
+# Старое имя оставлено для совместимости с локальными скриптами.
+UPDATE_INTERVAL = GOVERNMENT_UPDATE_INTERVAL
 MAX_RETRIES = 2

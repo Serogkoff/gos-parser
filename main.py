@@ -1,11 +1,13 @@
 import time
 from datetime import datetime
+from threading import Event, Thread
 
 from config import (
+    AGENCY_UPDATE_INTERVAL,
+    GOVERNMENT_UPDATE_INTERVAL,
     MAX_RETRIES,
     PAUSE_BETWEEN_REQUESTS,
     PROJECT_VERSION,
-    UPDATE_INTERVAL,
 )
 from utils.news import deduplicate_news
 from utils.status import print_status_table, save_parser_status
@@ -41,7 +43,7 @@ from parsers.sites.sakhalin import parse as sakh
 from parsers.sites.ria import parse as ria
 
 
-SITES = [
+GOVERNMENT_SITES = [
     ("МИД РФ", mid),
     ("Правительство РФ", gov),
     ("Трутнев", trutnev),
@@ -68,9 +70,13 @@ SITES = [
     ("Минэнерго", energo),
     ("Минцифры", tsifry),
     ("Сахалин", sakh),
-    # Информагентства
+]
+
+AGENCY_SITES = [
     ("РИА Новости", ria),
 ]
+
+SITES = [*GOVERNMENT_SITES, *AGENCY_SITES]
 
 
 def safe_parse(parser_func, max_retries=2):
@@ -91,12 +97,13 @@ def safe_parse(parser_func, max_retries=2):
     return [], last_error
 
 
-def run_once():
+def run_once(sites=None, group_name="Все источники", merge_status=False):
+    sites = SITES if sites is None else sites
     existing_urls = load_existing_urls()
 
     print("=" * 70)
     print(
-        f"🚀 Парсер v{PROJECT_VERSION} | "
+        f"🚀 {group_name} · v{PROJECT_VERSION} | "
         f"{datetime.now():%Y-%m-%d %H:%M:%S} | В базе: {len(existing_urls)}"
     )
     print("=" * 70)
@@ -105,7 +112,7 @@ def run_once():
     found_news = []
     parser_statuses = []
 
-    for name, parser_func in SITES:
+    for name, parser_func in sites:
         print(f"\n{name}:")
         started = time.perf_counter()
         news, error = safe_parse(parser_func, max_retries=MAX_RETRIES)
@@ -132,7 +139,11 @@ def run_once():
 
     all_news = deduplicate_news(all_news)
     found_news = deduplicate_news(found_news)
-    save_parser_status(parser_statuses, PROJECT_VERSION)
+    save_parser_status(
+        parser_statuses,
+        PROJECT_VERSION,
+        merge=merge_status,
+    )
     print_status_table(parser_statuses)
     new_found = save_results(all_news, found_news, existing_urls)
 
@@ -152,19 +163,55 @@ def run_once():
                 print(f"     🔗 {url}")
 
 
-def main():
-    while True:
+def run_schedule(sites, group_name, interval, stop_event):
+    while not stop_event.is_set():
         try:
-            run_once()
-            print(f"\n⏳ Следующая проверка через {UPDATE_INTERVAL // 60} минут...")
-            time.sleep(UPDATE_INTERVAL)
-        except KeyboardInterrupt:
-            print("\n🛑 Парсер остановлен пользователем")
-            break
+            run_once(
+                sites,
+                group_name=group_name,
+                merge_status=True,
+            )
         except Exception as error:
-            print(f"\n❌ Критическая ошибка: {type(error).__name__}: {error}")
-            print("🔄 Новый запуск через 60 секунд...")
-            time.sleep(60)
+            print(
+                f"\n❌ Ошибка цикла «{group_name}»: "
+                f"{type(error).__name__}: {error}"
+            )
+
+        if not stop_event.is_set():
+            print(
+                f"\n⏳ {group_name}: следующая проверка "
+                f"через {interval // 60} мин."
+            )
+        stop_event.wait(interval)
+
+
+def main():
+    stop_event = Event()
+    agency_thread = Thread(
+        target=run_schedule,
+        args=(
+            AGENCY_SITES,
+            "Информагентства",
+            AGENCY_UPDATE_INTERVAL,
+            stop_event,
+        ),
+        name="agency-parser",
+        daemon=True,
+    )
+    agency_thread.start()
+
+    try:
+        run_schedule(
+            GOVERNMENT_SITES,
+            "Госорганы",
+            GOVERNMENT_UPDATE_INTERVAL,
+            stop_event,
+        )
+    except KeyboardInterrupt:
+        print("\n🛑 Парсер остановлен пользователем")
+    finally:
+        stop_event.set()
+        agency_thread.join(timeout=2)
 
 
 if __name__ == "__main__":

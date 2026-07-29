@@ -3,6 +3,7 @@ import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from threading import RLock
 
 from utils.logger import get_logger
 
@@ -10,10 +11,21 @@ from utils.logger import get_logger
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 STATUS_FILE = PROJECT_DIR / "parser_status.json"
 logger = get_logger("status")
+STATUS_LOCK = RLock()
 
 
-def save_parser_status(statuses, project_version, now=None):
+def save_parser_status(statuses, project_version, now=None, merge=False):
     """Сохраняет состояние источников и время последнего успешного запуска."""
+    with STATUS_LOCK:
+        return _save_parser_status(
+            statuses,
+            project_version,
+            now=now,
+            merge=merge,
+        )
+
+
+def _save_parser_status(statuses, project_version, now=None, merge=False):
     now = now or datetime.now()
     checked_at = now.strftime("%Y-%m-%d %H:%M:%S")
     previous = _load_previous()
@@ -32,6 +44,18 @@ def save_parser_status(statuses, project_version, now=None):
         else:
             item["last_success"] = old.get("last_success", "")
         prepared.append(item)
+
+    if merge:
+        updates = {
+            item.get("source"): item
+            for item in prepared
+        }
+        merged = []
+        for old in previous.get("sources", []):
+            source = old.get("source")
+            merged.append(updates.pop(source, old))
+        merged.extend(updates.values())
+        prepared = merged
 
     document = {
         "project_version": project_version,
