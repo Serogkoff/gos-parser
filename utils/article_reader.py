@@ -36,6 +36,12 @@ GENERIC_TITLES = {
 }
 
 VERIFIED_ARTICLE_SELECTORS = {
+    "ria.ru": (
+        "[itemprop='articleBody']",
+        ".article__body",
+        ".article__text",
+        ".article__block",
+    ),
     "mcx.gov.ru": (
         "[itemprop='articleBody']",
         ".news-detail__content",

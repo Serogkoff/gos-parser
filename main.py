@@ -38,6 +38,7 @@ from parsers.sites.vladivostok import parse as vlad
 from parsers.sites.minenergo import parse as energo
 from parsers.sites.mintsifry import parse as tsifry
 from parsers.sites.sakhalin import parse as sakh
+from parsers.sites.ria import parse as ria
 
 
 SITES = [
@@ -67,6 +68,8 @@ SITES = [
     ("Минэнерго", energo),
     ("Минцифры", tsifry),
     ("Сахалин", sakh),
+    # Информагентства
+    ("РИА Новости", ria),
 ]
 
 
