@@ -72,6 +72,7 @@ class SourceGroupPageTests(unittest.TestCase):
         html = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn("Новости информагентств", html)
+        self.assertIn("Госструктуры", html)
         self.assertIn("Материал информационного агентства", html)
         self.assertIn("Политика", html)
         self.assertNotIn("Материал государственного ведомства", html)
@@ -82,9 +83,20 @@ class SourceGroupPageTests(unittest.TestCase):
 
         html = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Новости госорганов", html)
+        self.assertIn("Новости госструктур", html)
         self.assertIn("Материал государственного ведомства", html)
         self.assertNotIn("Материал информационного агентства", html)
+
+    def test_main_sections_are_rendered_inside_header(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get("/")
+
+        html = response.get_data(as_text=True)
+        header_start = html.index('<header class="topbar">')
+        header_end = html.index("</header>", header_start)
+        header = html[header_start:header_end]
+        self.assertIn("Госструктуры", header)
+        self.assertIn("Информагентства", header)
 
 
 if __name__ == "__main__":

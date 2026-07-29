@@ -203,7 +203,7 @@ def main():
     try:
         run_schedule(
             GOVERNMENT_SITES,
-            "Госорганы",
+            "Госструктуры",
             GOVERNMENT_UPDATE_INTERVAL,
             stop_event,
         )

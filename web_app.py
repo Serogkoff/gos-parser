@@ -54,9 +54,25 @@ HTML = """
         .shell{width:min(1500px,calc(100% - 64px));margin:auto;padding-bottom:80px}
         .topbar{
             min-height:86px;border-bottom:1px solid var(--line);
-            display:flex;align-items:center;justify-content:space-between
+            display:grid;grid-template-columns:auto minmax(300px,1fr) auto;
+            align-items:center;gap:26px
         }
         .brand{font-size:30px;font-weight:780;letter-spacing:-.05em}
+        .site-sections{height:86px;display:flex;align-items:stretch;justify-content:center;gap:26px}
+        .site-section{
+            position:relative;padding:0 3px;display:flex;align-items:center;gap:7px;
+            color:var(--muted);font-size:15px;font-weight:680;white-space:nowrap
+        }
+        .site-section span{
+            min-width:24px;padding:2px 6px;color:#7b746a;border-radius:999px;
+            background:#ece6dc;text-align:center;font-size:10px
+        }
+        .site-section:after{
+            content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;
+            background:var(--coral);transform:scaleX(0);transition:transform .18s
+        }
+        .site-section.active{color:var(--ink)}
+        .site-section.active:after{transform:scaleX(1)}
         .topbar-tools{display:flex;align-items:center;gap:22px}
         .clocks{display:flex;align-items:center;gap:14px}
         .clock-card{display:grid;grid-template-columns:38px auto;align-items:center;gap:9px}
@@ -79,16 +95,7 @@ HTML = """
         .intro{padding-top:38px;border-bottom:1px solid var(--line)}
         .eyebrow{margin:0 0 10px;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
         h1{margin:0;font-size:clamp(38px,4vw,58px);line-height:1;letter-spacing:-.055em;font-weight:720}
-        .section-switch{display:flex;flex-wrap:wrap;gap:10px;margin-top:25px}
-        .section-link{
-            min-height:44px;padding:0 16px;display:flex;align-items:center;gap:9px;
-            color:#625c54;border:1px solid #c9c1b5;border-radius:6px;
-            background:rgba(255,252,246,.45);font-size:14px;font-weight:650
-        }
-        .section-link span{min-width:24px;padding:2px 6px;border-radius:999px;background:#ece6dc;text-align:center;font-size:10px}
-        .section-link.active{color:#fff;border-color:var(--ink);background:var(--ink)}
-        .section-link.active span{color:var(--ink);background:var(--surface)}
-        .tabs{display:flex;gap:28px;margin-top:20px}
+        .tabs{display:flex;gap:28px;margin-top:28px}
         .tab{position:relative;padding:0 2px 16px;color:var(--muted);font-size:17px;font-weight:610}
         .tab span{margin-left:6px;font-variant-numeric:tabular-nums}
         .tab:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;background:var(--coral);transform:scaleX(0);transition:transform .18s}
@@ -180,12 +187,21 @@ HTML = """
         .keyword-list{display:flex;flex-wrap:wrap;gap:9px}.keyword-chip{display:flex;align-items:center;gap:7px;padding:7px 8px 7px 11px;border:1px solid var(--line);border-radius:999px;background:#fff}
         .keyword-chip button{width:22px;height:22px;padding:0;border:0;border-radius:50%;color:var(--coral-dark);background:#fff1ed}.form-message{min-height:20px;margin:10px 0 0;color:var(--coral-dark);font-size:13px}
         @media(max-width:1050px){
+            .topbar{grid-template-columns:auto 1fr;padding-top:14px}
+            .topbar-tools{justify-self:end}
+            .site-sections{
+                width:100%;height:50px;grid-column:1/-1;grid-row:2;
+                justify-content:flex-start
+            }
             .toolbar{grid-template-columns:1fr 1fr}.content-grid{grid-template-columns:1fr}
             .sidebar{grid-template-columns:1fr 1fr;grid-row:1}
         }
         @media(max-width:680px){
             .shell{width:min(100% - 28px,1500px)}.topbar{min-height:72px}
-            .topbar{align-items:flex-start;padding:17px 0}.topbar-tools{align-items:flex-end;flex-direction:column-reverse;gap:10px}.clock-copy{display:none}
+            .topbar{align-items:flex-start;padding:17px 0 0;gap:12px}
+            .topbar-tools{align-items:flex-end;flex-direction:column-reverse;gap:10px}
+            .site-sections{gap:18px;overflow-x:auto}.site-section{font-size:13px}
+            .clock-copy{display:none}
             .health{min-height:38px;padding:0 12px;font-size:11px}
             .toolbar,.sidebar{grid-template-columns:1fr}.news-card{padding:20px 48px 20px 18px}
             .news-card.match{padding-left:13px}.feed-heading{padding:0 18px}.news-card h3{font-size:21px}
@@ -197,6 +213,14 @@ HTML = """
 <main class="shell">
     <header class="topbar">
         <a class="brand" href="/">Монитор</a>
+        <nav class="site-sections" aria-label="Основные разделы">
+            <a class="site-section {{'active' if source_group == 'government' else ''}}" href="/">
+                Госструктуры <span>{{government_total}}</span>
+            </a>
+            <a class="site-section {{'active' if source_group == 'agencies' else ''}}" href="/agencies">
+                Информагентства <span>{{agencies_total}}</span>
+            </a>
+        </nav>
         <div class="topbar-tools">
             <div class="clocks">
                 <div class="clock-card" data-clock="Europe/Moscow">
@@ -218,14 +242,6 @@ HTML = """
     <section class="intro">
         <p class="eyebrow">{{group_eyebrow}}</p>
         <h1>{{group_title}}</h1>
-        <nav class="section-switch" aria-label="Разделы источников">
-            <a class="section-link {{'active' if source_group == 'government' else ''}}" href="/">
-                Госорганы <span>{{government_total}}</span>
-            </a>
-            <a class="section-link {{'active' if source_group == 'agencies' else ''}}" href="/agencies">
-                Информагентства <span>{{agencies_total}}</span>
-            </a>
-        </nav>
         <nav class="tabs">
             <a class="tab {{'active' if mode == 'all' else ''}}" href="{{group_home}}">Все <span>{{total}}</span></a>
             <a class="tab {{'active' if mode == 'found' else ''}}" href="{{group_found}}">Совпадения <span>{{found_count}}</span></a>
@@ -632,7 +648,7 @@ def render_news_page(
         group_found = "/agencies/found"
         source_base = "/agencies/filter/"
     else:
-        group_title = "Новости госорганов"
+        group_title = "Новости госструктур"
         group_eyebrow = "Агрегатор официальных источников"
         group_home = "/"
         group_found = "/found"
