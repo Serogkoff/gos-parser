@@ -142,6 +142,68 @@ class ArticleCleanupTests(unittest.TestCase):
         self.assertEqual(article["paragraphs"], [])
         self.assertIn("общий раздел", article["error"])
 
+    def test_mintrans_reads_article_body_from_json_ld(self):
+        soup = BeautifulSoup(
+            """
+            <html>
+                <head>
+                    <meta property="og:title"
+                          content="Электронный документооборот в логистике">
+                    <script type="application/ld+json">
+                    {
+                        "@type": "NewsArticle",
+                        "headline": "Электронный документооборот в логистике",
+                        "articleBody": "Минтранс России рассказал о переходе на электронные перевозочные документы.\\nУчастники рынка обсудили подготовку информационных систем."
+                    }
+                    </script>
+                </head>
+                <body>
+                    <h1>Электронный документооборот в логистике</h1>
+                </body>
+            </html>
+            """,
+            "html.parser",
+        )
+        with patch("utils.article_reader.fetch_soup", return_value=soup):
+            article = extract_article(
+                "https://mintrans.gov.ru/press-center/news/12851",
+                "Электронный документооборот в логистике",
+            )
+
+        self.assertFalse(article["error"])
+        self.assertEqual(len(article["paragraphs"]), 2)
+        self.assertIn("Минтранс России", article["paragraphs"][0])
+
+    def test_minselKhoz_reads_text_from_div_blocks(self):
+        soup = BeautifulSoup(
+            """
+            <main>
+                <div class="publication">
+                    <h1>Объём реализации молока вырос на 3,2%</h1>
+                    <div class="publication-body">
+                        <div>По оперативным данным Минсельхоза России,
+                        объём реализации молока продолжил расти.</div>
+                        <div>Положительная динамика отмечена в нескольких
+                        российских регионах и сельхозорганизациях.</div>
+                    </div>
+                </div>
+            </main>
+            """,
+            "html.parser",
+        )
+        with patch("utils.article_reader.fetch_soup", return_value=soup):
+            article = extract_article(
+                (
+                    "https://mcx.gov.ru/press-service/news/"
+                    "obyem-realizatsii-moloka-vyros/"
+                ),
+                "Объём реализации молока вырос на 3,2%",
+            )
+
+        self.assertFalse(article["error"])
+        self.assertEqual(len(article["paragraphs"]), 2)
+        self.assertIn("Минсельхоза России", article["paragraphs"][0])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,6 @@
 """Безопасное извлечение текста публикации для локальной страницы просмотра."""
 
+import json
 import re
 from urllib.parse import urljoin, urlsplit
 
@@ -38,11 +39,15 @@ VERIFIED_ARTICLE_SELECTORS = {
     "mcx.gov.ru": (
         "[itemprop='articleBody']",
         ".news-detail__content",
+        ".news-detail__text",
+        ".news-detail__body",
         ".newsDetail__content",
+        ".newsDetail__text",
         ".news-detail",
         ".newsDetail",
         ".detail-text",
         ".article__content",
+        "[class*='publication'][class*='body']",
     ),
     "minstroyrf.gov.ru": (
         "[itemprop='articleBody']",
@@ -63,10 +68,14 @@ VERIFIED_ARTICLE_SELECTORS = {
     "mintrans.gov.ru": (
         "[itemprop='articleBody']",
         ".news-detail__content",
+        ".news-detail__text",
+        ".news-detail__body",
         ".news-detail",
         ".news-content",
+        ".news-detail-text",
         ".detail-text",
         ".article-content",
+        "[class*='article'][class*='body']",
         "article",
     ),
 }
@@ -189,11 +198,17 @@ def _extract_verified_article(soup, fallback_title, selectors):
     Это не даёт общему разделу новостей или странице ошибки превратиться
     во «внутренний текст» из пунктов меню.
     """
+    structured_article = _extract_structured_article(
+        soup,
+        fallback_title,
+    )
     page_titles = [
         _first_text(soup.select_one("h1")),
         _first_text(soup.select_one("[itemprop='headline']")),
         _first_text(soup.select_one("meta[property='og:title']")),
     ]
+    if structured_article:
+        page_titles.append(structured_article["title"])
     page_titles = [title for title in page_titles if title]
 
     if fallback_title:
@@ -213,6 +228,13 @@ def _extract_verified_article(soup, fallback_title, selectors):
                 "Сайт открыл общий раздел вместо публикации. "
                 "Используйте кнопку «Открыть оригинал»."
             ),
+        }
+
+    if structured_article and structured_article["paragraphs"]:
+        return {
+            "title": fallback_title or structured_article["title"],
+            "paragraphs": structured_article["paragraphs"][:100],
+            "error": "",
         }
 
     for tag in soup(
@@ -236,14 +258,17 @@ def _extract_verified_article(soup, fallback_title, selectors):
         None,
     )
     current = matching_heading.parent if matching_heading else None
-    for _ in range(5):
+    for _ in range(7):
         if current is None or getattr(current, "name", "") in {
             "main",
             "body",
             "html",
         }:
             break
-        if current.select("p, li, blockquote"):
+        current_text = " ".join(
+            current.get_text(" ", strip=True).split()
+        )
+        if len(current_text) >= len(title) + 80:
             candidates.append(current)
             break
         current = current.parent
@@ -261,7 +286,10 @@ def _extract_verified_article(soup, fallback_title, selectors):
             "error": "",
         }
 
-    description_tag = soup.select_one("meta[property='og:description']")
+    description_tag = (
+        soup.select_one("meta[property='og:description']")
+        or soup.select_one("meta[name='description']")
+    )
     description = (
         " ".join(description_tag.get("content", "").split())
         if description_tag
@@ -282,6 +310,84 @@ def _extract_verified_article(soup, fallback_title, selectors):
             "Используйте кнопку «Открыть оригинал»."
         ),
     }
+
+
+def _extract_structured_article(soup, fallback_title):
+    """Читает Schema.org/JSON-LD, если сайт хранит текст новости там."""
+    for script in soup.select("script[type='application/ld+json']"):
+        raw = script.string or script.get_text("", strip=True)
+        if not raw:
+            continue
+
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+
+        for item in _walk_json_objects(payload):
+            headline = str(
+                item.get("headline")
+                or item.get("name")
+                or ""
+            ).strip()
+            if (
+                fallback_title
+                and headline
+                and not _titles_match(fallback_title, headline)
+            ):
+                continue
+
+            body = item.get("articleBody")
+            if isinstance(body, str):
+                paragraphs = _structured_paragraphs(body)
+                if paragraphs:
+                    return {
+                        "title": headline or fallback_title,
+                        "paragraphs": paragraphs,
+                    }
+
+            description = item.get("description")
+            if (
+                headline
+                and isinstance(description, str)
+                and len(" ".join(description.split())) >= 80
+            ):
+                return {
+                    "title": headline,
+                    "paragraphs": _structured_paragraphs(description),
+                }
+
+    return None
+
+
+def _walk_json_objects(value):
+    if isinstance(value, dict):
+        yield value
+        for nested in value.values():
+            yield from _walk_json_objects(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            yield from _walk_json_objects(nested)
+
+
+def _structured_paragraphs(value):
+    text = BeautifulSoup(str(value), "html.parser").get_text("\n")
+    result = []
+    seen = set()
+
+    for part in re.split(r"[\r\n]+", text):
+        cleaned = " ".join(part.split())
+        normalized = _title_key(cleaned)
+        if len(cleaned) >= 45 and normalized not in seen:
+            seen.add(normalized)
+            result.append(cleaned)
+
+    if not result:
+        cleaned = " ".join(text.split())
+        if len(cleaned) >= 45:
+            result.append(cleaned)
+
+    return result
 
 
 def _titles_match(expected, actual):
@@ -311,22 +417,40 @@ def _verified_paragraphs(container, title):
     seen = set()
     title_key = _title_key(title)
 
-    for node in container.select("p, li, blockquote"):
+    def add_node(node):
         text = " ".join(node.get_text(" ", strip=True).split())
+        if title and text.startswith(title):
+            text = text[len(title):].lstrip(" —:|")
         folded = text.casefold()
         normalized = _title_key(text)
 
         if len(text) < 45:
-            continue
+            return
         if title_key and normalized == title_key:
-            continue
+            return
         if any(part in folded for part in SKIP_PARTS):
-            continue
+            return
         if any(part in folded for part in ARTICLE_MENU_PARTS):
-            continue
+            return
         if normalized not in seen:
             seen.add(normalized)
             result.append(text)
+
+    for node in container.select("p, li, blockquote"):
+        add_node(node)
+
+    if not result:
+        for node in container.select("div, section"):
+            direct_blocks = node.find_all(
+                ["div", "section", "p", "li", "blockquote"],
+                recursive=False,
+            )
+            if any(
+                len(" ".join(child.get_text(" ", strip=True).split())) >= 45
+                for child in direct_blocks
+            ):
+                continue
+            add_node(node)
 
     return result
 
