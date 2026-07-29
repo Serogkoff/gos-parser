@@ -1,3 +1,4 @@
+import time
 from urllib.parse import urljoin
 
 from utils.dates import (
@@ -8,14 +9,25 @@ from utils.dates import (
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
 from utils.news import normalize_url
+from utils.storage import (
+    PROJECT_DIR,
+    _load_json,
+    _write_json_atomic,
+)
 
 SOURCE_NAME = "СК РФ"
+DATE_CACHE_FILE = PROJECT_DIR / "sk_dates.json"
+DETAIL_REQUEST_PAUSE = 0.5
 
 
 def parse():
     news, seen = [], set()
+    date_cache = _load_date_cache()
+    cache_changed = False
 
-    for p in range(3):
+    # Первая страница содержит текущую десятку публикаций.
+    # Дополнительные страницы раньше создавали лишнюю нагрузку на сайт.
+    for p in range(1):
         u = f"https://sledcom.ru/news/?PAGEN_1={p + 1}" if p else "https://sledcom.ru/news/"
 
         soup = fetch_soup(u, SOURCE_NAME)
@@ -35,14 +47,31 @@ def parse():
                 a,
                 r"/news/(?:item|detail)/",
             )
-            detail = fetch_soup(full_url, SOURCE_NAME, timeout=15)
-            date_str = _date_from_sk_article(detail) or card_date
+            date_str = date_cache.get(full_url, "")
+            if not date_str:
+                detail = fetch_soup(
+                    full_url,
+                    SOURCE_NAME,
+                    timeout=15,
+                )
+                detail_date = _date_from_sk_article(detail)
+                if detail_date:
+                    date_str = detail_date
+                    date_cache[full_url] = detail_date
+                    cache_changed = True
+                else:
+                    date_str = card_date
+                time.sleep(DETAIL_REQUEST_PAUSE)
+
             news.append({
                 'source': SOURCE_NAME,
                 'title': t,
                 'url': full_url,
                 'date': date_str,
             })
+
+    if cache_changed:
+        _save_date_cache(date_cache)
 
     with_date = sum(bool(item.get("date")) for item in news)
     print(f"  ✅ {len(news)} (с датой: {with_date})")
@@ -72,3 +101,27 @@ def _date_from_sk_article(soup):
         soup,
         prefer_visible=True,
     )
+
+
+def _load_date_cache():
+    cache = {}
+    for item in _load_json(DATE_CACHE_FILE):
+        if not isinstance(item, dict):
+            continue
+        url = normalize_url(item.get("url", ""))
+        date_str = validate_publication_date(item.get("date", ""))
+        if url and date_str:
+            cache[url] = date_str
+    return cache
+
+
+def _save_date_cache(cache):
+    document = [
+        {
+            "url": url,
+            "date": date_str,
+        }
+        for url, date_str in sorted(cache.items())
+        if url and date_str
+    ]
+    _write_json_atomic(DATE_CACHE_FILE, document)

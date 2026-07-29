@@ -1,8 +1,15 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 
-from parsers.sites.sk import _date_from_sk_article
+from parsers.sites.sk import (
+    _date_from_sk_article,
+    _load_date_cache,
+    _save_date_cache,
+)
 
 
 class SkPublicationDateTests(unittest.TestCase):
@@ -55,6 +62,23 @@ class SkPublicationDateTests(unittest.TestCase):
 
     def test_returns_empty_date_when_article_is_unavailable(self):
         self.assertEqual(_date_from_sk_article(None), "")
+
+    def test_date_cache_preserves_normalized_article_url(self):
+        with TemporaryDirectory() as directory:
+            cache_file = Path(directory) / "sk_dates.json"
+            with patch(
+                "parsers.sites.sk.DATE_CACHE_FILE",
+                cache_file,
+            ):
+                _save_date_cache({
+                    "https://sledcom.ru/news/item/2111766": "2026-07-29",
+                })
+                cache = _load_date_cache()
+
+        self.assertEqual(
+            cache["https://sledcom.ru/news/item/2111766/"],
+            "2026-07-29",
+        )
 
 
 if __name__ == "__main__":
