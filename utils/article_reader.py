@@ -36,6 +36,16 @@ GENERIC_TITLES = {
 }
 
 VERIFIED_ARTICLE_SELECTORS = {
+    "interfax.ru": (
+        "article[itemprop='articleBody']",
+        "[itemprop='articleBody']",
+        "article",
+    ),
+    "sport-interfax.ru": (
+        "article[itemprop='articleBody']",
+        "[itemprop='articleBody']",
+        "article",
+    ),
     "ria.ru": (
         "[itemprop='articleBody']",
         ".article__body",
@@ -144,6 +154,11 @@ def extract_article(url, fallback_title=""):
         if article:
             return article
 
+    if _is_interfax_url(url):
+        article = _extract_interfax_article(soup, fallback_title)
+        if article:
+            return article
+
     if verified_selectors:
         return _extract_verified_article(
             soup,
@@ -187,6 +202,45 @@ def _is_minobrnauki_url(url):
 def _is_mnr_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
     return hostname == "mnr.gov.ru" or hostname.endswith(".mnr.gov.ru")
+
+
+def _is_interfax_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return (
+        hostname in {"interfax.ru", "sport-interfax.ru"}
+        or hostname.endswith(".interfax.ru")
+        or hostname.endswith(".sport-interfax.ru")
+    )
+
+
+def _extract_interfax_article(soup, fallback_title):
+    """Берёт полный текст статьи, а не короткое описание из JSON-LD."""
+    container = soup.select_one(
+        "article[itemprop='articleBody'], [itemprop='articleBody']"
+    )
+    if container is None:
+        return None
+
+    title = fallback_title or _first_text(
+        container.select_one("h1"),
+        soup.select_one("meta[property='og:title']"),
+    )
+    page_title = _first_text(
+        container.select_one("h1"),
+        soup.select_one("meta[property='og:title']"),
+    )
+    if fallback_title and not _titles_match(fallback_title, page_title):
+        return None
+
+    paragraphs = _verified_paragraphs(container, title)
+    if not paragraphs:
+        return None
+
+    return {
+        "title": title,
+        "paragraphs": paragraphs[:100],
+        "error": "",
+    }
 
 
 def _verified_article_selectors(url):

@@ -42,6 +42,7 @@ from parsers.sites.mintsifry import parse as tsifry
 from parsers.sites.sakhalin import parse as sakh
 from parsers.sites.ria import parse as ria
 from parsers.sites.tass import parse as tass
+from parsers.sites.interfax import parse as interfax
 
 
 GOVERNMENT_SITES = [
@@ -76,6 +77,7 @@ GOVERNMENT_SITES = [
 AGENCY_SITES = [
     ("РИА Новости", ria),
     ("ТАСС", tass),
+    ("Интерфакс", interfax),
 ]
 
 SITES = [*GOVERNMENT_SITES, *AGENCY_SITES]

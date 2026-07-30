@@ -15,6 +15,7 @@ class SourceGroupTests(unittest.TestCase):
     def test_assigns_news_agencies_to_agencies_group(self):
         self.assertEqual(source_group("РИА Новости"), AGENCIES_GROUP)
         self.assertEqual(source_group("ТАСС"), AGENCIES_GROUP)
+        self.assertEqual(source_group("Интерфакс"), AGENCIES_GROUP)
         self.assertEqual(source_group("МЧС"), GOVERNMENT_GROUP)
 
     def test_filters_news_without_losing_fields(self):
@@ -60,6 +61,13 @@ class SourceGroupPageTests(unittest.TestCase):
                     "section": "Политика",
                     "summary": "Официальный анонс публикации ТАСС.",
                 },
+                {
+                    "source": "Интерфакс",
+                    "title": "Материал Интерфакса",
+                    "url": "https://www.interfax.ru/russia/1106527",
+                    "date": "2026-07-30",
+                    "section": "В России",
+                },
             ],
             "found_news.json": [],
             "parser_status.json": {
@@ -68,6 +76,7 @@ class SourceGroupPageTests(unittest.TestCase):
                     {"source": "МЧС", "status": "ok"},
                     {"source": "РИА Новости", "status": "ok"},
                     {"source": "ТАСС", "status": "ok"},
+                    {"source": "Интерфакс", "status": "ok"},
                 ],
             },
         }
@@ -85,6 +94,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Госструктуры", html)
         self.assertIn("Материал информационного агентства", html)
         self.assertIn("Материал ТАСС", html)
+        self.assertIn("Материал Интерфакса", html)
         self.assertIn("Политика", html)
         self.assertNotIn("Материал государственного ведомства", html)
 
