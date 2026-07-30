@@ -106,6 +106,57 @@ ARTICLE_MENU_PARTS = (
     "онлайн-сервисы все сервисы",
 )
 
+MVD_NOISE_PARTS = (
+    "график приема граждан руководящим составом мвд россии",
+    "о рассмотрении обращений граждан и организаций",
+    "поступление на службу в органы внутренних дел российской федерации",
+    "мвд россии министр структура министерства руководство",
+    "деятельность служба статистика и аналитика мониторинг общественного мнения",
+    "для граждан прием обращений граждан и организаций",
+    "онлайн-сервисы все сервисы прием обращений граждан и организаций",
+    "ваш участковый отдел полиции внимание розыск",
+    "мобильное приложение мвд россии детская страница",
+    "официальный интернет-сайт мвд россии",
+    "при использовании материалов сайта",
+    "ссылки на сайты органов государственной власти",
+    "версия для слабовидящих",
+)
+
+MVD_REMOVABLE_SELECTORS = (
+    "header",
+    "nav",
+    "footer",
+    "aside",
+    "form",
+    ".header",
+    ".footer",
+    ".breadcrumbs",
+    ".breadcrumb",
+    ".sidebar",
+    ".side-menu",
+    ".main-menu",
+    ".navigation",
+    ".online-services",
+    ".social",
+    ".share",
+    ".related-news",
+    ".other-news",
+)
+
+MVD_ARTICLE_SELECTORS = (
+    "[itemprop='articleBody']",
+    ".news-detail__content",
+    ".news-detail__text",
+    ".news-detail",
+    ".article__content",
+    ".article__text",
+    ".article-content",
+    ".content__text",
+    ".detail-text",
+    "article",
+    "main",
+)
+
 
 def extract_article(url, fallback_title=""):
     fetch_url = url
@@ -153,6 +204,9 @@ def extract_article(url, fallback_title=""):
         article = _extract_mnr_article(soup, fallback_title)
         if article:
             return article
+
+    if _is_mvd_url(url):
+        return _extract_mvd_article(soup, fallback_title)
 
     if _is_interfax_url(url):
         article = _extract_interfax_article(soup, fallback_title)
@@ -209,6 +263,15 @@ def _is_mnr_url(url):
     return hostname == "mnr.gov.ru" or hostname.endswith(".mnr.gov.ru")
 
 
+def _is_mvd_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return (
+        hostname in {"мвд.рф", "xn--b1aew.xn--p1ai"}
+        or hostname.endswith(".мвд.рф")
+        or hostname.endswith(".xn--b1aew.xn--p1ai")
+    )
+
+
 def _is_interfax_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
     return (
@@ -221,6 +284,112 @@ def _is_interfax_url(url):
 def _is_ria_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
     return hostname == "ria.ru" or hostname.endswith(".ria.ru")
+
+
+def _extract_mvd_article(soup, fallback_title):
+    """Извлекает статью МВД без меню, сервисов и нижних блоков сайта."""
+    page_title = _first_text(
+        soup.select_one("h1"),
+        soup.select_one("[itemprop='headline']"),
+        soup.select_one("meta[property='og:title']"),
+    )
+    title = fallback_title or page_title
+
+    if (
+        fallback_title
+        and page_title
+        and page_title.casefold().strip() not in GENERIC_TITLES
+        and not _titles_match(fallback_title, page_title)
+    ):
+        return {
+            "title": fallback_title,
+            "paragraphs": [],
+            "error": (
+                "Сайт МВД открыл другую страницу вместо публикации. "
+                "Используйте кнопку «Открыть оригинал»."
+            ),
+        }
+
+    structured_article = _extract_structured_article(soup, fallback_title)
+    if structured_article:
+        paragraphs = _clean_mvd_texts(
+            structured_article["paragraphs"],
+            title,
+        )
+        if paragraphs:
+            return {
+                "title": title or structured_article["title"],
+                "paragraphs": paragraphs[:100],
+                "error": "",
+            }
+
+    for selector in MVD_REMOVABLE_SELECTORS:
+        for node in soup.select(selector):
+            node.decompose()
+
+    best = []
+    for selector in MVD_ARTICLE_SELECTORS:
+        for container in soup.select(selector):
+            paragraphs = _mvd_paragraphs(container, title)
+            if sum(map(len, paragraphs)) > sum(map(len, best)):
+                best = paragraphs
+
+    if best:
+        return {
+            "title": title,
+            "paragraphs": best[:100],
+            "error": "",
+        }
+
+    return {
+        "title": title,
+        "paragraphs": [],
+        "error": (
+            "Заголовок найден, но сайт МВД не отдал чистый текст "
+            "публикации. Используйте кнопку «Открыть оригинал»."
+        ),
+    }
+
+
+def _mvd_paragraphs(container, title):
+    """Сохраняет абзацы публикации МВД и отбрасывает окружение страницы."""
+    nodes = container.select("p, blockquote")
+    if not nodes:
+        nodes = [
+            node
+            for node in container.select("div, section")
+            if not node.find(["div", "section", "p", "blockquote"])
+        ]
+
+    return _clean_mvd_texts(
+        (node.get_text(" ", strip=True) for node in nodes),
+        title,
+    )
+
+
+def _clean_mvd_texts(values, title):
+    result = []
+    seen = set()
+    title_key = _title_key(title)
+
+    for value in values:
+        text = " ".join(str(value or "").split())
+        normalized = _title_key(text)
+        folded = text.casefold().replace("ё", "е")
+
+        if len(text) < 20:
+            continue
+        if title_key and normalized == title_key:
+            continue
+        if any(part in folded for part in MVD_NOISE_PARTS):
+            continue
+        if any(part in folded for part in SKIP_PARTS):
+            continue
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            result.append(text)
+
+    return result
 
 
 def _extract_interfax_article(soup, fallback_title):

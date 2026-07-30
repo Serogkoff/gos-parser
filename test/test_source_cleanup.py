@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from parsers.sites.mintrud import _is_news_article_url
 from utils.article_reader import (
     _clean_mnr_paragraphs,
+    _is_mvd_url,
     _paragraphs,
     extract_article,
 )
@@ -34,6 +35,68 @@ class MintrudUrlTests(unittest.TestCase):
 
 
 class ArticleCleanupTests(unittest.TestCase):
+    def test_recognizes_unicode_and_punycode_mvd_hosts(self):
+        self.assertTrue(
+            _is_mvd_url("https://мвд.рф/news/item/12345")
+        )
+        self.assertTrue(
+            _is_mvd_url(
+                "https://xn--b1aew.xn--p1ai/news/item/12345"
+            )
+        )
+        self.assertFalse(_is_mvd_url("https://example.com/news/item/12345"))
+
+    def test_mvd_removes_menu_before_and_service_text_after_article(self):
+        soup = BeautifulSoup(
+            """
+            <html>
+                <head>
+                    <meta property="og:title"
+                          content="МВД сообщило о результатах операции">
+                </head>
+                <body>
+                    <main>
+                        <h1>МВД сообщило о результатах операции</h1>
+                        <div class="content">
+                            <p>График приема граждан руководящим составом
+                            МВД России</p>
+                            <p>МВД России Министр Структура Министерства
+                            Руководство Общественный совет История
+                            Противодействие коррупции</p>
+                            <p>Сотрудники полиции завершили операцию и
+                            пресекли деятельность организованной группы.</p>
+                            <p>По материалам проверки возбуждено уголовное
+                            дело, расследование которого продолжается.</p>
+                            <p>Онлайн-сервисы ВСЕ СЕРВИСЫ Прием обращений
+                            граждан и организаций Ваш участковый Отдел
+                            полиции Внимание розыск</p>
+                            <p>Официальный интернет-сайт МВД России.
+                            При использовании материалов сайта ссылка
+                            обязательна.</p>
+                        </div>
+                    </main>
+                </body>
+            </html>
+            """,
+            "html.parser",
+        )
+        with patch("utils.article_reader.fetch_soup", return_value=soup):
+            article = extract_article(
+                "https://мвд.рф/news/item/12345",
+                "МВД сообщило о результатах операции",
+            )
+
+        self.assertFalse(article["error"])
+        self.assertEqual(
+            article["paragraphs"],
+            [
+                "Сотрудники полиции завершили операцию и пресекли "
+                "деятельность организованной группы.",
+                "По материалам проверки возбуждено уголовное дело, "
+                "расследование которого продолжается.",
+            ],
+        )
+
     def test_uses_fallback_title_for_generic_page_heading(self):
         soup = BeautifulSoup(
             """
