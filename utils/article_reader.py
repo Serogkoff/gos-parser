@@ -52,6 +52,11 @@ VERIFIED_ARTICLE_SELECTORS = {
         ".article__text",
         ".article__block",
     ),
+    "tass.ru": (
+        "[itemprop='articleBody']",
+        "[class*='ContentPageContainer_container']",
+        "article",
+    ),
     "mcx.gov.ru": (
         "[itemprop='articleBody']",
         ".news-detail__content",
@@ -129,7 +134,20 @@ def extract_article(url, fallback_title=""):
             )
     else:
         soup = fetch_soup(fetch_url, "Просмотр новости", timeout=25, verify=False)
-        if soup is None and verified_selectors:
+        if _is_tass_url(url) and (
+            soup is None or _is_tass_challenge(soup)
+        ):
+            # Открытый RSS ТАСС содержит только анонс. Полная публикация
+            # загружается обычным браузером только по клику пользователя.
+            soup = fetch_soup_js(
+                fetch_url,
+                "Просмотр ТАСС",
+                wait_ms=9000,
+                timeout_ms=60000,
+                wait_until="domcontentloaded",
+                use_partial_on_timeout=True,
+            )
+        elif soup is None and verified_selectors:
             soup = fetch_soup_js(
                 fetch_url,
                 "Просмотр новости",
@@ -156,6 +174,16 @@ def extract_article(url, fallback_title=""):
 
     if _is_interfax_url(url):
         article = _extract_interfax_article(soup, fallback_title)
+        if article:
+            return article
+
+    if _is_ria_url(url):
+        article = _extract_ria_article(soup, fallback_title)
+        if article:
+            return article
+
+    if _is_tass_url(url):
+        article = _extract_tass_article(soup, fallback_title)
         if article:
             return article
 
@@ -213,6 +241,26 @@ def _is_interfax_url(url):
     )
 
 
+def _is_ria_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return hostname == "ria.ru" or hostname.endswith(".ria.ru")
+
+
+def _is_tass_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return hostname == "tass.ru" or hostname.endswith(".tass.ru")
+
+
+def _is_tass_challenge(soup):
+    """Распознаёт техническую страницу проверки браузера ТАСС."""
+    if soup is None:
+        return True
+    return bool(
+        soup.select_one("js-challenge-loader, #id_captcha_frame_div")
+        or "servicepipe.tech" in str(soup)
+    )
+
+
 def _extract_interfax_article(soup, fallback_title):
     """Берёт полный текст статьи, а не короткое описание из JSON-LD."""
     container = soup.select_one(
@@ -241,6 +289,94 @@ def _extract_interfax_article(soup, fallback_title):
         "paragraphs": paragraphs[:100],
         "error": "",
     }
+
+
+def _extract_ria_article(soup, fallback_title):
+    """Берёт текстовые блоки РИА, исключая пересказ ИИ и подписи к фото."""
+    page_title = _first_text(
+        soup.select_one("h1.article__title"),
+        soup.select_one("h1"),
+        soup.select_one("meta[property='og:title']"),
+    )
+    if fallback_title and not _titles_match(fallback_title, page_title):
+        return None
+
+    body = soup.select_one(".article__body, [itemprop='articleBody']")
+    if body is None:
+        return None
+
+    paragraphs = _exact_article_paragraphs(
+        body.select(".article__block[data-type='text'] .article__text"),
+        fallback_title or page_title,
+    )
+
+    if not paragraphs:
+        return None
+
+    return {
+        "title": fallback_title or page_title,
+        "paragraphs": paragraphs[:100],
+        "error": "",
+    }
+
+
+def _extract_tass_article(soup, fallback_title):
+    """Извлекает полный текст со страницы ТАСС после браузерной загрузки."""
+    if _is_tass_challenge(soup):
+        return None
+
+    page_title = _first_text(
+        soup.select_one("h1"),
+        soup.select_one("[itemprop='headline']"),
+        soup.select_one("meta[property='og:title']"),
+    )
+    if fallback_title and not _titles_match(fallback_title, page_title):
+        return None
+
+    container = soup.select_one(
+        "[class*='ContentPageContainer_container'], "
+        "[itemprop='articleBody'], article"
+    )
+    if container is None:
+        return None
+
+    paragraphs = _exact_article_paragraphs(
+        container.select("p, blockquote"),
+        fallback_title or page_title,
+    )
+    if not paragraphs:
+        return None
+
+    return {
+        "title": fallback_title or page_title,
+        "paragraphs": paragraphs[:100],
+        "error": "",
+    }
+
+
+def _exact_article_paragraphs(nodes, title):
+    """Чистит уже найденные точные блоки статьи, сохраняя короткие абзацы."""
+    result = []
+    seen = set()
+    title_key = _title_key(title)
+
+    for node in nodes:
+        text = " ".join(node.get_text(" ", strip=True).split())
+        normalized = _title_key(text)
+        folded = text.casefold()
+        if len(text) < 15:
+            continue
+        if title_key and normalized == title_key:
+            continue
+        if any(part in folded for part in SKIP_PARTS):
+            continue
+        if any(part in folded for part in ARTICLE_MENU_PARTS):
+            continue
+        if normalized not in seen:
+            seen.add(normalized)
+            result.append(text)
+
+    return result
 
 
 def _verified_article_selectors(url):
