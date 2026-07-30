@@ -119,6 +119,15 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Госструктуры", header)
         self.assertIn("Информагентства", header)
 
+    def test_header_contains_five_click_easter_egg(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get("/")
+
+        html = response.get_data(as_text=True)
+        self.assertIn('id="brand-home"', html)
+        self.assertIn("kyodo-easter-egg.webp", html)
+        self.assertIn("if(brandClicks >= 5)", html)
+
     def test_tass_article_uses_official_rss_summary(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
             response = web_app.app.test_client().get(

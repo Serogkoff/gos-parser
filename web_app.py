@@ -57,7 +57,29 @@ HTML = """
             display:grid;grid-template-columns:auto minmax(300px,1fr) auto;
             align-items:center;gap:26px
         }
-        .brand{font-size:30px;font-weight:780;letter-spacing:-.05em}
+        .brand{
+            position:relative;z-index:6;display:inline-flex;align-items:center;
+            min-height:52px;font-size:30px;font-weight:780;letter-spacing:-.05em
+        }
+        .brand-text{transition:opacity .18s,transform .18s}
+        .brand-easter-logo{
+            position:absolute;left:-12px;top:50%;width:180px;height:auto;
+            opacity:0;pointer-events:none;mix-blend-mode:multiply;
+            filter:drop-shadow(0 10px 18px rgba(16,21,28,.2));
+            transform:translateY(-50%) scale(.2) rotate(-14deg);
+            transform-origin:38% 50%
+        }
+        .brand.easter-active .brand-text{opacity:0;transform:scale(.82)}
+        .brand.easter-active .brand-easter-logo{
+            animation:brand-easter-pop 4.2s cubic-bezier(.2,.85,.24,1) both
+        }
+        @keyframes brand-easter-pop{
+            0%{opacity:0;transform:translateY(-50%) scale(.2) rotate(-14deg)}
+            12%{opacity:1;transform:translateY(-50%) scale(1.12) rotate(4deg)}
+            20%,82%{opacity:1;transform:translateY(-50%) scale(1) rotate(0)}
+            92%{opacity:1;transform:translateY(-50%) scale(1.05) rotate(-3deg)}
+            100%{opacity:0;transform:translateY(-50%) scale(.25) rotate(12deg)}
+        }
         .site-sections{height:86px;display:flex;align-items:stretch;justify-content:center;gap:26px}
         .site-section{
             position:relative;padding:0 3px;display:flex;align-items:center;gap:7px;
@@ -202,17 +224,29 @@ HTML = """
             .topbar-tools{align-items:flex-end;flex-direction:column-reverse;gap:10px}
             .site-sections{gap:18px;overflow-x:auto}.site-section{font-size:13px}
             .clock-copy{display:none}
+            .brand-easter-logo{left:-7px;width:140px}
             .health{min-height:38px;padding:0 12px;font-size:11px}
             .toolbar,.sidebar{grid-template-columns:1fr}.news-card{padding:20px 48px 20px 18px}
             .news-card.match{padding-left:13px}.feed-heading{padding:0 18px}.news-card h3{font-size:21px}
             .meta{align-items:flex-start;flex-direction:column;gap:4px}.meta i{display:none}
+        }
+        @media(prefers-reduced-motion:reduce){
+            .brand-text{transition:none}
+            .brand.easter-active .brand-easter-logo{animation:none;opacity:1;transform:translateY(-50%)}
         }
     </style>
 </head>
 <body>
 <main class="shell">
     <header class="topbar">
-        <a class="brand" href="/">Монитор</a>
+        <a class="brand" id="brand-home" href="/" aria-label="На главную">
+            <span class="brand-text">Монитор</span>
+            <img
+                class="brand-easter-logo"
+                src="{{url_for('static', filename='kyodo-easter-egg.webp')}}"
+                alt=""
+            >
+        </a>
         <nav class="site-sections" aria-label="Основные разделы">
             <a class="site-section {{'active' if source_group == 'government' else ''}}" href="/">
                 Госструктуры <span>{{government_total}}</span>
@@ -376,6 +410,7 @@ HTML = """
     const emptyState = document.getElementById('empty-state');
     const savedButton = document.getElementById('saved-only');
     const savedCount = document.getElementById('saved-count');
+    const brandHome = document.getElementById('brand-home');
     const newsIndex = {{news_index|tojson}};
     const groupHome = {{group_home|tojson}};
     const sourceBase = {{source_base|tojson}};
@@ -383,6 +418,42 @@ HTML = """
     let saved = new Set(JSON.parse(localStorage.getItem('monitor-saved') || '[]'));
     const unreadStorageKey = 'monitor-unread-v1';
     let unreadState;
+    let brandClicks = 0;
+    let brandClickTimer = null;
+    let brandHideTimer = null;
+
+    brandHome.addEventListener('click', event => {
+        if(
+            event.detail === 0 || event.button !== 0 ||
+            event.ctrlKey || event.metaKey || event.shiftKey || event.altKey
+        ){
+            return;
+        }
+
+        event.preventDefault();
+        brandClicks += 1;
+        clearTimeout(brandClickTimer);
+
+        if(brandClicks >= 5){
+            brandClicks = 0;
+            clearTimeout(brandHideTimer);
+            brandHome.classList.remove('easter-active');
+            void brandHome.offsetWidth;
+            brandHome.classList.add('easter-active');
+            brandHideTimer = setTimeout(
+                () => brandHome.classList.remove('easter-active'),
+                4200
+            );
+            return;
+        }
+
+        brandClickTimer = setTimeout(() => {
+            if(brandClicks === 1){
+                window.location.assign(brandHome.href);
+            }
+            brandClicks = 0;
+        }, 650);
+    });
 
     try{
         unreadState = JSON.parse(localStorage.getItem(unreadStorageKey) || 'null');
