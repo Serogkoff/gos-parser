@@ -120,19 +120,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Информагентства", header)
 
     def test_tass_article_uses_official_rss_summary(self):
-        with patch.object(
-            web_app,
-            "load_json",
-            side_effect=self._load_json,
-        ), patch.object(
-            web_app,
-            "extract_article",
-            return_value={
-                "title": "Материал ТАСС",
-                "paragraphs": [],
-                "error": "Браузерная проверка не завершилась.",
-            },
-        ):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
             response = web_app.app.test_client().get(
                 "/article?url=https%3A%2F%2Ftass.ru%2Fpolitika%2F123456"
             )

@@ -762,19 +762,16 @@ def article_page():
     )
     if item is None:
         abort(404)
-    article = extract_article(url, item.get("title", ""))
-    if (
-        item.get("source") == "ТАСС"
-        and not article.get("paragraphs")
-        and item.get("summary")
-    ):
-        # Если браузерная проверка ТАСС не завершилась, официальный анонс
-        # из RSS остаётся безопасным запасным вариантом.
+    if item.get("source") == "ТАСС" and item.get("summary"):
+        # RSS ТАСС отдаёт официальный анонс сразу и без браузерной проверки.
+        # Полную публикацию при необходимости можно открыть по ссылке.
         article = {
             "title": item.get("title", ""),
             "paragraphs": [item["summary"]],
             "error": "",
         }
+    else:
+        article = extract_article(url, item.get("title", ""))
     back_url = request.referrer if request.referrer and request.host in request.referrer else "/"
     return render_template_string(
         ARTICLE_HTML, article=article, item=item, back_url=back_url

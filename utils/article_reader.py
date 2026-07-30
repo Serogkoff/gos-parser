@@ -52,11 +52,6 @@ VERIFIED_ARTICLE_SELECTORS = {
         ".article__text",
         ".article__block",
     ),
-    "tass.ru": (
-        "[itemprop='articleBody']",
-        "[class*='ContentPageContainer_container']",
-        "article",
-    ),
     "mcx.gov.ru": (
         "[itemprop='articleBody']",
         ".news-detail__content",
@@ -134,20 +129,7 @@ def extract_article(url, fallback_title=""):
             )
     else:
         soup = fetch_soup(fetch_url, "Просмотр новости", timeout=25, verify=False)
-        if _is_tass_url(url) and (
-            soup is None or _is_tass_challenge(soup)
-        ):
-            # Открытый RSS ТАСС содержит только анонс. Полная публикация
-            # загружается обычным браузером только по клику пользователя.
-            soup = fetch_soup_js(
-                fetch_url,
-                "Просмотр ТАСС",
-                wait_ms=9000,
-                timeout_ms=60000,
-                wait_until="domcontentloaded",
-                use_partial_on_timeout=True,
-            )
-        elif soup is None and verified_selectors:
+        if soup is None and verified_selectors:
             soup = fetch_soup_js(
                 fetch_url,
                 "Просмотр новости",
@@ -179,11 +161,6 @@ def extract_article(url, fallback_title=""):
 
     if _is_ria_url(url):
         article = _extract_ria_article(soup, fallback_title)
-        if article:
-            return article
-
-    if _is_tass_url(url):
-        article = _extract_tass_article(soup, fallback_title)
         if article:
             return article
 
@@ -246,21 +223,6 @@ def _is_ria_url(url):
     return hostname == "ria.ru" or hostname.endswith(".ria.ru")
 
 
-def _is_tass_url(url):
-    hostname = (urlsplit(url).hostname or "").casefold()
-    return hostname == "tass.ru" or hostname.endswith(".tass.ru")
-
-
-def _is_tass_challenge(soup):
-    """Распознаёт техническую страницу проверки браузера ТАСС."""
-    if soup is None:
-        return True
-    return bool(
-        soup.select_one("js-challenge-loader, #id_captcha_frame_div")
-        or "servicepipe.tech" in str(soup)
-    )
-
-
 def _extract_interfax_article(soup, fallback_title):
     """Берёт полный текст статьи, а не короткое описание из JSON-LD."""
     container = soup.select_one(
@@ -310,40 +272,6 @@ def _extract_ria_article(soup, fallback_title):
         fallback_title or page_title,
     )
 
-    if not paragraphs:
-        return None
-
-    return {
-        "title": fallback_title or page_title,
-        "paragraphs": paragraphs[:100],
-        "error": "",
-    }
-
-
-def _extract_tass_article(soup, fallback_title):
-    """Извлекает полный текст со страницы ТАСС после браузерной загрузки."""
-    if _is_tass_challenge(soup):
-        return None
-
-    page_title = _first_text(
-        soup.select_one("h1"),
-        soup.select_one("[itemprop='headline']"),
-        soup.select_one("meta[property='og:title']"),
-    )
-    if fallback_title and not _titles_match(fallback_title, page_title):
-        return None
-
-    container = soup.select_one(
-        "[class*='ContentPageContainer_container'], "
-        "[itemprop='articleBody'], article"
-    )
-    if container is None:
-        return None
-
-    paragraphs = _exact_article_paragraphs(
-        container.select("p, blockquote"),
-        fallback_title or page_title,
-    )
     if not paragraphs:
         return None
 

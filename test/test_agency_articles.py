@@ -65,56 +65,5 @@ class AgencyArticleReaderTests(unittest.TestCase):
             " ".join(article["paragraphs"]),
         )
 
-    def test_tass_opens_browser_after_challenge_and_reads_full_text(self):
-        challenge = BeautifulSoup(
-            """
-            <html>
-              <script src="https://servicepipe.tech/loader.js"></script>
-              <body><js-challenge-loader></js-challenge-loader></body>
-            </html>
-            """,
-            "html.parser",
-        )
-        article_page = BeautifulSoup(
-            """
-            <html>
-              <head>
-                <meta property="og:title"
-                      content="ТАСС сообщил о важном событии">
-              </head>
-              <body>
-                <div class="ContentPageContainer_container__abc">
-                  <h1>ТАСС сообщил о важном событии</h1>
-                  <p>МОСКВА, 30 июля. /ТАСС/. Первый полный абзац
-                  публикации содержит важные подробности события.</p>
-                  <p>Второй полный абзац содержит дополнительную информацию
-                  и комментарий официального представителя.</p>
-                  <p>Пострадавших нет.</p>
-                </div>
-              </body>
-            </html>
-            """,
-            "html.parser",
-        )
-
-        with mock.patch(
-            "utils.article_reader.fetch_soup",
-            return_value=challenge,
-        ), mock.patch(
-            "utils.article_reader.fetch_soup_js",
-            return_value=article_page,
-        ) as browser_fetch:
-            article = extract_article(
-                "https://tass.ru/obschestvo/27967349",
-                "ТАСС сообщил о важном событии",
-            )
-
-        browser_fetch.assert_called_once()
-        self.assertFalse(article["error"])
-        self.assertEqual(len(article["paragraphs"]), 3)
-        self.assertIn("Первый полный абзац", article["paragraphs"][0])
-        self.assertEqual(article["paragraphs"][2], "Пострадавших нет.")
-
-
 if __name__ == "__main__":
     unittest.main()
