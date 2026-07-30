@@ -106,10 +106,30 @@ ARTICLE_MENU_PARTS = (
     "онлайн-сервисы все сервисы",
 )
 
+MVD_HEADER_PARTS = (
+    "министерство внутренних дел российской федерации",
+    "график приема граждан руководящим составом мвд россии",
+    "о рассмотрении обращений граждан и организаций",
+    "поступление на службу в органы внутренних дел российской федерации",
+    "мвд россии министр структура министерства руководство",
+    "деятельность служба статистика и аналитика",
+    "для граждан прием обращений граждан и организаций",
+    "онлайн-сервисы все сервисы",
+)
+
+MVD_FOOTER_STARTS = (
+    "сайты подразделений центрального аппарата мвд россии",
+    "список лиц, которым запрещено посещение мест проведения",
+    "конкурсы научно-исследовательских работ в интересах вс рф",
+    "все материалы сайта министерства внутренних дел российской федерации",
+    "это разрешение в равной степени распространяется",
+)
+
 
 def extract_article(url, fallback_title=""):
     fetch_url = url
     verified_selectors = _verified_article_selectors(url)
+    is_mvd = _is_mvd_url(url)
     if _is_minobrnauki_url(url) or _is_mnr_url(url):
         fetch_url = url.rstrip("/") + "/"
 
@@ -179,7 +199,9 @@ def extract_article(url, fallback_title=""):
         soup.select_one("[itemprop='headline']"),
         soup.select_one("meta[property='og:title']"),
     ) or fallback_title
-    if fallback_title and title.casefold().strip() in GENERIC_TITLES:
+    if is_mvd and fallback_title:
+        title = fallback_title
+    elif fallback_title and title.casefold().strip() in GENERIC_TITLES:
         title = fallback_title
 
     best = []
@@ -191,6 +213,9 @@ def extract_article(url, fallback_title=""):
 
     if not best:
         best = _paragraphs(soup)
+
+    if is_mvd:
+        best = _clean_mvd_paragraphs(best)
 
     return {
         "title": title,
@@ -207,6 +232,38 @@ def _is_minobrnauki_url(url):
 def _is_mnr_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
     return hostname == "mnr.gov.ru" or hostname.endswith(".mnr.gov.ru")
+
+
+def _is_mvd_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return (
+        hostname in {"мвд.рф", "xn--b1aew.xn--p1ai"}
+        or hostname.endswith(".мвд.рф")
+        or hostname.endswith(".xn--b1aew.xn--p1ai")
+    )
+
+
+def _clean_mvd_paragraphs(paragraphs):
+    """Обрезает шапку и подвал МВД, не меняя извлечение самой статьи."""
+    result = []
+    article_started = False
+
+    for paragraph in paragraphs:
+        text = " ".join(str(paragraph or "").split())
+        folded = text.casefold().replace("ё", "е")
+
+        if any(marker in folded for marker in MVD_FOOTER_STARTS):
+            break
+        if (
+            not article_started
+            and any(marker in folded for marker in MVD_HEADER_PARTS)
+        ):
+            continue
+
+        article_started = True
+        result.append(text)
+
+    return result
 
 
 def _is_interfax_url(url):

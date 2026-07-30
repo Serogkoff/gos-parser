@@ -5,7 +5,9 @@ from bs4 import BeautifulSoup
 
 from parsers.sites.mintrud import _is_news_article_url
 from utils.article_reader import (
+    _clean_mvd_paragraphs,
     _clean_mnr_paragraphs,
+    _is_mvd_url,
     _paragraphs,
     extract_article,
 )
@@ -34,6 +36,71 @@ class MintrudUrlTests(unittest.TestCase):
 
 
 class ArticleCleanupTests(unittest.TestCase):
+    def test_mvd_keeps_feed_title_and_trims_header_and_footer(self):
+        soup = BeautifulSoup(
+            """
+            <main>
+                <h1>МИНИСТЕРСТВО ВНУТРЕННИХ ДЕЛ РОССИЙСКОЙ ФЕДЕРАЦИИ</h1>
+                <p>График приема граждан руководящим составом МВД России</p>
+                <p>О рассмотрении обращений граждан и организаций</p>
+                <p>Поступление на службу в органы внутренних дел
+                Российской Федерации</p>
+                <p>МВД России Министр Структура Министерства Руководство
+                Общественный совет История Противодействие коррупции</p>
+                <p>Деятельность Служба Статистика и аналитика Мониторинг
+                общественного мнения Результаты деятельности</p>
+                <p>Для граждан Прием обращений граждан и организаций
+                График приема граждан руководящим составом МВД России</p>
+                <p>Онлайн-сервисы ВСЕ СЕРВИСЫ Прием обращений граждан и
+                организаций Ваш участковый Отдел полиции</p>
+                <p>Сотрудники Управления уголовного розыска установили
+                личность и задержали курьера мошенников.</p>
+                <p>В отношении подозреваемого возбуждено уголовное дело
+                по признакам мошенничества.</p>
+                <p>Сайты подразделений центрального аппарата МВД России</p>
+                <p>Список лиц, которым запрещено посещение мест проведения
+                официальных спортивных соревнований</p>
+                <p>Все материалы сайта Министерства внутренних дел
+                Российской Федерации могут быть воспроизведены.</p>
+            </main>
+            """,
+            "html.parser",
+        )
+        with patch("utils.article_reader.fetch_soup", return_value=soup):
+            article = extract_article(
+                "https://мвд.рф/news/item/12345",
+                "Полицейские задержали курьера мошенников",
+            )
+
+        self.assertEqual(
+            article["title"],
+            "Полицейские задержали курьера мошенников",
+        )
+        self.assertEqual(
+            article["paragraphs"],
+            [
+                "Сотрудники Управления уголовного розыска установили "
+                "личность и задержали курьера мошенников.",
+                "В отношении подозреваемого возбуждено уголовное дело "
+                "по признакам мошенничества.",
+            ],
+        )
+
+    def test_mvd_cleanup_does_not_remove_article_words_after_start(self):
+        paragraphs = [
+            "Основной текст публикации уже начался и содержит важные сведения.",
+            "О рассмотрении обращений граждан и организаций рассказали "
+            "в следующем содержательном абзаце публикации.",
+        ]
+        self.assertEqual(_clean_mvd_paragraphs(paragraphs), paragraphs)
+
+    def test_recognizes_mvd_unicode_and_punycode_hosts(self):
+        self.assertTrue(_is_mvd_url("https://мвд.рф/news/item/12345"))
+        self.assertTrue(
+            _is_mvd_url("https://xn--b1aew.xn--p1ai/news/item/12345")
+        )
+        self.assertFalse(_is_mvd_url("https://example.com/news/item/12345"))
+
     def test_uses_fallback_title_for_generic_page_heading(self):
         soup = BeautifulSoup(
             """
