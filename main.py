@@ -43,6 +43,7 @@ from parsers.sites.sakhalin import parse as sakh
 from parsers.sites.ria import parse as ria
 from parsers.sites.tass import parse as tass
 from parsers.sites.interfax import parse as interfax
+from parsers.sites.yonhap import parse as yonhap
 
 
 GOVERNMENT_SITES = [
@@ -78,6 +79,7 @@ AGENCY_SITES = [
     ("РИА Новости", ria),
     ("ТАСС", tass),
     ("Интерфакс", interfax),
+    ("Yonhap", yonhap),
 ]
 
 SITES = [*GOVERNMENT_SITES, *AGENCY_SITES]

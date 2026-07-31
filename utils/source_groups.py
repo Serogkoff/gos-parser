@@ -38,6 +38,7 @@ AGENCY_SOURCES = frozenset({
     "РИА Новости",
     "ТАСС",
     "Интерфакс",
+    "Yonhap",
 })
 
 

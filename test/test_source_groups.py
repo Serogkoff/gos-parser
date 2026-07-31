@@ -16,6 +16,7 @@ class SourceGroupTests(unittest.TestCase):
         self.assertEqual(source_group("РИА Новости"), AGENCIES_GROUP)
         self.assertEqual(source_group("ТАСС"), AGENCIES_GROUP)
         self.assertEqual(source_group("Интерфакс"), AGENCIES_GROUP)
+        self.assertEqual(source_group("Yonhap"), AGENCIES_GROUP)
         self.assertEqual(source_group("МЧС"), GOVERNMENT_GROUP)
 
     def test_filters_news_without_losing_fields(self):

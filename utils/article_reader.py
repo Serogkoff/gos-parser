@@ -52,6 +52,10 @@ VERIFIED_ARTICLE_SELECTORS = {
         ".article__text",
         ".article__block",
     ),
+    "yna.co.kr": (
+        "#articleWrap .story-news",
+        ".story-news.article",
+    ),
     "mcx.gov.ru": (
         "[itemprop='articleBody']",
         ".news-detail__content",
@@ -184,6 +188,11 @@ def extract_article(url, fallback_title=""):
         if article:
             return article
 
+    if _is_yonhap_url(url):
+        article = _extract_yonhap_article(soup, fallback_title)
+        if article:
+            return article
+
     if verified_selectors:
         return _extract_verified_article(
             soup,
@@ -280,6 +289,11 @@ def _is_ria_url(url):
     return hostname == "ria.ru" or hostname.endswith(".ria.ru")
 
 
+def _is_yonhap_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return hostname == "yna.co.kr" or hostname.endswith(".yna.co.kr")
+
+
 def _extract_interfax_article(soup, fallback_title):
     """Берёт полный текст статьи, а не короткое описание из JSON-LD."""
     container = soup.select_one(
@@ -328,6 +342,49 @@ def _extract_ria_article(soup, fallback_title):
         body.select(".article__block[data-type='text'] .article__text"),
         fallback_title or page_title,
     )
+
+    if not paragraphs:
+        return None
+
+    return {
+        "title": fallback_title or page_title,
+        "paragraphs": paragraphs[:100],
+        "error": "",
+    }
+
+
+def _extract_yonhap_article(soup, fallback_title):
+    """Берёт только основной корейский текст без меню и AI-пересказа."""
+    page_title = _first_text(
+        soup.select_one(".title-article01 h1.tit01"),
+        soup.select_one("meta[property='og:title']"),
+    )
+    if fallback_title and not _titles_match(fallback_title, page_title):
+        return None
+
+    body = soup.select_one("#articleWrap .story-news, .story-news.article")
+    if body is None:
+        return None
+
+    paragraphs = []
+    seen = set()
+    for node in body.find_all("p", recursive=False):
+        classes = set(node.get("class", []))
+        if "txt-copyright" in classes:
+            continue
+
+        text = " ".join(node.get_text(" ", strip=True).split())
+        normalized = _title_key(text)
+        if (
+            len(text) < 15
+            or "저작권자" in text
+            or "무단 전재" in text
+            or re.fullmatch(r"[\w.+-]+@yna\.co\.kr", text)
+        ):
+            continue
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            paragraphs.append(text)
 
     if not paragraphs:
         return None
@@ -586,9 +643,9 @@ def _titles_match(expected, actual):
 def _title_key(value):
     return " ".join(
         re.findall(
-            r"[a-zа-я0-9]+",
+            r"[^\W_]+",
             str(value or "").casefold().replace("ё", "е"),
-            flags=re.IGNORECASE,
+            flags=re.IGNORECASE | re.UNICODE,
         )
     )
 

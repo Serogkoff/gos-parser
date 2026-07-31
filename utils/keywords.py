@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from config import KEYWORDS
+from config import KEYWORDS, YONHAP_KEYWORDS
 from utils.storage import (
     ALL_NEWS_FILE,
     FOUND_NEWS_FILE,
@@ -14,6 +14,10 @@ from utils.storage import (
 
 
 KEYWORDS_FILE = Path(__file__).resolve().parent.parent / "keywords.json"
+KEYWORD_MIGRATIONS_FILE = (
+    Path(__file__).resolve().parent.parent / "keyword_migrations.json"
+)
+YONHAP_KEYWORDS_MIGRATION = "yonhap_keywords_v1"
 
 
 def _clean_keywords(words):
@@ -29,15 +33,42 @@ def _clean_keywords(words):
 
 
 def load_keywords():
+    words = None
     if KEYWORDS_FILE.exists():
         try:
             with KEYWORDS_FILE.open("r", encoding="utf-8") as file:
                 data = json.load(file)
             if isinstance(data, list):
-                return _clean_keywords(data)
+                words = _clean_keywords(data)
         except (OSError, json.JSONDecodeError):
             pass
-    return _clean_keywords(KEYWORDS)
+    if words is None:
+        words = _clean_keywords(KEYWORDS)
+    return _apply_keyword_migrations(words)
+
+
+def _apply_keyword_migrations(words):
+    """Один раз добавляет новые штатные слова в пользовательский список."""
+    completed = []
+    if KEYWORD_MIGRATIONS_FILE.exists():
+        try:
+            with KEYWORD_MIGRATIONS_FILE.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+            if isinstance(data, list):
+                completed = [str(value) for value in data]
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    if YONHAP_KEYWORDS_MIGRATION in completed:
+        return _clean_keywords(words)
+
+    migrated = _clean_keywords([*words, *YONHAP_KEYWORDS])
+    _write_json_atomic(KEYWORDS_FILE, migrated)
+    _write_json_atomic(
+        KEYWORD_MIGRATIONS_FILE,
+        [*completed, YONHAP_KEYWORDS_MIGRATION],
+    )
+    return migrated
 
 
 def save_keywords(words):
@@ -58,11 +89,14 @@ def remove_keyword(word):
 
 
 def search_keywords(news_list, keywords=None):
-    """Ищет активные ключевые слова в заголовках новостей."""
+    """Ищет слова в заголовках, а у Yonhap также в RSS-описании."""
     keywords = load_keywords() if keywords is None else _clean_keywords(keywords)
     found = []
     for item in news_list:
-        text = item.get("title", "").casefold()
+        text_parts = [str(item.get("title", ""))]
+        if item.get("source") == "Yonhap":
+            text_parts.append(str(item.get("summary", "")))
+        text = " ".join(text_parts).casefold()
         matched = [kw for kw in keywords if kw.casefold() in text]
         if matched:
             copy = dict(item)
