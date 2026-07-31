@@ -41,6 +41,28 @@ class MinoboronyParserTests(unittest.TestCase):
         self.assertEqual(result[0]["date"], "2026-07-31")
         self.assertEqual(result[0]["url"], ARTICLE_URL)
 
+    def test_reads_date_from_generated_css_card(self):
+        soup = BeautifulSoup(
+            f"""
+            <div class="css-ut84ul-CardWrapper">
+              <div class="css-bo01xn-Card">
+                <a href="/news/{ARTICLE_ID}">{TITLE}</a>
+                <p>Краткое описание публикации Министерства обороны России.</p>
+                <div class="css-random-name">31 июля 2026 12:31</div>
+              </div>
+            </div>
+            """,
+            "html.parser",
+        )
+
+        result = _parse_news_page(
+            soup,
+            now=datetime(2026, 7, 31, 14, 0),
+        )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["date"], "2026-07-31")
+
     def test_reads_embedded_page_state(self):
         payload = {
             "items": [{

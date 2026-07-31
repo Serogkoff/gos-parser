@@ -67,12 +67,14 @@ def _parse_news_page(soup, now=None):
         if len(title) < 15 or is_junk(title):
             continue
 
-        publication_date = date_from_news_card(
-            link,
-            r"/news/[0-9a-f-]{36}/?",
-            max_levels=7,
-            now=now,
-        )
+        publication_date = _date_from_minoborony_card(link, now=now)
+        if not publication_date:
+            publication_date = date_from_news_card(
+                link,
+                r"/news/[0-9a-f-]{36}/?",
+                max_levels=7,
+                now=now,
+            )
         if publication_date:
             parsed = datetime.strptime(publication_date, "%Y-%m-%d")
             if parsed < cutoff:
@@ -116,6 +118,46 @@ def _title_from_link(link):
     cleaned = [" ".join(str(value or "").split()) for value in candidates]
     cleaned = [value for value in cleaned if 15 <= len(value) <= 500]
     return max(cleaned, key=len, default="")
+
+
+def _date_from_minoborony_card(link, now=None):
+    """Читает дату из безымянного CSS-блока карточки нового сайта mil.ru."""
+    date_line = re.compile(
+        r"^\s*\d{1,2}\s+"
+        r"(?:января|февраля|марта|апреля|мая|июня|июля|августа|"
+        r"сентября|октября|ноября|декабря)\s+20\d{2}"
+        r"(?:\s*(?:г\.)?)?(?:\s*,?\s*\d{1,2}:\d{2})?\s*$",
+        re.IGNORECASE,
+    )
+    current = link
+
+    for _ in range(7):
+        current = getattr(current, "parent", None)
+        if current is None:
+            break
+
+        article_urls = {
+            urljoin(NEWS_URL, node.get("href", ""))
+            for node in current.select("a[href]")
+            if _is_article_url(urljoin(NEWS_URL, node.get("href", "")))
+        }
+        if len(article_urls) > 1:
+            break
+
+        candidates = []
+        for node in current.select("time, span, p, div"):
+            value = " ".join(node.get_text(" ", strip=True).split())
+            if date_line.fullmatch(value):
+                parsed = validate_publication_date(value, now=now)
+                if parsed and parsed not in candidates:
+                    candidates.append(parsed)
+
+        if len(candidates) == 1:
+            return candidates[0]
+        if len(candidates) > 1:
+            return ""
+
+    return ""
 
 
 def _news_from_embedded_json(soup, cutoff, now):
