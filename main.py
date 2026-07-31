@@ -5,6 +5,7 @@ from threading import Event, Thread
 from config import (
     AGENCY_UPDATE_INTERVAL,
     GOVERNMENT_UPDATE_INTERVAL,
+    KYODO_UPDATE_INTERVAL,
     MAX_RETRIES,
     PAUSE_BETWEEN_REQUESTS,
     PROJECT_VERSION,
@@ -44,6 +45,7 @@ from parsers.sites.ria import parse as ria
 from parsers.sites.tass import parse as tass
 from parsers.sites.interfax import parse as interfax
 from parsers.sites.yonhap import parse as yonhap
+from parsers.sites.kyodo import parse as kyodo
 
 
 GOVERNMENT_SITES = [
@@ -82,7 +84,11 @@ AGENCY_SITES = [
     ("Yonhap", yonhap),
 ]
 
-SITES = [*GOVERNMENT_SITES, *AGENCY_SITES]
+KYODO_SITES = [
+    ("Киодо (共同通信)", kyodo),
+]
+
+SITES = [*GOVERNMENT_SITES, *AGENCY_SITES, *KYODO_SITES]
 
 
 def safe_parse(parser_func, max_retries=2):
@@ -206,6 +212,19 @@ def main():
     )
     agency_thread.start()
 
+    kyodo_thread = Thread(
+        target=run_schedule,
+        args=(
+            KYODO_SITES,
+            "Киодо",
+            KYODO_UPDATE_INTERVAL,
+            stop_event,
+        ),
+        name="kyodo-parser",
+        daemon=True,
+    )
+    kyodo_thread.start()
+
     try:
         run_schedule(
             GOVERNMENT_SITES,
@@ -218,6 +237,7 @@ def main():
     finally:
         stop_event.set()
         agency_thread.join(timeout=2)
+        kyodo_thread.join(timeout=2)
 
 
 if __name__ == "__main__":

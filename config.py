@@ -1,4 +1,4 @@
-PROJECT_VERSION = "2026.07.31.1"
+PROJECT_VERSION = "2026.07.31.2"
 
 KEYWORDS = [
     "Курил", "Сахалин", "Владивосток", "Хабаровск", "Камчатка", "Дальний Восток",
@@ -27,6 +27,7 @@ YONHAP_KEYWORDS = [
 PAUSE_BETWEEN_REQUESTS = 2
 GOVERNMENT_UPDATE_INTERVAL = 300
 AGENCY_UPDATE_INTERVAL = 180
+KYODO_UPDATE_INTERVAL = 600
 # Старое имя оставлено для совместимости с локальными скриптами.
 UPDATE_INTERVAL = GOVERNMENT_UPDATE_INTERVAL
 MAX_RETRIES = 2

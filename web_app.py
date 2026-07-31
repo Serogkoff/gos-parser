@@ -714,7 +714,7 @@ def render_news_page(
 
     if source_group == AGENCIES_GROUP:
         group_title = "Новости информагентств"
-        group_eyebrow = "РИА Новости · ТАСС · Интерфакс · Yonhap"
+        group_eyebrow = "РИА Новости · ТАСС · Интерфакс · Yonhap · Киодо"
         group_home = "/agencies"
         group_found = "/agencies/found"
         source_base = "/agencies/filter/"

@@ -17,6 +17,7 @@ class SourceGroupTests(unittest.TestCase):
         self.assertEqual(source_group("ТАСС"), AGENCIES_GROUP)
         self.assertEqual(source_group("Интерфакс"), AGENCIES_GROUP)
         self.assertEqual(source_group("Yonhap"), AGENCIES_GROUP)
+        self.assertEqual(source_group("Киодо (共同通信)"), AGENCIES_GROUP)
         self.assertEqual(source_group("МЧС"), GOVERNMENT_GROUP)
 
     def test_filters_news_without_losing_fields(self):
@@ -35,6 +36,7 @@ class SourceGroupTests(unittest.TestCase):
     def test_update_intervals_are_independent(self):
         self.assertEqual(config.GOVERNMENT_UPDATE_INTERVAL, 300)
         self.assertEqual(config.AGENCY_UPDATE_INTERVAL, 180)
+        self.assertEqual(config.KYODO_UPDATE_INTERVAL, 600)
 
 
 class SourceGroupPageTests(unittest.TestCase):

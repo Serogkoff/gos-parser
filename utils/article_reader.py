@@ -56,6 +56,10 @@ VERIFIED_ARTICLE_SELECTORS = {
         "#articleWrap .story-news",
         ".story-news.article",
     ),
+    "47news.jp": (
+        "article",
+        "main",
+    ),
     "mcx.gov.ru": (
         "[itemprop='articleBody']",
         ".news-detail__content",
@@ -193,6 +197,11 @@ def extract_article(url, fallback_title=""):
         if article:
             return article
 
+    if _is_kyodo_url(url):
+        article = _extract_kyodo_article(soup, fallback_title)
+        if article:
+            return article
+
     if verified_selectors:
         return _extract_verified_article(
             soup,
@@ -294,6 +303,11 @@ def _is_yonhap_url(url):
     return hostname == "yna.co.kr" or hostname.endswith(".yna.co.kr")
 
 
+def _is_kyodo_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return hostname == "47news.jp" or hostname.endswith(".47news.jp")
+
+
 def _extract_interfax_article(soup, fallback_title):
     """Берёт полный текст статьи, а не короткое описание из JSON-LD."""
     container = soup.select_one(
@@ -385,6 +399,52 @@ def _extract_yonhap_article(soup, fallback_title):
         if normalized and normalized not in seen:
             seen.add(normalized)
             paragraphs.append(text)
+
+    if not paragraphs:
+        return None
+
+    return {
+        "title": fallback_title or page_title,
+        "paragraphs": paragraphs[:100],
+        "error": "",
+    }
+
+
+def _extract_kyodo_article(soup, fallback_title):
+    """Извлекает полный японский текст Kyodo из данных страницы 47NEWS."""
+    script = soup.find("script", id="__NEXT_DATA__")
+    if script is None:
+        return None
+    try:
+        data = json.loads(script.string or script.get_text())
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+    article = (
+        data.get("props", {})
+        .get("pageProps", {})
+        .get("data", {})
+        .get("article", {})
+    )
+    if not isinstance(article, dict):
+        return None
+    if (article.get("user") or {}).get("title") != "共同通信":
+        return None
+
+    page_title = " ".join(str(article.get("title", "")).split())
+    if fallback_title and not _titles_match(fallback_title, page_title):
+        return None
+
+    body = BeautifulSoup(str(article.get("body", "")), "html.parser")
+    paragraphs = []
+    seen = set()
+    for node in body.select("p"):
+        text = " ".join(node.get_text(" ", strip=True).split())
+        normalized = _title_key(text)
+        if len(text) < 15 or not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        paragraphs.append(text)
 
     if not paragraphs:
         return None

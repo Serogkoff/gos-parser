@@ -1,0 +1,125 @@
+import json
+import unittest
+from datetime import datetime
+from unittest import mock
+
+from bs4 import BeautifulSoup
+
+from parsers.sites import kyodo
+from parsers.sites.kyodo import (
+    _is_47news_article_url,
+    _parse_47news_page,
+)
+from utils.article_reader import extract_article
+
+
+def _page_soup(page_props):
+    payload = json.dumps(
+        {"props": {"pageProps": page_props}},
+        ensure_ascii=False,
+    )
+    return BeautifulSoup(
+        f'<script id="__NEXT_DATA__" type="application/json">{payload}</script>',
+        "html.parser",
+    )
+
+
+KYODO_ITEM = {
+    "id": "14718157",
+    "title": "ロシアと日本の代表団が会談",
+    "url": "/14718157.html",
+    "startDate": "2026-07-31 19:13:52",
+    "body": "ロシアと日本の代表団が重要な問題について協議した。 ... ",
+    "image": {"url": "https://img.cf.47news.jp/photo.jpg"},
+    "user": {"title": "共同通信"},
+}
+
+
+class KyodoParserTests(unittest.TestCase):
+    def test_reads_sections_and_filters_other_newspapers(self):
+        local_item = {
+            **KYODO_ITEM,
+            "id": "999",
+            "url": "/999.html",
+            "title": "地方紙だけの記事",
+            "user": {"title": "北海道新聞"},
+        }
+        soup = _page_soup(
+            {
+                "worldNews": [KYODO_ITEM, local_item],
+                "politicsNews": [{**KYODO_ITEM, "title": "重複記事"}],
+            }
+        )
+
+        result = _parse_47news_page(
+            soup,
+            now=datetime(2026, 7, 31, 20, 0),
+        )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["source"], "Киодо (共同通信)")
+        self.assertEqual(result[0]["section"], "Международные новости")
+        self.assertEqual(result[0]["date"], "2026-07-31")
+        self.assertEqual(
+            result[0]["url"],
+            "https://www.47news.jp/14718157.html",
+        )
+        self.assertNotIn("...", result[0]["summary"])
+
+    def test_reads_top_news_nested_article_list(self):
+        result = _parse_47news_page(
+            _page_soup({"topNews": {"Article": [KYODO_ITEM]}}),
+            now=datetime(2026, 7, 31, 20, 0),
+        )
+        self.assertEqual(result[0]["section"], "Главное")
+
+    def test_accepts_only_numbered_47news_articles(self):
+        self.assertTrue(
+            _is_47news_article_url("https://www.47news.jp/14718157.html")
+        )
+        self.assertFalse(_is_47news_article_url("https://www.47news.jp/world"))
+        self.assertFalse(
+            _is_47news_article_url("https://example.com/14718157.html")
+        )
+
+    def test_parse_uses_one_homepage_request(self):
+        soup = _page_soup({"worldNews": [KYODO_ITEM]})
+        with mock.patch.object(kyodo, "fetch_soup", return_value=soup) as fetch:
+            result = kyodo.parse()
+
+        self.assertEqual(len(result), 1)
+        fetch.assert_called_once_with(
+            kyodo.HOME_URL,
+            kyodo.SOURCE_NAME,
+            timeout=35,
+            verify=True,
+        )
+
+    def test_internal_reader_uses_full_article_json(self):
+        page_props = {
+            "data": {
+                "article": {
+                    **KYODO_ITEM,
+                    "body": """
+                        <p>ロシアと日本の代表団が重要な問題について協議した。</p>
+                        <p>会談では今後の協力と国際情勢について意見を交換した。</p>
+                    """,
+                }
+            }
+        }
+        with mock.patch(
+            "utils.article_reader.fetch_soup",
+            return_value=_page_soup(page_props),
+        ):
+            article = extract_article(
+                "https://www.47news.jp/14718157.html",
+                KYODO_ITEM["title"],
+            )
+
+        self.assertFalse(article["error"])
+        self.assertEqual(len(article["paragraphs"]), 2)
+        self.assertIn("今後の協力", article["paragraphs"][1])
+
+
+if __name__ == "__main__":
+    unittest.main()
