@@ -47,6 +47,13 @@ TRAILING_SLASH_ARTICLE_RULES = (
 )
 
 SOURCE_ARTICLE_RULES = {
+    "Минобороны РФ": (
+        "z.mil.ru",
+        re.compile(
+            r"^/news/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/?$",
+            re.IGNORECASE,
+        ),
+    ),
     "Минсельхоз": (
         "mcx.gov.ru",
         re.compile(r"^/press-service/news/[^/]+/?$", re.IGNORECASE),

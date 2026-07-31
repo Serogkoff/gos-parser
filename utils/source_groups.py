@@ -32,6 +32,7 @@ GOVERNMENT_SOURCES = frozenset({
     "Минцифры",
     "Сахалин",
     "Сахалинская обл.",
+    "Минобороны РФ",
 })
 
 AGENCY_SOURCES = frozenset({

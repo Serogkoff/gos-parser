@@ -46,6 +46,7 @@ from parsers.sites.tass import parse as tass
 from parsers.sites.interfax import parse as interfax
 from parsers.sites.yonhap import parse as yonhap
 from parsers.sites.kyodo import parse as kyodo
+from parsers.sites.minoborony import parse as minoborony
 
 
 GOVERNMENT_SITES = [
@@ -75,6 +76,7 @@ GOVERNMENT_SITES = [
     ("Минэнерго", energo),
     ("Минцифры", tsifry),
     ("Сахалин", sakh),
+    ("Минобороны РФ", minoborony),
 ]
 
 AGENCY_SITES = [

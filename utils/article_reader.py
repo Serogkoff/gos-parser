@@ -36,6 +36,16 @@ GENERIC_TITLES = {
 }
 
 VERIFIED_ARTICLE_SELECTORS = {
+    "z.mil.ru": (
+        "[itemprop='articleBody']",
+        "article",
+        ".news-detail__content",
+        ".news-detail",
+        ".article__body",
+        ".article__content",
+        "[class*='news'][class*='content']",
+        "[class*='article'][class*='content']",
+    ),
     "interfax.ru": (
         "article[itemprop='articleBody']",
         "[itemprop='articleBody']",
@@ -141,7 +151,23 @@ def extract_article(url, fallback_title=""):
     if _is_minobrnauki_url(url) or _is_mnr_url(url):
         fetch_url = url.rstrip("/") + "/"
 
-    if _is_mnr_url(url):
+    if _is_minoborony_url(url):
+        soup = fetch_soup_js(
+            fetch_url,
+            "Просмотр Минобороны",
+            wait_ms=2000,
+            timeout_ms=60000,
+            wait_until="domcontentloaded",
+            use_partial_on_timeout=True,
+        )
+        if soup is None:
+            soup = fetch_soup(
+                fetch_url,
+                "Просмотр Минобороны",
+                timeout=35,
+                verify=False,
+            )
+    elif _is_mnr_url(url):
         soup = fetch_soup_js(
             fetch_url,
             "Просмотр Минприроды",
@@ -250,6 +276,11 @@ def _is_minobrnauki_url(url):
 def _is_mnr_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
     return hostname == "mnr.gov.ru" or hostname.endswith(".mnr.gov.ru")
+
+
+def _is_minoborony_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return hostname == "z.mil.ru" or hostname.endswith(".z.mil.ru")
 
 
 def _is_mvd_url(url):
