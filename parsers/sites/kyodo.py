@@ -4,10 +4,13 @@ import json
 from datetime import datetime, timedelta
 from urllib.parse import urljoin, urlsplit
 
+import requests
 from bs4 import BeautifulSoup
 
 from utils.filters import is_junk
-from utils.http_client import fetch_soup
+from utils.http_client import HEADERS
+from utils.js_client import fetch_soup_js
+from utils.logger import get_logger
 from utils.news import deduplicate_news
 
 
@@ -15,6 +18,10 @@ SOURCE_NAME = "Киодо (共同通信)"
 HOME_URL = "https://www.47news.jp/"
 PUBLISHER_NAME = "共同通信"
 MAX_AGE_DAYS = 30
+NEXT_BUILD_ID = "uFzqY36IiFlXsPPmSxzhK"
+
+logger = get_logger("kyodo")
+_next_build_id = NEXT_BUILD_ID
 
 # На главной странице 47NEWS каждая рубрика содержит шесть самых свежих
 # материалов. Поэтому один лёгкий запрос заменяет обход множества страниц.
@@ -35,26 +42,64 @@ SECTION_KEYS = (
 
 
 def parse():
-    soup = fetch_soup(
-        HOME_URL,
-        SOURCE_NAME,
-        timeout=35,
-        verify=True,
-    )
-    if soup is None:
+    page_props = _fetch_page_props()
+    if not page_props:
         print("  ✅ 0")
         return []
 
-    news = _parse_47news_page(soup)
+    news = _parse_47news_page(page_props)
     print(f"  ✅ {len(news)}")
     return news
 
 
-def _parse_47news_page(soup, now=None):
+def _fetch_page_props():
+    """Получает компактные данные Next.js, не скачивая тяжёлую главную."""
+    global _next_build_id
+
+    data_url = f"{HOME_URL}_next/data/{_next_build_id}/index.json"
+    try:
+        response = requests.get(
+            data_url,
+            headers={**HEADERS, "Accept": "application/json"},
+            timeout=(10, 45),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        page_props = payload.get("pageProps", {})
+        if page_props:
+            return page_props
+    except (requests.RequestException, ValueError) as error:
+        logger.warning(
+            f"[{SOURCE_NAME}] Компактная лента 47NEWS недоступна: "
+            f"{type(error).__name__}: {error}"
+        )
+
+    # После обновления 47NEWS меняется buildId. Браузерный резерв получает
+    # новый идентификатор и одновременно возвращает данные текущей страницы.
+    print("  ℹ️ JSON-лента недоступна — пробую 47NEWS через браузер")
+    soup = fetch_soup_js(
+        HOME_URL,
+        SOURCE_NAME,
+        wait_ms=1200,
+        timeout_ms=60000,
+        wait_until="domcontentloaded",
+        use_partial_on_timeout=True,
+    )
+    if soup is None:
+        return {}
+
+    payload = _next_payload(soup)
+    build_id = str(payload.get("buildId", "")).strip()
+    if build_id:
+        _next_build_id = build_id
+    return payload.get("props", {}).get("pageProps", {})
+
+
+def _parse_47news_page(page, now=None):
     """Читает JSON страницы и оставляет только публикации 共同通信."""
     now = now or datetime.now()
     cutoff = now - timedelta(days=MAX_AGE_DAYS)
-    page_props = _next_page_props(soup)
+    page_props = _coerce_page_props(page)
     news = []
 
     for key, section in SECTION_KEYS:
@@ -100,15 +145,20 @@ def _parse_47news_page(soup, now=None):
     return deduplicate_news(news)
 
 
-def _next_page_props(soup):
+def _next_payload(soup):
     script = soup.find("script", id="__NEXT_DATA__")
     if script is None:
         return {}
     try:
-        data = json.loads(script.string or script.get_text())
+        return json.loads(script.string or script.get_text())
     except (TypeError, json.JSONDecodeError):
         return {}
-    return data.get("props", {}).get("pageProps", {})
+
+
+def _coerce_page_props(page):
+    if isinstance(page, dict):
+        return page
+    return _next_payload(page).get("props", {}).get("pageProps", {})
 
 
 def _section_entries(value):

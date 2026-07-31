@@ -3,6 +3,7 @@ import unittest
 from datetime import datetime
 from unittest import mock
 
+import requests
 from bs4 import BeautifulSoup
 
 from parsers.sites import kyodo
@@ -82,18 +83,41 @@ class KyodoParserTests(unittest.TestCase):
             _is_47news_article_url("https://example.com/14718157.html")
         )
 
-    def test_parse_uses_one_homepage_request(self):
-        soup = _page_soup({"worldNews": [KYODO_ITEM]})
-        with mock.patch.object(kyodo, "fetch_soup", return_value=soup) as fetch:
+    def test_parse_uses_compact_next_data(self):
+        page_props = {"worldNews": [KYODO_ITEM]}
+        with mock.patch.object(
+            kyodo,
+            "_fetch_page_props",
+            return_value=page_props,
+        ) as fetch:
             result = kyodo.parse()
 
         self.assertEqual(len(result), 1)
-        fetch.assert_called_once_with(
-            kyodo.HOME_URL,
-            kyodo.SOURCE_NAME,
-            timeout=35,
-            verify=True,
-        )
+        fetch.assert_called_once_with()
+
+    def test_browser_fallback_refreshes_next_build_id(self):
+        soup = _page_soup({"worldNews": [KYODO_ITEM]})
+        script = soup.find("script", id="__NEXT_DATA__")
+        payload = json.loads(script.string)
+        payload["buildId"] = "new-build-id"
+        script.string = json.dumps(payload, ensure_ascii=False)
+
+        response = mock.Mock()
+        response.raise_for_status.side_effect = requests.HTTPError("old build")
+        old_build_id = kyodo._next_build_id
+        try:
+            with mock.patch.object(kyodo.requests, "get", return_value=response), mock.patch.object(
+                kyodo,
+                "fetch_soup_js",
+                return_value=soup,
+            ) as browser:
+                page_props = kyodo._fetch_page_props()
+
+            self.assertIn("worldNews", page_props)
+            self.assertEqual(kyodo._next_build_id, "new-build-id")
+            browser.assert_called_once()
+        finally:
+            kyodo._next_build_id = old_build_id
 
     def test_internal_reader_uses_full_article_json(self):
         page_props = {
