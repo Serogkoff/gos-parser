@@ -74,6 +74,14 @@ class KyodoParserTests(unittest.TestCase):
         )
         self.assertEqual(result[0]["section"], "Главное")
 
+    def test_reads_lightweight_kyodo_news_page(self):
+        result = _parse_47news_page(
+            {"data": {"categoryNewsList": [KYODO_ITEM]}},
+            now=datetime(2026, 7, 31, 20, 0),
+        )
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["section"], "Все новости")
+
     def test_accepts_only_numbered_47news_articles(self):
         self.assertTrue(
             _is_47news_article_url("https://www.47news.jp/14718157.html")
@@ -108,6 +116,10 @@ class KyodoParserTests(unittest.TestCase):
         try:
             with mock.patch.object(kyodo.requests, "get", return_value=response), mock.patch.object(
                 kyodo,
+                "_fetch_page_props_with_curl",
+                return_value={},
+            ), mock.patch.object(
+                kyodo,
                 "fetch_soup_js",
                 return_value=soup,
             ) as browser:
@@ -118,6 +130,24 @@ class KyodoParserTests(unittest.TestCase):
             browser.assert_called_once()
         finally:
             kyodo._next_build_id = old_build_id
+
+    def test_curl_fallback_reads_compact_feed(self):
+        payload = json.dumps(
+            {"pageProps": {"data": {"categoryNewsList": [KYODO_ITEM]}}},
+            ensure_ascii=False,
+        ).encode("utf-8")
+        completed = mock.Mock(stdout=payload)
+        with mock.patch.object(kyodo.shutil, "which", return_value="curl.exe"), mock.patch.object(
+            kyodo.subprocess,
+            "run",
+            return_value=completed,
+        ):
+            page_props = kyodo._fetch_page_props_with_curl("https://example.test/news.json")
+
+        self.assertEqual(
+            page_props["data"]["categoryNewsList"][0]["title"],
+            KYODO_ITEM["title"],
+        )
 
     def test_internal_reader_uses_full_article_json(self):
         page_props = {
