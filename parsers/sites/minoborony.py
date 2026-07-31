@@ -5,6 +5,8 @@ import re
 from datetime import datetime, timedelta
 from urllib.parse import urljoin, urlsplit
 
+from bs4 import BeautifulSoup
+
 from utils.dates import date_from_news_card, validate_publication_date
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
@@ -80,12 +82,17 @@ def _parse_news_page(soup, now=None):
             if parsed < cutoff:
                 continue
 
-        items.append({
+        summary = _summary_from_minoborony_card(link, title)
+
+        item = {
             "source": SOURCE_NAME,
             "title": title,
             "url": full_url,
             "date": publication_date,
-        })
+        }
+        if summary:
+            item["summary"] = summary
+        items.append(item)
 
     # Некоторые сборки сайта хранят карточки в JSON-состоянии страницы.
     # Этот путь помогает, даже если ссылки ещё не появились в DOM.
@@ -160,6 +167,48 @@ def _date_from_minoborony_card(link, now=None):
     return ""
 
 
+def _summary_from_minoborony_card(link, title):
+    """Берёт анонс из карточки, если отдельная страница не содержит текста."""
+    current = link
+
+    for _ in range(7):
+        current = getattr(current, "parent", None)
+        if current is None:
+            break
+
+        article_urls = {
+            urljoin(NEWS_URL, node.get("href", ""))
+            for node in current.select("a[href]")
+            if _is_article_url(urljoin(NEWS_URL, node.get("href", "")))
+        }
+        if len(article_urls) > 1:
+            break
+
+        candidates = []
+        for node in current.select("p, span, div"):
+            text = " ".join(node.get_text(" ", strip=True).split())
+            if not 45 <= len(text) <= 1500:
+                continue
+            if title and (text == title or text.startswith(title)):
+                continue
+            if validate_publication_date(text):
+                continue
+
+            long_children = [
+                child
+                for child in node.find_all(["p", "span", "div"], recursive=False)
+                if len(" ".join(child.get_text(" ", strip=True).split())) >= 45
+            ]
+            if long_children:
+                continue
+            candidates.append(text)
+
+        if candidates:
+            return max(candidates, key=len)
+
+    return ""
+
+
 def _news_from_embedded_json(soup, cutoff, now):
     result = []
     selectors = (
@@ -206,12 +255,27 @@ def _news_from_embedded_json(soup, cutoff, now):
                 if parsed < cutoff:
                     continue
 
-            result.append({
+            raw_summary = (
+                value.get("description")
+                or value.get("summary")
+                or value.get("lead")
+                or ""
+            )
+            summary = " ".join(
+                BeautifulSoup(str(raw_summary), "html.parser")
+                .get_text(" ", strip=True)
+                .split()
+            )
+
+            item = {
                 "source": SOURCE_NAME,
                 "title": title,
                 "url": full_url,
                 "date": publication_date,
-            })
+            }
+            if len(summary) >= 45:
+                item["summary"] = summary
+            result.append(item)
 
     return result
 

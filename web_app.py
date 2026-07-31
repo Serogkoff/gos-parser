@@ -843,6 +843,19 @@ def article_page():
         }
     else:
         article = extract_article(url, item.get("title", ""))
+        if (
+            item.get("source") == "Минобороны РФ"
+            and item.get("summary")
+            and not article.get("paragraphs")
+        ):
+            # Некоторые публикации Минобороны являются видеоматериалами:
+            # отдельная страница содержит заголовок и теги, но не текст.
+            # В таком случае показываем официальный анонс из карточки ленты.
+            article = {
+                "title": item.get("title", ""),
+                "paragraphs": [item["summary"]],
+                "error": "",
+            }
     back_url = request.referrer if request.referrer and request.host in request.referrer else "/"
     return render_template_string(
         ARTICLE_HTML, article=article, item=item, back_url=back_url

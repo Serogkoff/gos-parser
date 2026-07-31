@@ -6,6 +6,7 @@ from unittest import mock
 from bs4 import BeautifulSoup
 
 import main
+import web_app
 from parsers.sites import minoborony
 from parsers.sites.minoborony import _is_article_url, _parse_news_page
 from utils.article_reader import extract_article
@@ -62,6 +63,10 @@ class MinoboronyParserTests(unittest.TestCase):
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["date"], "2026-07-31")
+        self.assertEqual(
+            result[0]["summary"],
+            "Краткое описание публикации Министерства обороны России.",
+        )
 
     def test_reads_embedded_page_state(self):
         payload = {
@@ -128,6 +133,41 @@ class MinoboronyParserTests(unittest.TestCase):
         self.assertEqual(article["title"], TITLE)
         self.assertEqual(len(article["paragraphs"]), 2)
         self.assertNotIn("Структура Министерства", " ".join(article["paragraphs"]))
+
+    def test_web_page_uses_card_summary_when_article_has_no_body(self):
+        summary = (
+            "Ежедневно подразделения группировки выявляют и уничтожают "
+            "замаскированные пункты управления беспилотными аппаратами."
+        )
+
+        def load_json(filename, default):
+            if filename == "all_news.json":
+                return [{
+                    "source": "Минобороны РФ",
+                    "title": TITLE,
+                    "url": ARTICLE_URL,
+                    "date": "2026-07-31",
+                    "summary": summary,
+                }]
+            return default
+
+        with mock.patch.object(web_app, "load_json", side_effect=load_json), mock.patch.object(
+            web_app,
+            "extract_article",
+            return_value={
+                "title": TITLE,
+                "paragraphs": [],
+                "error": "Текста нет",
+            },
+        ):
+            response = web_app.app.test_client().get(
+                "/article?url=" + ARTICLE_URL
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(summary, html)
+        self.assertNotIn("Текста нет", html)
 
 
 if __name__ == "__main__":
