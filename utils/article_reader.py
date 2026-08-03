@@ -83,6 +83,17 @@ VERIFIED_ARTICLE_SELECTORS = {
         ".article__content",
         "[class*='publication'][class*='body']",
     ),
+    "digital.gov.ru": (
+        "[itemprop='articleBody']",
+        "article",
+        ".article__body",
+        ".article__content",
+        ".news-detail__content",
+        ".news-detail",
+        "[class*='article'][class*='body']",
+        "[class*='article'][class*='content']",
+        "[class*='news'][class*='content']",
+    ),
     "minstroyrf.gov.ru": (
         "[itemprop='articleBody']",
         ".news-detail__content",
@@ -145,6 +156,9 @@ MVD_FOOTER_STARTS = (
 
 
 def extract_article(url, fallback_title=""):
+    if _is_dynamic_verified_url(url):
+        return _extract_dynamic_verified_article(url, fallback_title)
+
     fetch_url = url
     verified_selectors = _verified_article_selectors(url)
     is_mvd = _is_mvd_url(url)
@@ -290,6 +304,63 @@ def _is_mvd_url(url):
         or hostname.endswith(".мвд.рф")
         or hostname.endswith(".xn--b1aew.xn--p1ai")
     )
+
+
+def _is_dynamic_verified_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return any(
+        hostname == domain or hostname.endswith(f".{domain}")
+        for domain in ("mcx.gov.ru", "digital.gov.ru")
+    )
+
+
+def _extract_dynamic_verified_article(url, fallback_title):
+    """
+    Минсельхоз и Минцифры иногда отдают обычному HTTP-клиенту только
+    каркас страницы. Сначала используем лёгкий запрос, а браузер запускаем
+    только если в каркасе не оказалось подтверждённого текста статьи.
+    """
+    selectors = _verified_article_selectors(url)
+    first_article = None
+    soup = fetch_soup(url, "Просмотр новости", timeout=25, verify=False)
+    if soup is not None:
+        first_article = _extract_verified_article(
+            soup,
+            fallback_title,
+            selectors,
+        )
+        if first_article.get("paragraphs"):
+            return first_article
+
+    source_name = (
+        "Просмотр Минсельхоза"
+        if "mcx.gov.ru" in (urlsplit(url).hostname or "").casefold()
+        else "Просмотр Минцифры"
+    )
+    rendered = fetch_soup_js(
+        url,
+        source_name,
+        wait_ms=3000,
+        timeout_ms=60000,
+        wait_until="domcontentloaded",
+        use_partial_on_timeout=True,
+    )
+    if rendered is not None:
+        rendered_article = _extract_verified_article(
+            rendered,
+            fallback_title,
+            selectors,
+        )
+        if rendered_article.get("paragraphs"):
+            return rendered_article
+        if first_article is None:
+            first_article = rendered_article
+
+    return first_article or {
+        "title": fallback_title,
+        "paragraphs": [],
+        "error": "Сайт ведомства сейчас не отдал текст публикации.",
+    }
 
 
 def _clean_mvd_paragraphs(paragraphs):

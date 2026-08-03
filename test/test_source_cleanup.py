@@ -271,6 +271,77 @@ class ArticleCleanupTests(unittest.TestCase):
         self.assertEqual(len(article["paragraphs"]), 2)
         self.assertIn("Минсельхоза России", article["paragraphs"][0])
 
+    def test_minselKhoz_uses_browser_when_http_returns_only_page_shell(self):
+        shell = BeautifulSoup(
+            """
+            <html><head><meta property="og:title"
+            content="Объём реализации молока вырос на 3,2%"></head>
+            <body><h1>Объём реализации молока вырос на 3,2%</h1></body></html>
+            """,
+            "html.parser",
+        )
+        rendered = BeautifulSoup(
+            """
+            <main><article>
+                <h1>Объём реализации молока вырос на 3,2%</h1>
+                <div class="publication-body">
+                    <p>По оперативным данным Минсельхоза России объём
+                    реализации молока сельхозорганизациями продолжил расти.</p>
+                    <p>Положительная динамика отмечена в нескольких
+                    российских регионах по сравнению с прошлым годом.</p>
+                </div>
+            </article></main>
+            """,
+            "html.parser",
+        )
+        with (
+            patch("utils.article_reader.fetch_soup", return_value=shell),
+            patch("utils.article_reader.fetch_soup_js", return_value=rendered) as browser,
+        ):
+            article = extract_article(
+                "https://mcx.gov.ru/press-service/news/obyem-moloka-118502/",
+                "Объём реализации молока вырос на 3,2%",
+            )
+
+        self.assertFalse(article["error"])
+        self.assertEqual(len(article["paragraphs"]), 2)
+        browser.assert_called_once()
+
+    def test_mintsifry_uses_rendered_article_instead_of_short_shell(self):
+        title = "Поздравление с 10 000-м номером «Российской газеты»"
+        shell = BeautifulSoup(
+            f"<html><head><meta property='og:title' content='{title}'></head>"
+            f"<body><h1>{title}</h1></body></html>",
+            "html.parser",
+        )
+        rendered = BeautifulSoup(
+            f"""
+            <main><article>
+                <h1>{title}</h1>
+                <div class="article__content">
+                    <p>Москва, 24 июля 2026 года — коллектив редакции
+                    поздравили с выходом юбилейного номера издания.</p>
+                    <p>В поздравлении отмечена многолетняя работа журналистов
+                    и значение газеты для читателей по всей стране.</p>
+                </div>
+            </article></main>
+            """,
+            "html.parser",
+        )
+        with (
+            patch("utils.article_reader.fetch_soup", return_value=shell),
+            patch("utils.article_reader.fetch_soup_js", return_value=rendered) as browser,
+        ):
+            article = extract_article(
+                "https://digital.gov.ru/news/pozdravlenie-s-10-000-m-nomerom-rossijskoj-gazety",
+                title,
+            )
+
+        self.assertFalse(article["error"])
+        self.assertEqual(len(article["paragraphs"]), 2)
+        self.assertIn("юбилейного номера", article["paragraphs"][0])
+        browser.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
