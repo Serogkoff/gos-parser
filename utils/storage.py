@@ -19,6 +19,9 @@ FOUND_NEWS_FILE = PROJECT_DIR / "found_news.json"
 DATABASE_FILE = Path(
     os.environ.get("NEWS_DATABASE_PATH", PROJECT_DIR / "news.db")
 )
+BACKUP_DIR = Path(
+    os.environ.get("NEWS_BACKUP_DIR", PROJECT_DIR / "backups")
+)
 logger = get_logger("storage")
 STORAGE_LOCK = RLock()
 JSON_MIGRATION_KEY = "json_migration_v1"
@@ -313,11 +316,25 @@ def database_stats(connection=None):
             "SELECT COUNT(*) FROM found_items"
         ).fetchone()[0]
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+        backups = _list_automatic_backups()
+        migration = connection.execute(
+            "SELECT value FROM metadata WHERE key = ?",
+            (JSON_MIGRATION_KEY,),
+        ).fetchone()
         return {
             "news_count": news_count,
             "found_count": found_count,
             "integrity": integrity,
             "path": str(DATABASE_FILE),
+            "size_bytes": (
+                DATABASE_FILE.stat().st_size if DATABASE_FILE.exists() else 0
+            ),
+            "journal_mode": connection.execute(
+                "PRAGMA journal_mode"
+            ).fetchone()[0],
+            "json_migrated": migration is not None,
+            "backup_count": len(backups),
+            "last_backup": str(backups[-1]) if backups else "",
         }
     finally:
         if owns_connection:
@@ -325,14 +342,99 @@ def database_stats(connection=None):
 
 
 def backup_database(destination=None):
-    """Создаёт согласованную резервную копию работающей SQLite-базы."""
+    """Атомарно создаёт и проверяет копию работающей SQLite-базы."""
     initialize_database()
     destination = Path(destination or DATABASE_FILE.with_suffix(".backup.db"))
+    if destination.resolve() == DATABASE_FILE.resolve():
+        raise ValueError("резервная копия не может заменять рабочую базу")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with STORAGE_LOCK, _connect() as source:
-        with sqlite3.connect(destination) as target:
-            source.backup(target)
+    temporary = destination.with_name(f".{destination.name}.tmp")
+    try:
+        if temporary.exists():
+            temporary.unlink()
+        with STORAGE_LOCK, _connect() as source:
+            with sqlite3.connect(temporary) as target:
+                source.backup(target)
+                result = target.execute("PRAGMA integrity_check").fetchone()[0]
+                if result != "ok":
+                    raise sqlite3.DatabaseError(
+                        f"проверка резервной копии завершилась: {result}"
+                    )
+            os.replace(temporary, destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
     return destination
+
+
+def ensure_daily_backup(retention=7, now=None):
+    """
+    Создаёт не больше одной автоматической копии в день.
+
+    Функцию безопасно вызывать после каждого цикла парсинга: если сегодняшний
+    снимок уже существует, повторного копирования базы не будет.
+    """
+    initialize_database()
+    moment = now or datetime.now()
+    destination = BACKUP_DIR / (
+        f"{DATABASE_FILE.stem}-{moment:%Y-%m-%d}.db"
+    )
+    created = False
+    with STORAGE_LOCK:
+        if not destination.exists():
+            backup_database(destination)
+            created = True
+            logger.info(f"Создана резервная копия SQLite: {destination.name}")
+        removed = _remove_old_backups(retention)
+    return {
+        "created": created,
+        "path": str(destination),
+        "removed": [str(path) for path in removed],
+    }
+
+
+def prepare_database(retention=7):
+    """Проверяет рабочую базу и создаёт ежедневную резервную копию."""
+    stats = database_stats()
+    if stats["integrity"] != "ok":
+        raise sqlite3.DatabaseError(
+            f"проверка целостности SQLite завершилась: {stats['integrity']}"
+        )
+    backup = ensure_daily_backup(retention=retention)
+    stats = database_stats()
+    stats["backup_created"] = backup["created"]
+    return stats
+
+
+def _automatic_backup_pattern():
+    return re.compile(
+        rf"^{re.escape(DATABASE_FILE.stem)}-\d{{4}}-\d{{2}}-\d{{2}}\.db$"
+    )
+
+
+def _list_automatic_backups():
+    if not BACKUP_DIR.exists():
+        return []
+    pattern = _automatic_backup_pattern()
+    return sorted(
+        path
+        for path in BACKUP_DIR.iterdir()
+        if path.is_file() and pattern.fullmatch(path.name)
+    )
+
+
+def _remove_old_backups(retention):
+    try:
+        retention = max(1, int(retention))
+    except (TypeError, ValueError):
+        retention = 7
+    backups = _list_automatic_backups()
+    removed = []
+    for path in backups[:-retention]:
+        path.unlink()
+        removed.append(path)
+        logger.info(f"Удалена старая резервная копия SQLite: {path.name}")
+    return removed
 
 
 def _replace_collections(connection, all_news, found_news):

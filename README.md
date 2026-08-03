@@ -61,6 +61,18 @@ python -c "from utils.storage import database_stats; print(database_stats())"
 python -c "from utils.storage import backup_database; print(backup_database())"
 ```
 
+При запуске `main.py` база автоматически проверяется, после чего в папке
+`backups/` создаётся один снимок на каждый календарный день. Хранятся последние
+семь снимков; более старые удаляются автоматически. Число копий можно изменить
+через `DATABASE_BACKUP_RETENTION` в `config.py`.
+
+Получить расширенный статус SQLite (целостность, размер, режим журнала и
+последняя копия):
+
+```bash
+python -c "from utils.storage import database_stats; print(database_stats())"
+```
+
 Веб-интерфейс разделён на «Госструктуры» и «Информагентства». В каждом разделе
 сохраняются прежние функции: общая лента, совпадения, поиск, фильтр источников,
 избранное и отметки непрочитанных новостей.

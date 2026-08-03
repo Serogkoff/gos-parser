@@ -4,6 +4,7 @@ from threading import Event, Thread
 
 from config import (
     AGENCY_UPDATE_INTERVAL,
+    DATABASE_BACKUP_RETENTION,
     GOVERNMENT_UPDATE_INTERVAL,
     KYODO_UPDATE_INTERVAL,
     MAX_RETRIES,
@@ -12,7 +13,12 @@ from config import (
 )
 from utils.news import deduplicate_news
 from utils.status import print_status_table, save_parser_status
-from utils.storage import save_results, load_existing_urls
+from utils.storage import (
+    ensure_daily_backup,
+    load_existing_urls,
+    prepare_database,
+    save_results,
+)
 from utils.keywords import search_keywords
 
 from parsers.sites.mid import parse as mid
@@ -160,6 +166,13 @@ def run_once(sites=None, group_name="Все источники", merge_status=Fa
     )
     print_status_table(parser_statuses)
     new_found = save_results(all_news, found_news, existing_urls)
+    try:
+        ensure_daily_backup(retention=DATABASE_BACKUP_RETENTION)
+    except Exception as error:
+        print(
+            "⚠️ Не удалось создать резервную копию SQLite: "
+            f"{type(error).__name__}: {error}"
+        )
 
     print("\n" + "=" * 70)
     print(f"📊 Получено новостей: {len(all_news)}")
@@ -200,6 +213,19 @@ def run_schedule(sites, group_name, interval, stop_event):
 
 
 def main():
+    database = prepare_database(retention=DATABASE_BACKUP_RETENTION)
+    size_mb = database["size_bytes"] / 1024 / 1024
+    backup_state = (
+        "создана сегодня" if database["backup_created"] else "уже существует"
+    )
+    print(
+        "🗄️ SQLite: "
+        f"{database['news_count']} новостей, "
+        f"целостность {database['integrity']}, "
+        f"{size_mb:.1f} МБ"
+    )
+    print(f"💾 Резервная копия: {backup_state}")
+
     stop_event = Event()
     agency_thread = Thread(
         target=run_schedule,

@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,12 +16,14 @@ class SQLiteStorageTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         directory = Path(self.temporary.name)
         self.database = directory / "news.db"
+        self.backup_directory = directory / "backups"
         self.all_json = directory / "all_news.json"
         self.found_json = directory / "found_news.json"
         self.patchers = (
             patch.object(storage, "DATABASE_FILE", self.database),
             patch.object(storage, "ALL_NEWS_FILE", self.all_json),
             patch.object(storage, "FOUND_NEWS_FILE", self.found_json),
+            patch.object(storage, "BACKUP_DIR", self.backup_directory),
         )
         for patcher in self.patchers:
             patcher.start()
@@ -124,6 +127,52 @@ class SQLiteStorageTests(unittest.TestCase):
                 "SELECT COUNT(*) FROM news_items"
             ).fetchone()[0]
         self.assertEqual(count, 1)
+
+    def test_daily_backup_is_created_once_and_old_copies_are_removed(self):
+        self._write_json(self.all_json, [{
+            "source": "РИА Новости",
+            "title": "Новость агентства",
+            "url": "https://ria.ru/20260803/daily.html",
+        }])
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+
+        first = storage.ensure_daily_backup(
+            retention=2,
+            now=datetime(2026, 8, 1, 10, 0),
+        )
+        repeated = storage.ensure_daily_backup(
+            retention=2,
+            now=datetime(2026, 8, 1, 20, 0),
+        )
+        storage.ensure_daily_backup(
+            retention=2,
+            now=datetime(2026, 8, 2, 10, 0),
+        )
+        latest = storage.ensure_daily_backup(
+            retention=2,
+            now=datetime(2026, 8, 3, 10, 0),
+        )
+
+        self.assertTrue(first["created"])
+        self.assertFalse(repeated["created"])
+        self.assertEqual(len(list(self.backup_directory.glob("*.db"))), 2)
+        self.assertFalse(
+            (self.backup_directory / "news-2026-08-01.db").exists()
+        )
+        self.assertEqual(len(latest["removed"]), 1)
+
+    def test_prepare_database_reports_operational_status(self):
+        self._write_json(self.all_json, [])
+        self._write_json(self.found_json, [])
+
+        stats = storage.prepare_database(retention=7)
+
+        self.assertEqual(stats["integrity"], "ok")
+        self.assertEqual(stats["journal_mode"].casefold(), "wal")
+        self.assertTrue(stats["json_migrated"])
+        self.assertTrue(stats["backup_created"])
+        self.assertEqual(stats["backup_count"], 1)
 
     def test_web_interface_reads_news_from_sqlite(self):
         item = {

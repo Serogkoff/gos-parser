@@ -1,4 +1,4 @@
-PROJECT_VERSION = "2026.08.03.1"
+PROJECT_VERSION = "2026.08.03.2"
 
 KEYWORDS = [
     "Курил", "Сахалин", "Владивосток", "Хабаровск", "Камчатка", "Дальний Восток",
@@ -31,3 +31,6 @@ KYODO_UPDATE_INTERVAL = 600
 # Старое имя оставлено для совместимости с локальными скриптами.
 UPDATE_INTERVAL = GOVERNMENT_UPDATE_INTERVAL
 MAX_RETRIES = 2
+
+# SQLite: один автоматический снимок в сутки, храним последнюю неделю.
+DATABASE_BACKUP_RETENTION = 7
