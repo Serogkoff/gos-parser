@@ -12,13 +12,14 @@ from utils.keywords import (
     rebuild_found_news,
     remove_keyword,
 )
-from utils.news import deduplicate_news, sort_news_by_publication
+from utils.news import sort_news_by_publication
 from utils.source_groups import (
     AGENCIES_GROUP,
     GOVERNMENT_GROUP,
     filter_news_by_group,
     source_group as get_source_group,
 )
+from utils.storage import load_all_news, load_found_news
 
 
 app = Flask(__name__)
@@ -664,14 +665,19 @@ ARTICLE_HTML = """
 
 
 def load_json(filename, default):
+    # Новости теперь живут в SQLite. Имя функции оставлено прежним,
+    # чтобы маршруты и тесты интерфейса не пришлось переписывать целиком.
+    if filename == "all_news.json":
+        return load_all_news()
+    if filename == "found_news.json":
+        return load_found_news()
+
     path = PROJECT_DIR / filename
     if not path.exists():
         return default
     try:
         with path.open("r", encoding="utf-8") as file:
             data = json.load(file)
-        if filename in {"all_news.json", "found_news.json"} and isinstance(data, list):
-            return deduplicate_news(data)
         return data
     except (OSError, json.JSONDecodeError):
         return default

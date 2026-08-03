@@ -1,6 +1,11 @@
 __pycache__/
 *.pyc
 *.json
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
 .venv/
 .idea/
 parser_errors.log

@@ -5,11 +5,10 @@ from pathlib import Path
 
 from config import KEYWORDS, YONHAP_KEYWORDS
 from utils.storage import (
-    ALL_NEWS_FILE,
-    FOUND_NEWS_FILE,
     STORAGE_LOCK,
-    _load_json,
     _write_json_atomic,
+    load_all_news,
+    replace_found_news,
 )
 
 
@@ -108,6 +107,5 @@ def search_keywords(news_list, keywords=None):
 def rebuild_found_news():
     """Пересобирает раздел «Совпадения» после изменения списка слов."""
     with STORAGE_LOCK:
-        found = search_keywords(_load_json(ALL_NEWS_FILE))
-        _write_json_atomic(FOUND_NEWS_FILE, found)
-    return found
+        found = search_keywords(load_all_news())
+        return replace_found_news(found)
