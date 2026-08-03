@@ -19,7 +19,12 @@ from utils.source_groups import (
     filter_news_by_group,
     source_group as get_source_group,
 )
-from utils.storage import load_all_news, load_found_news
+from utils.storage import (
+    load_all_news,
+    load_cached_article,
+    load_found_news,
+    save_cached_article,
+)
 
 
 app = Flask(__name__)
@@ -645,7 +650,9 @@ ARTICLE_HTML = """
         h1{margin:18px 0 30px;font-size:clamp(32px,5vw,54px);line-height:1.05;letter-spacing:-.045em}
         .body{font-family:Georgia,"Times New Roman",serif;font-size:19px;line-height:1.72}
         .body p{margin:0 0 1.15em}.notice{padding:18px;border-left:4px solid var(--coral);background:#fff4ee}
-        .original{display:inline-flex;margin-top:26px;padding:12px 16px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);text-decoration:none;font:600 14px Inter,Arial,sans-serif}
+        .actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:26px}
+        .original,.refresh{display:inline-flex;padding:12px 16px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;text-decoration:none;font:600 14px Inter,Arial,sans-serif;cursor:pointer}
+        .cache-note{color:var(--muted);font-size:12px}.refresh-error{margin-top:18px;color:var(--coral);font-size:13px}
     </style>
 </head>
 <body><main class="shell">
@@ -658,7 +665,18 @@ ARTICLE_HTML = """
                 {% for paragraph in article.paragraphs %}<p>{{paragraph}}</p>{% endfor %}
             {% else %}<p class="notice">{{article.error}}</p>{% endif %}
         </div>
-        <a class="original" href="{{item.url}}" target="_blank" rel="noopener noreferrer">Открыть оригинал ↗</a>
+        {% if article.refresh_error %}<div class="refresh-error">{{article.refresh_error}}</div>{% endif %}
+        <div class="actions">
+            <a class="original" href="{{item.url}}" target="_blank" rel="noopener noreferrer">Открыть оригинал ↗</a>
+            {% if article.paragraphs %}
+            <form method="post" action="/article">
+                <input type="hidden" name="url" value="{{item.url}}">
+                <input type="hidden" name="back_url" value="{{back_url}}">
+                <button class="refresh" type="submit">Обновить текст</button>
+            </form>
+            {% endif %}
+            {% if article.cached_at %}<span class="cache-note">Сохранено локально {{article.cached_at.replace('T', ' ')}}</span>{% endif %}
+        </div>
     </article>
 </main></body></html>
 """
@@ -830,16 +848,20 @@ def agencies_filter_source(source):
     )
 
 
-@app.route("/article")
+@app.route("/article", methods=["GET", "POST"])
 def article_page():
-    url = request.args.get("url", "").strip()
+    url = request.values.get("url", "").strip()
     item = next(
         (news for news in load_json("all_news.json", []) if news.get("url") == url),
         None,
     )
     if item is None:
         abort(404)
-    if item.get("source") == "ТАСС" and item.get("summary"):
+    force_refresh = request.method == "POST"
+    cached = load_cached_article(url)
+    if cached is not None and not force_refresh:
+        article = cached
+    elif item.get("source") == "ТАСС" and item.get("summary"):
         # RSS ТАСС отдаёт официальный анонс сразу и без браузерной проверки.
         # Полную публикацию при необходимости можно открыть по ссылке.
         article = {
@@ -862,7 +884,26 @@ def article_page():
                 "paragraphs": [item["summary"]],
                 "error": "",
             }
-    back_url = request.referrer if request.referrer and request.host in request.referrer else "/"
+    if cached is None or force_refresh:
+        saved = save_cached_article(url, article, item.get("source", ""))
+        if saved is not None:
+            article = saved
+        elif force_refresh and cached is not None:
+            refresh_error = article.get("error") or (
+                "Источник не отдал новый текст — показана сохранённая версия."
+            )
+            article = dict(cached)
+            article["refresh_error"] = refresh_error
+
+    requested_back = request.values.get("back_url", "").strip()
+    if requested_back.startswith("/") and not requested_back.startswith("//"):
+        back_url = requested_back
+    else:
+        back_url = (
+            request.referrer
+            if request.referrer and request.host in request.referrer
+            else "/"
+        )
     return render_template_string(
         ARTICLE_HTML, article=article, item=item, back_url=back_url
     )

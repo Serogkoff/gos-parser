@@ -221,6 +221,7 @@ def main():
     print(
         "🗄️ SQLite: "
         f"{database['news_count']} новостей, "
+        f"{database['cached_articles']} текстов сохранено, "
         f"целостность {database['integrity']}, "
         f"{size_mb:.1f} МБ"
     )

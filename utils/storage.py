@@ -25,6 +25,7 @@ BACKUP_DIR = Path(
 logger = get_logger("storage")
 STORAGE_LOCK = RLock()
 JSON_MIGRATION_KEY = "json_migration_v1"
+MAX_CACHED_ARTICLE_CHARS = 100_000
 _INITIALIZED_DATABASES = set()
 _INITIALIZATION_RESULTS = {}
 
@@ -103,6 +104,14 @@ def _create_schema(connection):
             updated_at TEXT NOT NULL,
             FOREIGN KEY(news_key) REFERENCES news_items(news_key)
                 ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS article_cache (
+            normalized_url TEXT PRIMARY KEY,
+            source TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            paragraphs_json TEXT NOT NULL,
+            fetched_at TEXT NOT NULL
         );
 
         CREATE INDEX IF NOT EXISTS idx_news_source
@@ -228,6 +237,74 @@ def find_news_by_url(url):
     return _decode_item(row["payload_json"]) if row else None
 
 
+def load_cached_article(url):
+    """Возвращает сохранённый текст статьи, если её уже открывали."""
+    normalized = normalize_url(url)
+    if not normalized:
+        return None
+    initialize_database()
+    with _connect() as connection:
+        row = connection.execute(
+            """
+            SELECT source, title, paragraphs_json, fetched_at
+            FROM article_cache
+            WHERE normalized_url = ?
+            """,
+            (normalized,),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        paragraphs = json.loads(row["paragraphs_json"])
+    except (TypeError, json.JSONDecodeError):
+        logger.warning("В SQLite обнаружён повреждённый кеш статьи")
+        return None
+    if not isinstance(paragraphs, list) or not paragraphs:
+        return None
+    return {
+        "title": row["title"],
+        "paragraphs": paragraphs,
+        "error": "",
+        "source": row["source"],
+        "cached": True,
+        "cached_at": row["fetched_at"],
+    }
+
+
+def save_cached_article(url, article, source=""):
+    """Сохраняет только успешный очищенный текст открытой статьи."""
+    normalized = normalize_url(url)
+    if not normalized or not isinstance(article, dict) or article.get("error"):
+        return None
+    paragraphs = _clean_cached_paragraphs(article.get("paragraphs", []))
+    if not paragraphs:
+        return None
+    title = " ".join(str(article.get("title", "")).split())[:500]
+    fetched_at = datetime.now().isoformat(timespec="seconds")
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO article_cache(
+                normalized_url, source, title, paragraphs_json, fetched_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(normalized_url) DO UPDATE SET
+                source = excluded.source,
+                title = excluded.title,
+                paragraphs_json = excluded.paragraphs_json,
+                fetched_at = excluded.fetched_at
+            """,
+            (
+                normalized,
+                str(source),
+                title,
+                json.dumps(paragraphs, ensure_ascii=False, separators=(",", ":")),
+                fetched_at,
+            ),
+        )
+    return load_cached_article(normalized)
+
+
 def load_existing_urls():
     initialize_database()
     with _connect() as connection:
@@ -315,6 +392,9 @@ def database_stats(connection=None):
         found_count = connection.execute(
             "SELECT COUNT(*) FROM found_items"
         ).fetchone()[0]
+        cached_articles = connection.execute(
+            "SELECT COUNT(*) FROM article_cache"
+        ).fetchone()[0]
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
         backups = _list_automatic_backups()
         migration = connection.execute(
@@ -324,6 +404,7 @@ def database_stats(connection=None):
         return {
             "news_count": news_count,
             "found_count": found_count,
+            "cached_articles": cached_articles,
             "integrity": integrity,
             "path": str(DATABASE_FILE),
             "size_bytes": (
@@ -526,6 +607,23 @@ def _decode_item(payload):
     except (TypeError, json.JSONDecodeError):
         logger.warning("В SQLite обнаружена повреждённая запись новости")
         return None
+
+
+def _clean_cached_paragraphs(paragraphs):
+    if not isinstance(paragraphs, (list, tuple)):
+        return []
+    result = []
+    seen = set()
+    remaining = MAX_CACHED_ARTICLE_CHARS
+    for paragraph in paragraphs:
+        text = " ".join(str(paragraph or "").split())
+        if not text or text in seen or remaining <= 0:
+            continue
+        text = text[:remaining]
+        result.append(text)
+        seen.add(text)
+        remaining -= len(text)
+    return result
 
 
 def _news_key(item):

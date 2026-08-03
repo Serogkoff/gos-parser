@@ -209,6 +209,99 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertTrue(stats["backup_created"])
         self.assertEqual(stats["backup_count"], 1)
 
+    def test_caches_only_successfully_opened_article_text(self):
+        self._write_json(self.all_json, [])
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+        url = "https://example.test/news/opened"
+
+        saved = storage.save_cached_article(
+            url,
+            {
+                "title": " Открытая статья ",
+                "paragraphs": [" Первый абзац. ", "Второй абзац."],
+                "error": "",
+            },
+            "Тест",
+        )
+
+        self.assertEqual(saved["title"], "Открытая статья")
+        self.assertEqual(saved["paragraphs"], ["Первый абзац.", "Второй абзац."])
+        self.assertTrue(saved["cached"])
+        self.assertIsNone(
+            storage.save_cached_article(
+                "https://example.test/news/error",
+                {"title": "Ошибка", "paragraphs": [], "error": "Нет текста"},
+            )
+        )
+        self.assertEqual(storage.database_stats()["cached_articles"], 1)
+
+    def test_web_article_is_downloaded_only_once_then_read_from_cache(self):
+        item = {
+            "source": "МЧС",
+            "title": "Материал для кеширования",
+            "url": "https://mchs.gov.ru/news/cache-test",
+            "date": "2026-08-03",
+        }
+        self._write_json(self.all_json, [item])
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+        extracted = {
+            "title": item["title"],
+            "paragraphs": ["Полный текст открытой публикации."],
+            "error": "",
+        }
+
+        with patch.object(web_app, "extract_article", return_value=extracted) as reader:
+            client = web_app.app.test_client()
+            first = client.get("/article", query_string={"url": item["url"]})
+            second = client.get("/article", query_string={"url": item["url"]})
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(reader.call_count, 1)
+        self.assertIn("Сохранено локально".encode("utf-8"), second.data)
+
+    def test_refresh_replaces_cached_text_and_keeps_old_copy_on_error(self):
+        item = {
+            "source": "МЧС",
+            "title": "Обновляемый материал",
+            "url": "https://mchs.gov.ru/news/refresh-test",
+            "date": "2026-08-03",
+        }
+        self._write_json(self.all_json, [item])
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+        storage.save_cached_article(
+            item["url"],
+            {"title": item["title"], "paragraphs": ["Старая версия."], "error": ""},
+            item["source"],
+        )
+        client = web_app.app.test_client()
+
+        with patch.object(web_app, "extract_article", return_value={
+            "title": item["title"],
+            "paragraphs": ["Новая версия."],
+            "error": "",
+        }):
+            refreshed = client.post("/article", data={"url": item["url"]})
+
+        self.assertIn("Новая версия".encode("utf-8"), refreshed.data)
+        self.assertEqual(
+            storage.load_cached_article(item["url"])["paragraphs"],
+            ["Новая версия."],
+        )
+
+        with patch.object(web_app, "extract_article", return_value={
+            "title": item["title"],
+            "paragraphs": [],
+            "error": "Источник временно недоступен.",
+        }):
+            failed = client.post("/article", data={"url": item["url"]})
+
+        self.assertIn("Новая версия".encode("utf-8"), failed.data)
+        self.assertIn("Источник временно недоступен".encode("utf-8"), failed.data)
+
     def test_web_interface_reads_news_from_sqlite(self):
         item = {
             "source": "МЧС",
