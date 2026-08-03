@@ -338,7 +338,7 @@ HTML = """
                         </time>
                         <span class="unread-label hidden">Новая</span>
                     </div>
-                    {% if item.source == 'МИД РФ' %}
+                    {% if item.source in ('МИД РФ', 'Минсельхоз') %}
                     <h3>
                         <a href="{{item.url}}" target="_blank" rel="noopener noreferrer" data-read-url="{{item.url}}">
                             {{item.title}}

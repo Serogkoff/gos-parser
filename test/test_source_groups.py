@@ -50,6 +50,12 @@ class SourceGroupPageTests(unittest.TestCase):
                     "date": "2026-07-29",
                 },
                 {
+                    "source": "Минсельхоз",
+                    "title": "Материал Минсельхоза",
+                    "url": "https://mcx.gov.ru/press-service/news/test/",
+                    "date": "2026-08-03",
+                },
+                {
                     "source": "РИА Новости",
                     "title": "Материал информационного агентства",
                     "url": "https://ria.ru/20260729/test-1.html",
@@ -121,6 +127,20 @@ class SourceGroupPageTests(unittest.TestCase):
         header = html[header_start:header_end]
         self.assertIn("Госструктуры", header)
         self.assertIn("Информагентства", header)
+
+    def test_minselkhoz_news_opens_original_page(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get("/")
+
+        html = response.get_data(as_text=True)
+        self.assertIn(
+            'href="https://mcx.gov.ru/press-service/news/test/" target="_blank"',
+            html,
+        )
+        self.assertNotIn(
+            "/article?url=https%3A%2F%2Fmcx.gov.ru%2Fpress-service%2Fnews%2Ftest%2F",
+            html,
+        )
 
     def test_header_contains_five_click_easter_egg(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
