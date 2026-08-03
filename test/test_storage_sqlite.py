@@ -128,6 +128,41 @@ class SQLiteStorageTests(unittest.TestCase):
             ).fetchone()[0]
         self.assertEqual(count, 1)
 
+    def test_closes_sqlite_connections_before_publishing_backup(self):
+        self._write_json(self.all_json, [])
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+        destination = self.backup_directory / "windows-safe.db"
+        original_connect = sqlite3.connect
+        original_replace = storage.os.replace
+        opened = []
+
+        class TrackingConnection(sqlite3.Connection):
+            closed_for_publish = False
+
+            def close(self):
+                self.closed_for_publish = True
+                super().close()
+
+        def tracked_connect(*args, **kwargs):
+            kwargs["factory"] = TrackingConnection
+            connection = original_connect(*args, **kwargs)
+            opened.append(connection)
+            return connection
+
+        def checked_replace(source, target):
+            self.assertTrue(opened)
+            self.assertTrue(all(item.closed_for_publish for item in opened))
+            return original_replace(source, target)
+
+        with (
+            patch.object(storage.sqlite3, "connect", side_effect=tracked_connect),
+            patch.object(storage.os, "replace", side_effect=checked_replace),
+        ):
+            storage.backup_database(destination)
+
+        self.assertTrue(destination.exists())
+
     def test_daily_backup_is_created_once_and_old_copies_are_removed(self):
         self._write_json(self.all_json, [{
             "source": "РИА Новости",

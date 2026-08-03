@@ -352,18 +352,31 @@ def backup_database(destination=None):
     try:
         if temporary.exists():
             temporary.unlink()
-        with STORAGE_LOCK, _connect() as source:
-            with sqlite3.connect(temporary) as target:
+        with STORAGE_LOCK:
+            source = _connect()
+            target = sqlite3.connect(temporary)
+            try:
                 source.backup(target)
                 result = target.execute("PRAGMA integrity_check").fetchone()[0]
                 if result != "ok":
                     raise sqlite3.DatabaseError(
                         f"проверка резервной копии завершилась: {result}"
                     )
+            finally:
+                # Контекстный менеджер sqlite3 завершает транзакцию, но не
+                # закрывает соединение. На Windows открытый дескриптор не даёт
+                # атомарно переименовать временную базу.
+                target.close()
+                source.close()
             os.replace(temporary, destination)
     finally:
         if temporary.exists():
-            temporary.unlink()
+            try:
+                temporary.unlink()
+            except OSError as error:
+                logger.warning(
+                    f"Не удалось удалить временную копию SQLite: {error}"
+                )
     return destination
 
 
