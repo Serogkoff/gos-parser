@@ -39,6 +39,86 @@ class SkPublicationDateTests(unittest.TestCase):
             "2026-07-28",
         )
 
+    def test_generic_news_page_uses_date_of_requested_card(self):
+        soup = BeautifulSoup(
+            """
+            <html>
+                <head><title>Новости - Следственный комитет</title></head>
+                <body>
+                    <h1>Новости</h1>
+                    <article>
+                        <div class="news-item__date">02 Августа 2026</div>
+                        <a href="/news/item/111/">Соседняя публикация</a>
+                    </article>
+                    <article>
+                        <div class="news-item__date">03 Августа 2026</div>
+                        <a href="/news/item/222/">Нужная публикация СК России</a>
+                    </article>
+                </body>
+            </html>
+            """,
+            "html.parser",
+        )
+
+        self.assertEqual(
+            _date_from_sk_article(
+                soup,
+                expected_title="Нужная публикация СК России",
+                article_url="https://sledcom.ru/news/item/222/",
+            ),
+            "2026-08-03",
+        )
+
+    def test_generic_news_page_never_uses_neighbor_date(self):
+        soup = BeautifulSoup(
+            """
+            <html>
+                <head><title>Новости - Следственный комитет</title></head>
+                <body>
+                    <h1>Новости</h1>
+                    <article>
+                        <div class="news-item__date">02 Августа 2026</div>
+                        <a href="/news/item/111/">Соседняя публикация</a>
+                    </article>
+                </body>
+            </html>
+            """,
+            "html.parser",
+        )
+
+        self.assertEqual(
+            _date_from_sk_article(
+                soup,
+                expected_title="Искомая публикация",
+                article_url="https://sledcom.ru/news/item/222/",
+            ),
+            "",
+        )
+
+    def test_article_metadata_is_used_only_for_matching_article(self):
+        soup = BeautifulSoup(
+            """
+            <html>
+                <head>
+                    <meta property="og:title" content="Нужная публикация">
+                    <meta property="article:published_time"
+                          content="2026-08-04T11:20:00+03:00">
+                </head>
+                <body><h1>Новости</h1></body>
+            </html>
+            """,
+            "html.parser",
+        )
+
+        self.assertEqual(
+            _date_from_sk_article(
+                soup,
+                expected_title="Нужная публикация",
+                article_url="https://sledcom.ru/news/item/222/",
+            ),
+            "2026-08-04",
+        )
+
     def test_falls_back_to_publication_metadata(self):
         soup = BeautifulSoup(
             """
