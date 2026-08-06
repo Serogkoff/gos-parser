@@ -50,9 +50,12 @@ def parse():
             if len(t) < 20 or full_url in seen or is_junk(t):
                 continue
             seen.add(full_url)
-            card_date = date_from_news_card(
-                a,
-                r"/news/(?:item|detail)/",
+            card_date = (
+                _date_from_sk_list_card(a)
+                or date_from_news_card(
+                    a,
+                    r"/news/(?:item|detail)/",
+                )
             )
             cached_date = date_cache.get(full_url, "")
             date_str = cached_date
@@ -150,6 +153,10 @@ def _confirmed_date_from_sk_article(soup, expected_title=""):
     if soup is None or not expected_title:
         return ""
 
+    visible_date = _date_from_sk_detail_card(soup, expected_title)
+    if visible_date:
+        return visible_date
+
     json_date = _date_from_matching_json_ld(soup, expected_title)
     if json_date:
         return json_date
@@ -161,6 +168,48 @@ def _confirmed_date_from_sk_article(soup, expected_title=""):
         soup,
         prefer_visible=True,
     )
+
+
+def _date_from_sk_list_card(link):
+    """Читает в карточке СК как обычную дату, так и «Сегодня/Вчера»."""
+    card = link.find_parent(class_="news-item")
+    if card is None:
+        return ""
+    date_node = card.select_one(".news-item__data")
+    return _date_from_sk_label(
+        date_node.get_text(" ", strip=True) if date_node else "",
+    )
+
+
+def _date_from_sk_detail_card(soup, expected_title):
+    """Привязывает видимую дату правой карточки к заголовку статьи СК."""
+    for title_node in soup.select(".news-card__title-text"):
+        if not _titles_match(
+            title_node.get_text(" ", strip=True),
+            expected_title,
+        ):
+            continue
+        card = title_node.find_parent(class_="news-card")
+        if card is None:
+            continue
+        date_node = card.select_one(".news-card__data")
+        parsed = _date_from_sk_label(
+            date_node.get_text(" ", strip=True) if date_node else "",
+        )
+        if parsed:
+            return parsed
+    return ""
+
+
+def _date_from_sk_label(value, now=None):
+    """Преобразует относительные подписи дат, используемые сайтом СК."""
+    now = now or datetime.now()
+    text = " ".join(str(value or "").casefold().replace("ё", "е").split())
+    if text == "сегодня":
+        return now.strftime("%Y-%m-%d")
+    if text == "вчера":
+        return (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    return validate_publication_date(value, now=now)
 
 
 def _date_from_matching_json_ld(soup, expected_title):

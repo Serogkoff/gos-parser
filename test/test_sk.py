@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -7,6 +8,7 @@ from bs4 import BeautifulSoup
 
 from parsers.sites.sk import (
     _confirmed_date_from_sk_article,
+    _date_from_sk_label,
     _date_from_sk_article,
     _load_date_cache,
     _save_date_cache,
@@ -14,6 +16,41 @@ from parsers.sites.sk import (
 
 
 class SkPublicationDateTests(unittest.TestCase):
+    def test_relative_sk_dates(self):
+        now = datetime(2026, 8, 6, 13, 0)
+        self.assertEqual(
+            _date_from_sk_label("Сегодня", now=now),
+            "2026-08-06",
+        )
+        self.assertEqual(
+            _date_from_sk_label("Вчера", now=now),
+            "2026-08-05",
+        )
+
+    def test_confirmed_date_uses_relative_date_from_detail_card(self):
+        soup = BeautifulSoup(
+            """
+            <html><body>
+                <h1>Новости</h1>
+                <div class="news-card">
+                    <div class="news-card__title-text">
+                        Нужная публикация СК России
+                    </div>
+                    <div class="news-card__data">Сегодня</div>
+                </div>
+            </body></html>
+            """,
+            "html.parser",
+        )
+
+        self.assertEqual(
+            _confirmed_date_from_sk_article(
+                soup,
+                expected_title="Нужная публикация СК России",
+            ),
+            datetime.now().strftime("%Y-%m-%d"),
+        )
+
     def test_confirmed_date_uses_matching_json_ld(self):
         soup = BeautifulSoup(
             """
