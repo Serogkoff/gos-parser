@@ -1,4 +1,6 @@
+import json
 import time
+from datetime import datetime, timedelta
 from urllib.parse import urljoin
 
 from utils.dates import (
@@ -9,6 +11,7 @@ from utils.dates import (
 )
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
+from utils.js_client import fetch_soup_js
 from utils.news import normalize_url
 from utils.storage import (
     PROJECT_DIR,
@@ -51,23 +54,41 @@ def parse():
                 a,
                 r"/news/(?:item|detail)/",
             )
-            date_str = date_cache.get(full_url, "")
-            if not date_str:
+            cached_date = date_cache.get(full_url, "")
+            date_str = cached_date
+            # Даты свежих материалов СК перепроверяем: сайт иногда вместо
+            # статьи отдаёт общую страницу новостей, и раньше случайная дата
+            # из неё навсегда попадала в кэш.
+            if not cached_date or _should_recheck_date(cached_date):
                 detail = fetch_soup(
                     full_url,
                     SOURCE_NAME,
                     timeout=15,
+                    attempts=1,
                 )
-                detail_date = _date_from_sk_article(
+                detail_date = _confirmed_date_from_sk_article(
                     detail,
                     expected_title=t,
-                    article_url=full_url,
                 )
+                if not detail_date:
+                    browser_detail = fetch_soup_js(
+                        full_url,
+                        f"{SOURCE_NAME} — дата статьи",
+                        wait_ms=1200,
+                        timeout_ms=30000,
+                        wait_until="domcontentloaded",
+                        use_partial_on_timeout=True,
+                    )
+                    detail_date = _confirmed_date_from_sk_article(
+                        browser_detail,
+                        expected_title=t,
+                    )
                 if detail_date:
                     date_str = detail_date
-                    date_cache[full_url] = detail_date
-                    cache_changed = True
-                else:
+                    if date_cache.get(full_url) != detail_date:
+                        date_cache[full_url] = detail_date
+                        cache_changed = True
+                elif not cached_date:
                     date_str = card_date
                 time.sleep(DETAIL_REQUEST_PAUSE)
 
@@ -116,6 +137,74 @@ def _date_from_sk_article(
         soup,
         prefer_visible=True,
     )
+
+
+def _confirmed_date_from_sk_article(soup, expected_title=""):
+    """
+    Возвращает дату только когда документ подтверждён как нужная статья.
+
+    В отличие от ``_date_from_sk_article`` эта функция намеренно не читает
+    дату карточки с общей страницы «Новости»: именно это было причиной
+    сохранения соседней/устаревшей даты в кэш СК.
+    """
+    if soup is None or not expected_title:
+        return ""
+
+    json_date = _date_from_matching_json_ld(soup, expected_title)
+    if json_date:
+        return json_date
+
+    if not _page_matches_title(soup, expected_title):
+        return ""
+
+    return date_from_document(
+        soup,
+        prefer_visible=True,
+    )
+
+
+def _date_from_matching_json_ld(soup, expected_title):
+    """Ищет datePublished только у JSON-LD с заголовком нужной статьи."""
+    for script in soup.select('script[type="application/ld+json"]'):
+        raw = script.string or script.get_text(" ", strip=True)
+        if not raw:
+            continue
+        try:
+            document = json.loads(raw)
+        except (TypeError, ValueError):
+            continue
+
+        for node in _walk_json_ld(document):
+            if not isinstance(node, dict):
+                continue
+            headline = node.get("headline") or node.get("name") or ""
+            if not _titles_match(headline, expected_title):
+                continue
+            parsed = validate_publication_date(
+                node.get("datePublished", ""),
+            )
+            if parsed:
+                return parsed
+    return ""
+
+
+def _walk_json_ld(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _walk_json_ld(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_json_ld(child)
+
+
+def _should_recheck_date(date_str, days=2):
+    """Свежий кэш СК считаем предварительным и быстро перепроверяем."""
+    try:
+        cached = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return True
+    return cached >= (datetime.now().date() - timedelta(days=days))
 
 
 def _date_from_matching_card(

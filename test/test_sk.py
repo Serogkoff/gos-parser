@@ -6,6 +6,7 @@ from unittest.mock import patch
 from bs4 import BeautifulSoup
 
 from parsers.sites.sk import (
+    _confirmed_date_from_sk_article,
     _date_from_sk_article,
     _load_date_cache,
     _save_date_cache,
@@ -13,6 +14,57 @@ from parsers.sites.sk import (
 
 
 class SkPublicationDateTests(unittest.TestCase):
+    def test_confirmed_date_uses_matching_json_ld(self):
+        soup = BeautifulSoup(
+            """
+            <html><body>
+                <h1>Новости</h1>
+                <script type="application/ld+json">
+                {
+                    "@type": "NewsArticle",
+                    "headline": "Нужная публикация СК России",
+                    "datePublished": "2026-08-06T10:15:00+03:00"
+                }
+                </script>
+                <div class="news-item__date">05 Августа 2026</div>
+            </body></html>
+            """,
+            "html.parser",
+        )
+
+        self.assertEqual(
+            _confirmed_date_from_sk_article(
+                soup,
+                expected_title="Нужная публикация СК России",
+            ),
+            "2026-08-06",
+        )
+
+    def test_confirmed_date_rejects_date_from_generic_news_card(self):
+        soup = BeautifulSoup(
+            """
+            <html>
+                <head><title>Новости - Следственный комитет</title></head>
+                <body>
+                    <h1>Новости</h1>
+                    <article>
+                        <div class="news-item__date">05 Августа 2026</div>
+                        <a href="/news/item/222/">Нужная публикация СК России</a>
+                    </article>
+                </body>
+            </html>
+            """,
+            "html.parser",
+        )
+
+        self.assertEqual(
+            _confirmed_date_from_sk_article(
+                soup,
+                expected_title="Нужная публикация СК России",
+            ),
+            "",
+        )
+
     def test_uses_date_displayed_on_article_page(self):
         soup = BeautifulSoup(
             """
