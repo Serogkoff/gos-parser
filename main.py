@@ -1,5 +1,5 @@
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from threading import Event, Thread
 
 from config import (
@@ -8,6 +8,7 @@ from config import (
     GOVERNMENT_UPDATE_INTERVAL,
     KYODO_UPDATE_INTERVAL,
     MAX_RETRIES,
+    NEWSPAPER_UPDATE_HOUR,
     PAUSE_BETWEEN_REQUESTS,
     PROJECT_VERSION,
 )
@@ -53,6 +54,7 @@ from parsers.sites.interfax import parse as interfax
 from parsers.sites.yonhap import parse as yonhap
 from parsers.sites.kyodo import parse as kyodo
 from parsers.sites.minoborony import parse as minoborony
+from parsers.sites.ng import parse as ng
 
 
 GOVERNMENT_SITES = [
@@ -96,7 +98,16 @@ KYODO_SITES = [
     ("Киодо (共同通信)", kyodo),
 ]
 
-SITES = [*GOVERNMENT_SITES, *AGENCY_SITES, *KYODO_SITES]
+NEWSPAPER_SITES = [
+    ("Независимая газета", ng),
+]
+
+SITES = [
+    *GOVERNMENT_SITES,
+    *AGENCY_SITES,
+    *KYODO_SITES,
+    *NEWSPAPER_SITES,
+]
 
 
 def safe_parse(parser_func, max_retries=2):
@@ -212,6 +223,39 @@ def run_schedule(sites, group_name, interval, stop_event):
         stop_event.wait(interval)
 
 
+def run_daily_schedule(sites, group_name, hour, stop_event):
+    """Проверяет группу сразу при старте, затем ежедневно в заданный час."""
+    while not stop_event.is_set():
+        try:
+            run_once(
+                sites,
+                group_name=group_name,
+                merge_status=True,
+            )
+        except Exception as error:
+            print(
+                f"\n❌ Ошибка цикла «{group_name}»: "
+                f"{type(error).__name__}: {error}"
+            )
+
+        now = datetime.now()
+        next_run = now.replace(
+            hour=hour,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        if next_run <= now:
+            next_run += timedelta(days=1)
+        wait_seconds = max(1, int((next_run - now).total_seconds()))
+        if not stop_event.is_set():
+            print(
+                f"\n⏳ {group_name}: следующая проверка "
+                f"{next_run:%d.%m.%Y в %H:%M}."
+            )
+        stop_event.wait(wait_seconds)
+
+
 def main():
     database = prepare_database(retention=DATABASE_BACKUP_RETENTION)
     size_mb = database["size_bytes"] / 1024 / 1024
@@ -254,6 +298,19 @@ def main():
     )
     kyodo_thread.start()
 
+    newspaper_thread = Thread(
+        target=run_daily_schedule,
+        args=(
+            NEWSPAPER_SITES,
+            "Газеты",
+            NEWSPAPER_UPDATE_HOUR,
+            stop_event,
+        ),
+        name="newspaper-parser",
+        daemon=True,
+    )
+    newspaper_thread.start()
+
     try:
         run_schedule(
             GOVERNMENT_SITES,
@@ -267,6 +324,7 @@ def main():
         stop_event.set()
         agency_thread.join(timeout=2)
         kyodo_thread.join(timeout=2)
+        newspaper_thread.join(timeout=2)
 
 
 if __name__ == "__main__":

@@ -36,6 +36,9 @@ GENERIC_TITLES = {
 }
 
 VERIFIED_ARTICLE_SELECTORS = {
+    "ng.ru": (
+        "article.typical",
+    ),
     "z.mil.ru": (
         "[itemprop='articleBody']",
         "article",

@@ -1,4 +1,4 @@
-PROJECT_VERSION = "2026.08.06.3"
+PROJECT_VERSION = "2026.08.06.4"
 
 KEYWORDS = [
     "Курил", "Сахалин", "Владивосток", "Хабаровск", "Камчатка", "Дальний Восток",
@@ -28,6 +28,9 @@ PAUSE_BETWEEN_REQUESTS = 2
 GOVERNMENT_UPDATE_INTERVAL = 300
 AGENCY_UPDATE_INTERVAL = 180
 KYODO_UPDATE_INTERVAL = 600
+# Свежие номера газет проверяем один раз в день в 08:00 по локальному
+# времени компьютера. При запуске программы газеты также проверяются сразу.
+NEWSPAPER_UPDATE_HOUR = 8
 # Старое имя оставлено для совместимости с локальными скриптами.
 UPDATE_INTERVAL = GOVERNMENT_UPDATE_INTERVAL
 MAX_RETRIES = 2

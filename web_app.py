@@ -16,6 +16,7 @@ from utils.news import sort_news_by_publication
 from utils.source_groups import (
     AGENCIES_GROUP,
     GOVERNMENT_GROUP,
+    NEWSPAPERS_GROUP,
     filter_news_by_group,
     source_group as get_source_group,
 )
@@ -259,6 +260,9 @@ HTML = """
             </a>
             <a class="site-section {{'active' if source_group == 'agencies' else ''}}" href="/agencies">
                 Информагентства <span>{{agencies_total}}</span>
+            </a>
+            <a class="site-section {{'active' if source_group == 'newspapers' else ''}}" href="/newspapers">
+                Газеты <span>{{newspapers_total}}</span>
             </a>
         </nav>
         <div class="topbar-tools">
@@ -713,6 +717,7 @@ def render_news_page(
 
     government_news = filter_news_by_group(all_news, GOVERNMENT_GROUP)
     agency_news = filter_news_by_group(all_news, AGENCIES_GROUP)
+    newspaper_news = filter_news_by_group(all_news, NEWSPAPERS_GROUP)
     group_news = filter_news_by_group(all_news, source_group)
     group_found_news = filter_news_by_group(found_news, source_group)
     news = filter_news_by_group(news, source_group)
@@ -742,6 +747,12 @@ def render_news_page(
         group_home = "/agencies"
         group_found = "/agencies/found"
         source_base = "/agencies/filter/"
+    elif source_group == NEWSPAPERS_GROUP:
+        group_title = "Свежие номера газет"
+        group_eyebrow = "Независимая газета"
+        group_home = "/newspapers"
+        group_found = "/newspapers/found"
+        source_base = "/newspapers/filter/"
     else:
         group_title = "Новости госструктур"
         group_eyebrow = "Агрегатор официальных источников"
@@ -773,6 +784,7 @@ def render_news_page(
         source_base=source_base,
         government_total=len(government_news),
         agencies_total=len(agency_news),
+        newspapers_total=len(newspaper_news),
         health_total=total_sources,
         health_ok=ok_sources,
         health_empty=sum(
@@ -845,6 +857,34 @@ def agencies_filter_source(source):
         news,
         source_filter=source,
         source_group=AGENCIES_GROUP,
+    )
+
+
+@app.route("/newspapers")
+def newspapers_page():
+    return render_news_page(
+        load_json("all_news.json", []),
+        source_group=NEWSPAPERS_GROUP,
+    )
+
+
+@app.route("/newspapers/found")
+def newspapers_found_page():
+    return render_news_page(
+        load_json("found_news.json", []),
+        mode="found",
+        source_group=NEWSPAPERS_GROUP,
+    )
+
+
+@app.route("/newspapers/filter/<path:source>")
+def newspapers_filter_source(source):
+    all_news = load_json("all_news.json", [])
+    news = [item for item in all_news if item.get("source") == source]
+    return render_news_page(
+        news,
+        source_filter=source,
+        source_group=NEWSPAPERS_GROUP,
     )
 
 

@@ -6,6 +6,7 @@ import web_app
 from utils.source_groups import (
     AGENCIES_GROUP,
     GOVERNMENT_GROUP,
+    NEWSPAPERS_GROUP,
     filter_news_by_group,
     source_group,
 )
@@ -18,6 +19,7 @@ class SourceGroupTests(unittest.TestCase):
         self.assertEqual(source_group("Интерфакс"), AGENCIES_GROUP)
         self.assertEqual(source_group("Yonhap"), AGENCIES_GROUP)
         self.assertEqual(source_group("Киодо (共同通信)"), AGENCIES_GROUP)
+        self.assertEqual(source_group("Независимая газета"), NEWSPAPERS_GROUP)
         self.assertEqual(source_group("МЧС"), GOVERNMENT_GROUP)
 
     def test_filters_news_without_losing_fields(self):
@@ -37,6 +39,7 @@ class SourceGroupTests(unittest.TestCase):
         self.assertEqual(config.GOVERNMENT_UPDATE_INTERVAL, 300)
         self.assertEqual(config.AGENCY_UPDATE_INTERVAL, 180)
         self.assertEqual(config.KYODO_UPDATE_INTERVAL, 600)
+        self.assertEqual(config.NEWSPAPER_UPDATE_HOUR, 8)
 
 
 class SourceGroupPageTests(unittest.TestCase):
@@ -77,6 +80,12 @@ class SourceGroupPageTests(unittest.TestCase):
                     "date": "2026-07-30",
                     "section": "В России",
                 },
+                {
+                    "source": "Независимая газета",
+                    "title": "Материал свежего номера НГ",
+                    "url": "https://www.ng.ru/world/2026-08-05/1_9553_test.html",
+                    "date": "2026-08-05",
+                },
             ],
             "found_news.json": [],
             "parser_status.json": {
@@ -86,6 +95,7 @@ class SourceGroupPageTests(unittest.TestCase):
                     {"source": "РИА Новости", "status": "ok"},
                     {"source": "ТАСС", "status": "ok"},
                     {"source": "Интерфакс", "status": "ok"},
+                    {"source": "Независимая газета", "status": "ok"},
                 ],
             },
         }
@@ -127,6 +137,18 @@ class SourceGroupPageTests(unittest.TestCase):
         header = html[header_start:header_end]
         self.assertIn("Госструктуры", header)
         self.assertIn("Информагентства", header)
+        self.assertIn("Газеты", header)
+
+    def test_newspapers_page_contains_only_newspaper_sources(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get("/newspapers")
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Свежие номера газет", html)
+        self.assertIn("Материал свежего номера НГ", html)
+        self.assertNotIn("Материал государственного ведомства", html)
+        self.assertNotIn("Материал информационного агентства", html)
 
     def test_minselkhoz_news_opens_original_page(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
