@@ -5,6 +5,7 @@ from urllib.parse import urljoin, urlsplit
 
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
+from utils.js_client import fetch_soup_js
 from utils.news import deduplicate_news
 
 
@@ -22,6 +23,16 @@ def parse():
         timeout=30,
         verify=True,
     )
+    if soup is None:
+        print("  ℹ️ Обычный запрос НГ не сработал — пробую через браузер")
+        soup = fetch_soup_js(
+            FRESH_ISSUE_URL,
+            SOURCE_NAME,
+            wait_ms=2500,
+            timeout_ms=60000,
+            wait_until="domcontentloaded",
+            use_partial_on_timeout=True,
+        )
     if soup is None:
         print("  ✅ 0")
         return []
