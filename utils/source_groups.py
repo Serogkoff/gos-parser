@@ -46,6 +46,7 @@ AGENCY_SOURCES = frozenset({
 
 NEWSPAPER_SOURCES = frozenset({
     "Независимая газета",
+    "Коммерсантъ",
 })
 
 

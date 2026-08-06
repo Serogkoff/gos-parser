@@ -55,6 +55,7 @@ from parsers.sites.yonhap import parse as yonhap
 from parsers.sites.kyodo import parse as kyodo
 from parsers.sites.minoborony import parse as minoborony
 from parsers.sites.ng import parse as ng
+from parsers.sites.kommersant import parse as kommersant
 
 
 GOVERNMENT_SITES = [
@@ -100,6 +101,7 @@ KYODO_SITES = [
 
 NEWSPAPER_SITES = [
     ("Независимая газета", ng),
+    ("Коммерсантъ", kommersant),
 ]
 
 SITES = [
