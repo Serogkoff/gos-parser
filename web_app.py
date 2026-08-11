@@ -216,6 +216,11 @@ HTML = """
         .coverage{padding-top:18px}.coverage>h2,.coverage dl{padding:0 20px}
         .coverage dl{margin:14px 0 16px}.coverage dl div{min-height:31px;display:flex;align-items:center;justify-content:space-between}
         .coverage dt,.coverage dd{margin:0;color:#686158;font-size:12px}.coverage dt{display:flex;align-items:center;gap:8px}.coverage dd{color:var(--ink)}
+        .problem-sources{margin:0;padding:12px 20px 14px;border-top:1px solid var(--line)}
+        .problem-sources h3{margin:0 0 9px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+        .problem-source{min-height:28px;display:grid;grid-template-columns:7px minmax(0,1fr) auto;align-items:center;gap:8px;font-size:11px}
+        .problem-source span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .problem-source em{color:var(--muted);font-style:normal}
         .dot{width:6px;height:6px;border-radius:50%}.green{background:var(--green)}.amber{background:var(--amber)}.coral{background:var(--coral)}
         .coverage .green-text{color:var(--green)}
         .coverage footer{min-height:50px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);color:#8a8379;font-size:10px}
@@ -420,6 +425,7 @@ HTML = """
                 </div>
             </section>
 
+            {% if show_admin_diagnostics %}
             <section class="panel coverage">
                 <h2>Сводка покрытия</h2>
                 <dl>
@@ -428,8 +434,21 @@ HTML = """
                     <div><dt><span class="dot amber"></span>Пустая выдача</dt><dd>{{health_empty}}</dd></div>
                     <div><dt><span class="dot coral"></span>Ошибки парсинга</dt><dd>{{health_errors}}</dd></div>
                 </dl>
+                {% if problem_sources %}
+                <div class="problem-sources">
+                    <h3>Требуют внимания</h3>
+                    {% for item in problem_sources %}
+                    <div class="problem-source" title="{{item.error or item.checked_at}}">
+                        <span class="dot {{'coral' if item.status == 'error' else 'amber'}}"></span>
+                        <span>{{item.source}}</span>
+                        <em>{{'ошибка' if item.status == 'error' else 'пусто'}}</em>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 <footer><span>Обновлено {{status_time or '—'}}</span><span>↻</span></footer>
             </section>
+            {% endif %}
         </aside>
     </div>
 </main>
@@ -741,6 +760,11 @@ def load_json(filename, default):
         return default
 
 
+def can_view_admin_diagnostics():
+    """Локальный режим принадлежит владельцу; позже здесь будет проверка роли."""
+    return True
+
+
 def render_news_page(
     news,
     mode="all",
@@ -776,6 +800,17 @@ def render_news_page(
     )
     if not status_sources:
         ok_sources = total_sources
+    problem_sources = sorted(
+        (
+            item
+            for item in status_sources
+            if item.get("status") in {"empty", "error"}
+        ),
+        key=lambda item: (
+            item.get("status") != "error",
+            item.get("source", ""),
+        ),
+    )
 
     if source_group == AGENCIES_GROUP:
         group_title = "Новости информагентств"
@@ -896,6 +931,7 @@ def render_news_page(
             item.get("status") == "error"
             for item in status_sources
         ),
+        problem_sources=problem_sources,
         status_time=status.get("generated_at", ""),
         current_path=request.path,
         search_query=search_query,
@@ -905,6 +941,7 @@ def render_news_page(
         previous_url=page_url(page - 1) if page > 1 else "",
         next_url=page_url(page + 1) if page < page_count else "",
         page_label=page_label,
+        show_admin_diagnostics=can_view_admin_diagnostics(),
     )
 
 

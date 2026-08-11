@@ -230,6 +230,41 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("kyodo-easter-egg.webp", html)
         self.assertIn("if(brandClicks >= 5)", html)
 
+    def test_coverage_names_problem_sources(self):
+        self.files["parser_status.json"]["sources"].extend(
+            [
+                {
+                    "source": "Минприроды",
+                    "status": "error",
+                    "error": "TimeoutError",
+                },
+                {
+                    "source": "Минкульт",
+                    "status": "empty",
+                    "checked_at": "2026-08-11 14:00:00",
+                },
+            ]
+        )
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get("/")
+
+        html = response.get_data(as_text=True)
+        self.assertIn("Требуют внимания", html)
+        self.assertIn("Минприроды", html)
+        self.assertIn("Минкульт", html)
+        self.assertIn("TimeoutError", html)
+
+    def test_coverage_can_be_hidden_from_non_admin_user(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json), patch.object(
+            web_app,
+            "can_view_admin_diagnostics",
+            return_value=False,
+        ):
+            response = web_app.app.test_client().get("/")
+
+        html = response.get_data(as_text=True)
+        self.assertNotIn("Сводка покрытия", html)
+
     def test_tass_article_uses_official_rss_summary(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
             response = web_app.app.test_client().get(
