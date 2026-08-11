@@ -25,6 +25,10 @@ class SourceGroupTests(unittest.TestCase):
         self.assertEqual(source_group("Российская газета"), NEWSPAPERS_GROUP)
         self.assertEqual(source_group("Ведомости"), NEWSPAPERS_GROUP)
         self.assertEqual(source_group("Красная звезда"), NEWSPAPERS_GROUP)
+        self.assertEqual(
+            source_group("Комсомольская правда"),
+            NEWSPAPERS_GROUP,
+        )
         self.assertEqual(source_group("МЧС"), GOVERNMENT_GROUP)
 
     def test_filters_news_without_losing_fields(self):
@@ -154,6 +158,54 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Материал свежего номера НГ", html)
         self.assertNotIn("Материал государственного ведомства", html)
         self.assertNotIn("Материал информационного агентства", html)
+
+    def test_news_feed_is_paginated_by_35_items(self):
+        self.files["all_news.json"] = [
+            {
+                "source": "Коммерсантъ",
+                "title": f"Газетный материал {number:02d}",
+                "url": f"https://www.kommersant.ru/doc/{number}",
+                "date": "2026-08-11",
+            }
+            for number in range(80)
+        ]
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            first = web_app.app.test_client().get("/newspapers")
+            second = web_app.app.test_client().get("/newspapers?page=2")
+            third = web_app.app.test_client().get("/newspapers?page=3")
+
+        first_html = first.get_data(as_text=True)
+        second_html = second.get_data(as_text=True)
+        third_html = third.get_data(as_text=True)
+        self.assertEqual(first_html.count('class="news-card '), 35)
+        self.assertEqual(second_html.count('class="news-card '), 35)
+        self.assertEqual(third_html.count('class="news-card '), 10)
+        self.assertIn('aria-current="page">2</span>', second_html)
+        self.assertIn("36–70 из 80", second_html)
+
+    def test_server_search_covers_items_beyond_first_page(self):
+        self.files["all_news.json"] = [
+            {
+                "source": "Коммерсантъ",
+                "title": (
+                    "Особый материал для поиска"
+                    if number == 70
+                    else f"Обычный материал {number:02d}"
+                ),
+                "url": f"https://www.kommersant.ru/doc/{number}",
+                "date": "2026-08-11",
+            }
+            for number in range(80)
+        ]
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get(
+                "/newspapers?q=%D0%9E%D1%81%D0%BE%D0%B1%D1%8B%D0%B9"
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertIn("Особый материал для поиска", html)
+        self.assertEqual(html.count('class="news-card '), 1)
+        self.assertIn("1–1 из 1", html)
 
     def test_minselkhoz_news_opens_original_page(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):

@@ -2,7 +2,7 @@ import json
 import os
 from collections import Counter
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from flask import Flask, abort, jsonify, render_template_string, request
 from utils.article_reader import extract_article
@@ -30,6 +30,7 @@ from utils.storage import (
 
 app = Flask(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent
+NEWS_PER_PAGE = 35
 
 
 HTML = """
@@ -154,6 +155,18 @@ HTML = """
         }
         .feed-heading h2,.panel h2{margin:0;font-size:16px;font-weight:720}
         .feed-heading span{color:var(--muted);font-size:12px}
+        .pagination{
+            min-height:70px;padding:12px 20px;display:flex;align-items:center;
+            justify-content:center;gap:7px;border-top:1px solid var(--line)
+        }
+        .page-link,.page-current{
+            min-width:38px;height:38px;padding:0 11px;display:inline-flex;
+            align-items:center;justify-content:center;border:1px solid var(--line);
+            border-radius:5px;background:var(--surface);font-size:13px;font-weight:650
+        }
+        .page-link:hover{color:var(--coral-dark);border-color:rgba(228,79,69,.55);background:#fff8f2}
+        .page-current{color:#fff;border-color:var(--coral);background:var(--coral)}
+        .page-gap{padding:0 4px;color:var(--muted)}
         .news-card{
             position:relative;padding:24px 58px 24px 28px;border-bottom:1px solid var(--line);
             transition:background .17s
@@ -235,6 +248,7 @@ HTML = """
             .health{min-height:38px;padding:0 12px;font-size:11px}
             .toolbar,.sidebar{grid-template-columns:1fr}.news-card{padding:20px 48px 20px 18px}
             .news-card.match{padding-left:13px}.feed-heading{padding:0 18px}.news-card h3{font-size:21px}
+            .pagination{padding:12px 8px;gap:4px}.page-link,.page-current{min-width:34px;padding:0 8px}
             .meta{align-items:flex-start;flex-direction:column;gap:4px}.meta i{display:none}
         }
         @media(prefers-reduced-motion:reduce){
@@ -293,10 +307,11 @@ HTML = """
     </section>
 
     <section class="toolbar">
-        <label class="search">
+        <form class="search" method="get" action="{{current_path}}">
             <span class="search-icon">⌕</span>
-            <input id="news-search" placeholder="Поиск по заголовкам" autocomplete="off">
-        </label>
+            <input id="news-search" name="q" value="{{search_query}}"
+                   placeholder="Поиск по заголовкам · Enter" autocomplete="off">
+        </form>
         <label class="source-select">
             <span>▱</span>
             <select onchange="goToSource(this.value)">
@@ -317,7 +332,7 @@ HTML = """
         <section class="feed">
             <header class="feed-heading">
                 <h2>{{'Совпадения' if mode == 'found' else ('Источник: ' + source_filter if source_filter else 'Последние публикации')}}</h2>
-                <span id="visible-count">{{news|length}} материалов</span>
+                <span id="visible-count" data-default="{{page_label}}">{{page_label}}</span>
             </header>
             <div id="empty-state" class="empty hidden">
                 <strong>Ничего не найдено</strong>
@@ -357,6 +372,25 @@ HTML = """
                 </article>
             {% endfor %}
             </div>
+            {% if page_count > 1 %}
+            <nav class="pagination" aria-label="Страницы новостей">
+                {% if previous_url %}
+                <a class="page-link" href="{{previous_url}}" rel="prev">←</a>
+                {% endif %}
+                {% for link in page_links %}
+                    {% if link.gap %}
+                    <span class="page-gap">…</span>
+                    {% elif link.current %}
+                    <span class="page-current" aria-current="page">{{link.number}}</span>
+                    {% else %}
+                    <a class="page-link" href="{{link.url}}">{{link.number}}</a>
+                    {% endif %}
+                {% endfor %}
+                {% if next_url %}
+                <a class="page-link" href="{{next_url}}" rel="next">→</a>
+                {% endif %}
+            </nav>
+            {% endif %}
         </section>
 
         <aside class="sidebar" id="sidebar">
@@ -539,7 +573,9 @@ HTML = """
             card.classList.toggle('hidden', !visible);
             if(visible) count++;
         });
-        visibleCount.textContent = count + ' материалов';
+        visibleCount.textContent = (!query && !savedOnly)
+            ? visibleCount.dataset.default
+            : count + ' материалов';
         emptyState.classList.toggle('hidden', count !== 0);
     }
     document.querySelectorAll('[data-save]').forEach(button => {
@@ -749,7 +785,7 @@ def render_news_page(
         source_base = "/agencies/filter/"
     elif source_group == NEWSPAPERS_GROUP:
         group_title = "Свежие номера газет"
-        group_eyebrow = "Независимая газета"
+        group_eyebrow = "Коммерсантъ · Известия · РГ · Ведомости · Красная звезда · КП"
         group_home = "/newspapers"
         group_found = "/newspapers/found"
         source_base = "/newspapers/filter/"
@@ -760,9 +796,74 @@ def render_news_page(
         group_found = "/found"
         source_base = "/filter/"
 
+    sorted_news = sort_news_by_publication(news)
+    search_query = request.args.get("q", "").strip()
+    if search_query:
+        needle = search_query.casefold()
+        sorted_news = [
+            item
+            for item in sorted_news
+            if needle in " ".join(
+                [
+                    str(item.get("title", "")),
+                    str(item.get("source", "")),
+                    str(item.get("section", "")),
+                    str(item.get("summary", "")),
+                    " ".join(item.get("keywords", []) or []),
+                ]
+            ).casefold()
+        ]
+
+    try:
+        page = max(1, int(request.args.get("page", "1")))
+    except (TypeError, ValueError):
+        page = 1
+    page_total = len(sorted_news)
+    page_count = max(1, (page_total + NEWS_PER_PAGE - 1) // NEWS_PER_PAGE)
+    page = min(page, page_count)
+    page_offset = (page - 1) * NEWS_PER_PAGE
+    page_news = sorted_news[page_offset:page_offset + NEWS_PER_PAGE]
+    page_start = page_offset + 1 if page_news else 0
+    page_end = page_offset + len(page_news)
+    page_label = (
+        f"{page_start}–{page_end} из {page_total}"
+        if page_total
+        else "0 материалов"
+    )
+
+    query_parameters = request.args.to_dict(flat=True)
+
+    def page_url(number):
+        parameters = dict(query_parameters)
+        if number > 1:
+            parameters["page"] = number
+        else:
+            parameters.pop("page", None)
+        query_string = urlencode(parameters)
+        return request.path + (f"?{query_string}" if query_string else "")
+
+    visible_pages = sorted(
+        {1, page_count}
+        | set(range(max(1, page - 2), min(page_count, page + 2) + 1))
+    )
+    page_links = []
+    previous_number = None
+    for number in visible_pages:
+        if previous_number is not None and number - previous_number > 1:
+            page_links.append({"gap": True})
+        page_links.append(
+            {
+                "gap": False,
+                "number": number,
+                "url": page_url(number),
+                "current": number == page,
+            }
+        )
+        previous_number = number
+
     return render_template_string(
         HTML,
-        news=sort_news_by_publication(news),
+        news=page_news,
         total=len(group_news),
         found_count=len(group_found_news),
         sources=sources,
@@ -796,6 +897,14 @@ def render_news_page(
             for item in status_sources
         ),
         status_time=status.get("generated_at", ""),
+        current_path=request.path,
+        search_query=search_query,
+        page=page,
+        page_count=page_count,
+        page_links=page_links,
+        previous_url=page_url(page - 1) if page > 1 else "",
+        next_url=page_url(page + 1) if page < page_count else "",
+        page_label=page_label,
     )
 
 

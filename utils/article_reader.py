@@ -65,6 +65,13 @@ VERIFIED_ARTICLE_SELECTORS = {
         ".post-content",
         "article",
     ),
+    "kp.ru": (
+        "[itemprop='articleBody']",
+        "[data-gtm-el='content-body']",
+        ".article__body",
+        ".article__content",
+        "article",
+    ),
     "z.mil.ru": (
         "[itemprop='articleBody']",
         "article",

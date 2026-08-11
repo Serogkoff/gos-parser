@@ -60,6 +60,7 @@ from parsers.sites.izvestia import parse as izvestia
 from parsers.sites.rg import parse as rg
 from parsers.sites.vedomosti import parse as vedomosti
 from parsers.sites.redstar import parse as redstar
+from parsers.sites.kp import parse as kp
 
 
 GOVERNMENT_SITES = [
@@ -110,6 +111,7 @@ NEWSPAPER_SITES = [
     ("Российская газета", rg),
     ("Ведомости", vedomosti),
     ("Красная звезда", redstar),
+    ("Комсомольская правда", kp),
 ]
 
 SITES = [
