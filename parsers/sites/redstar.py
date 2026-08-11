@@ -14,8 +14,10 @@ from utils.news import deduplicate_news
 
 
 SOURCE_NAME = "Красная звезда"
-ISSUE_URL = "https://redstar.ru/category/nomer/"
-ISSUE_RSS_URL = "https://redstar.ru/category/nomer/feed/"
+# На redstar.ru HTTPS периодически отвечает TLSV1_UNRECOGNIZED_NAME.
+# Официальная ссылка раздела работает по HTTP, поэтому не форсируем HTTPS.
+ISSUE_URL = "http://redstar.ru/category/nomer/"
+ISSUE_RSS_URL = "http://redstar.ru/category/nomer/feed/"
 DATE_RE = re.compile(r"\b(\d{1,2})\.(\d{1,2})\.(20\d{2})\b")
 NON_ARTICLE_PATHS = {
     "", "category", "tag", "author", "page", "feed", "wp-content",
