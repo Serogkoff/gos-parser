@@ -159,7 +159,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertNotIn("Материал государственного ведомства", html)
         self.assertNotIn("Материал информационного агентства", html)
 
-    def test_news_feed_is_paginated_by_35_items(self):
+    def test_news_feed_is_paginated_by_20_items(self):
         self.files["all_news.json"] = [
             {
                 "source": "Коммерсантъ",
@@ -177,11 +177,11 @@ class SourceGroupPageTests(unittest.TestCase):
         first_html = first.get_data(as_text=True)
         second_html = second.get_data(as_text=True)
         third_html = third.get_data(as_text=True)
-        self.assertEqual(first_html.count('class="news-card '), 35)
-        self.assertEqual(second_html.count('class="news-card '), 35)
-        self.assertEqual(third_html.count('class="news-card '), 10)
+        self.assertEqual(first_html.count('class="news-card '), 20)
+        self.assertEqual(second_html.count('class="news-card '), 20)
+        self.assertEqual(third_html.count('class="news-card '), 20)
         self.assertIn('aria-current="page">2</span>', second_html)
-        self.assertIn("36–70 из 80", second_html)
+        self.assertIn("21–40 из 80", second_html)
 
     def test_server_search_covers_items_beyond_first_page(self):
         self.files["all_news.json"] = [

@@ -30,7 +30,7 @@ from utils.storage import (
 
 app = Flask(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent
-NEWS_PER_PAGE = 35
+NEWS_PER_PAGE = 20
 
 
 HTML = """
