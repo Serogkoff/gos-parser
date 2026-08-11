@@ -168,6 +168,31 @@ class DeduplicateNewsTests(unittest.TestCase):
             "url": "https://mintrans.gov.ru/press-center/news",
         }))
 
+    def test_removes_redstar_issue_cards_but_keeps_articles(self):
+        items = [
+            {
+                "source": "Красная звезда",
+                "title": "7 августа 2026 г.",
+                "url": "http://redstar.ru/7-avgusta-2026-g/",
+            },
+            {
+                "source": "Красная звезда",
+                "title": "Тренировки лётчиков морской авиации",
+                "url": (
+                    "http://redstar.ru/"
+                    "trenirovki-lyotchikov-morskoj-aviatsii-2/"
+                ),
+            },
+        ]
+
+        cleaned = deduplicate_news(items)
+
+        self.assertEqual(len(cleaned), 1)
+        self.assertEqual(
+            cleaned[0]["title"],
+            "Тренировки лётчиков морской авиации",
+        )
+
     def test_removes_impossible_future_publication_date(self):
         items = [{
             "source": "Сахалинская обл.",

@@ -31,6 +31,13 @@ SLEDCOM_ARTICLE_PATH = re.compile(
     re.IGNORECASE,
 )
 
+REDSTAR_ISSUE_PATH = re.compile(
+    r"^/\d{1,2}-(?:yanvarya|fevralya|marta|aprelya|maya|iyunya|"
+    r"iyulya|avgusta|sentyabrya|oktyabrya|noyabrya|dekabrya)-"
+    r"20\d{2}-g(?:-[^/]*)?/?$",
+    re.IGNORECASE,
+)
+
 TRAILING_SLASH_ARTICLE_RULES = (
     (
         "mcx.gov.ru",
@@ -187,6 +194,12 @@ def is_valid_news_item(item):
 
     if source == "СК РФ":
         return "/news/item/" in url or "/news/detail/" in url
+
+    if source == "Красная звезда":
+        # Карточки выпусков («11 августа 2026 г.») не являются статьями.
+        # deduplicate_news применяется и к уже сохранённой SQLite-базе,
+        # поэтому старые карточки также исчезнут при следующем цикле.
+        return REDSTAR_ISSUE_PATH.fullmatch(urlsplit(url).path) is None
 
     if source in SOURCE_ARTICLE_RULES:
         required_host, article_path = SOURCE_ARTICLE_RULES[source]

@@ -46,6 +46,38 @@ class IzvestiaTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["date"], "2026-08-11")
 
+    def test_separates_title_summary_and_time(self):
+        soup = BeautifulSoup(
+            """
+            <main>
+              <h1>Газета «Известия» от 11 августа 2026 года</h1>
+              <div
+                data-title="&lt;span&gt;Настоящий заголовок статьи&lt;/span&gt;"
+                data-description="Отдельный подзаголовок публикации"
+              >
+                <a href="/2146628/author/statya">
+                  <div class="title-box">Настоящий заголовок статьи</div>
+                  <div class="description-box">Отдельный подзаголовок публикации</div>
+                  <time datetime="2026-08-10T21:01:00Z">
+                    11 августа 2026, 00:01
+                  </time>
+                </a>
+              </div>
+            </main>
+            """,
+            "html.parser",
+        )
+
+        result = _parse_newspaper_page(soup)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["title"], "Настоящий заголовок статьи")
+        self.assertEqual(
+            result[0]["summary"],
+            "Отдельный подзаголовок публикации",
+        )
+        self.assertNotIn("00:01", result[0]["title"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -161,6 +161,19 @@ def _parse_issue_strips(soup, issue):
     return deduplicate_news(news)
 
 
+def _deduplicate_issue_records(items):
+    """Убирает повторы служебных карточек, не отправляя их в общую базу."""
+    result = []
+    seen = set()
+    for item in items:
+        url = str(item.get("url", "")).rstrip("/")
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        result.append(item)
+    return result
+
+
 def _parse_issue_page(soup):
     if soup is None:
         return []
@@ -182,7 +195,7 @@ def _parse_issue_page(soup):
         if item:
             news.append(item)
 
-    return deduplicate_news(news)
+    return _deduplicate_issue_records(news)
 
 
 def _parse_issue_rss(soup):
@@ -200,7 +213,7 @@ def _parse_issue_rss(soup):
         )
         if item:
             news.append(item)
-    return deduplicate_news(news)
+    return _deduplicate_issue_records(news)
 
 
 def _make_item(title, url, date="", summary=""):

@@ -77,7 +77,7 @@ def _parse_newspaper_page(soup):
         if not _is_article_url(url):
             continue
 
-        title = _text(link)
+        title = _title_from_link(link)
         if len(title) < 15 or is_junk(title):
             continue
 
@@ -90,6 +90,9 @@ def _parse_newspaper_page(soup):
         }
         if edition_date:
             item["edition_date"] = edition_date
+        summary = _summary_from_link(link)
+        if summary:
+            item["summary"] = summary
         news.append(item)
 
     return deduplicate_news(news)
@@ -148,6 +151,34 @@ def _date_near(link):
         if date:
             return date
     return ""
+
+
+def _title_from_link(link):
+    """Берёт только заголовок, не склеивая его с анонсом и временем."""
+    container = link if link.has_attr("data-title") else link.find_parent(
+        attrs={"data-title": True}
+    )
+    if container is not None:
+        title = _clean_html(container.get("data-title", ""))
+        if title:
+            return title
+
+    title_node = link.select_one(
+        ".title-box, [class*='__title'], h1, h2, h3"
+    )
+    return _text(title_node) or _text(link)
+
+
+def _summary_from_link(link):
+    container = link if link.has_attr("data-description") else link.find_parent(
+        attrs={"data-description": True}
+    )
+    if container is not None:
+        summary = _clean_html(container.get("data-description", ""))
+        if summary:
+            return summary
+
+    return _text(link.select_one(".description-box, [class*='__description']"))
 
 
 def _is_article_url(url):
