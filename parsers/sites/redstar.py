@@ -1,13 +1,14 @@
 """Парсер материалов текущего номера газеты «Красная звезда»."""
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qs, urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
 from utils.filters import is_junk
+from utils.dates import parse_date
 from utils.http_client import fetch_soup
 from utils.js_client import fetch_soup_js
 from utils.news import deduplicate_news
@@ -18,6 +19,7 @@ SOURCE_NAME = "Красная звезда"
 # Официальная ссылка раздела работает по HTTP, поэтому не форсируем HTTPS.
 ISSUE_URL = "http://redstar.ru/category/nomer/"
 ISSUE_RSS_URL = "http://redstar.ru/category/nomer/feed/"
+SITE_RSS_URL = "http://redstar.ru/feed/"
 DATE_RE = re.compile(r"\b(\d{1,2})\.(\d{1,2})\.(20\d{2})\b")
 NON_ARTICLE_PATHS = {
     "", "category", "tag", "author", "page", "feed", "wp-content",
@@ -26,38 +28,137 @@ NON_ARTICLE_PATHS = {
 
 
 def parse():
-    soup = fetch_soup(
-        ISSUE_URL,
-        SOURCE_NAME,
+    issue_feed = fetch_soup(
+        ISSUE_RSS_URL,
+        f"{SOURCE_NAME} · номера",
+        timeout=25,
+        verify=False,
+        parser="xml",
+        attempts=1,
+    )
+    issue = _latest_issue_from_rss(issue_feed)
+
+    # Общий RSS содержит не карточки выпусков, а отдельные статьи со всех
+    # полос. Категория с датой номера позволяет оставить только свежий выпуск.
+    article_feed = fetch_soup(
+        SITE_RSS_URL,
+        f"{SOURCE_NAME} · статьи",
+        timeout=25,
+        verify=False,
+        parser="xml",
+        attempts=1,
+    )
+    news = _parse_articles_rss(
+        article_feed,
+        issue_title=issue.get("title", "") if issue else "",
+        issue_date=issue.get("date", "") if issue else "",
+    )
+
+    if not news:
+        news = _fallback_issue_pages(issue)
+
+    print(f"  ✅ {len(news)}")
+    return news
+
+
+def _latest_issue_from_rss(soup):
+    issues = _parse_issue_rss(soup)
+    return issues[0] if issues else None
+
+
+def _parse_articles_rss(soup, issue_title="", issue_date=""):
+    """Извлекает отдельные статьи только из последнего газетного номера."""
+    if soup is None:
+        return []
+
+    news = []
+    issue_key = _category_key(issue_title)
+    for entry in soup.find_all("item"):
+        categories = [
+            " ".join(tag.get_text(" ", strip=True).split())
+            for tag in entry.find_all("category")
+        ]
+        category_keys = {_category_key(value) for value in categories}
+        if issue_key and issue_key not in category_keys:
+            continue
+
+        category_date = ""
+        for value in categories:
+            category_date = parse_date(value)
+            if category_date:
+                break
+        item = _make_item(
+            title=_tag_text(entry, "title"),
+            url=_tag_text(entry, "link") or _tag_text(entry, "guid"),
+            date=issue_date or category_date or _parse_rss_date(
+                _tag_text(entry, "pubDate")
+            ),
+            summary=_clean_html(_tag_text(entry, "description")),
+        )
+        if item:
+            news.append(item)
+    return deduplicate_news(news)
+
+
+def _fallback_issue_pages(issue=None):
+    """Резерв: раскрывает выпуск по полосам, если RSS статей недоступен."""
+    if issue is None:
+        soup = fetch_soup(
+            ISSUE_URL,
+            SOURCE_NAME,
+            timeout=25,
+            verify=False,
+            attempts=1,
+        )
+        if soup is None:
+            print("  ℹ️ RSS «Красной звезды» пуст — пробую страницу через браузер")
+            soup = fetch_soup_js(
+                ISSUE_URL,
+                SOURCE_NAME,
+                wait_ms=1800,
+                timeout_ms=45000,
+                wait_until="domcontentloaded",
+                use_partial_on_timeout=True,
+            )
+        issues = _parse_issue_page(soup) if soup else []
+        issue = issues[0] if issues else None
+
+    if not issue:
+        return []
+
+    page = fetch_soup(
+        issue.get("url", ""),
+        f"{SOURCE_NAME} · свежий номер",
         timeout=25,
         verify=False,
         attempts=1,
     )
+    strips = _parse_issue_strips(page, issue) if page else []
+    return strips or [issue]
+
+
+def _parse_issue_strips(soup, issue):
     if soup is None:
-        print("  ℹ️ Страница номера «Красной звезды» не ответила — пробую браузер")
-        soup = fetch_soup_js(
-            ISSUE_URL,
-            SOURCE_NAME,
-            wait_ms=1800,
-            timeout_ms=45000,
-            wait_until="domcontentloaded",
-            use_partial_on_timeout=True,
-        )
+        return []
 
-    news = _parse_issue_page(soup) if soup else []
-    if not news:
-        rss = fetch_soup(
-            ISSUE_RSS_URL,
-            f"{SOURCE_NAME} · RSS",
-            timeout=25,
-            verify=False,
-            parser="xml",
-            attempts=1,
+    news = []
+    for figure in soup.select(".entry-content figure"):
+        image = figure.select_one("img[src*='_Stranitsa_'], img[src*='_stranitsa_']")
+        link = figure.select_one("a[href]")
+        if image is None or link is None:
+            continue
+        caption = _text(figure.select_one("figcaption"))
+        if not caption:
+            match = re.search(r"_stranitsa_(\d+)", str(image.get("src", "")), re.I)
+            caption = f"{match.group(1)} полоса" if match else "Полоса номера"
+        item = _make_item(
+            title=f"{issue.get('title', 'Свежий номер')} — {caption}",
+            url=urljoin(issue.get("url", ISSUE_URL), str(link.get("href", ""))),
+            date=issue.get("date", ""),
         )
-        news = _parse_issue_rss(rss) if rss else []
-
-    print(f"  ✅ {len(news)}")
-    return news
+        if item:
+            news.append(item)
+    return deduplicate_news(news)
 
 
 def _parse_issue_page(soup):
@@ -93,7 +194,8 @@ def _parse_issue_rss(soup):
         item = _make_item(
             title=_tag_text(entry, "title"),
             url=_tag_text(entry, "link") or _tag_text(entry, "guid"),
-            date=_parse_rss_date(_tag_text(entry, "pubDate")),
+            date=parse_date(_tag_text(entry, "title"))
+            or _parse_rss_date(_tag_text(entry, "pubDate")),
             summary=_clean_html(_tag_text(entry, "description")),
         )
         if item:
@@ -121,10 +223,16 @@ def _is_article_url(url):
     parts = urlsplit(str(url or ""))
     hostname = (parts.hostname or "").casefold()
     path_parts = [part.casefold() for part in parts.path.split("/") if part]
+    attachment_id = parse_qs(parts.query).get("attachment_id", [""])[0]
     return (
         (hostname == "redstar.ru" or hostname.endswith(".redstar.ru"))
-        and len(path_parts) == 1
-        and path_parts[0] not in NON_ARTICLE_PATHS
+        and (
+            (
+                len(path_parts) == 1
+                and path_parts[0] not in NON_ARTICLE_PATHS
+            )
+            or (not path_parts and attachment_id.isdigit())
+        )
     )
 
 
@@ -155,7 +263,16 @@ def _parse_rss_date(value):
         parsed = parsedate_to_datetime(str(value or ""))
     except (TypeError, ValueError, OverflowError):
         return ""
-    return parsed.date().isoformat() if parsed else ""
+    if not parsed:
+        return ""
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone(timedelta(hours=3)))
+    return parsed.date().isoformat()
+
+
+def _category_key(value):
+    normalized = str(value or "").casefold().replace("\xa0", " ")
+    return " ".join(normalized.split()).rstrip(".")
 
 
 def _tag_text(entry, name):
