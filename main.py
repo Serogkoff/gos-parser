@@ -56,6 +56,10 @@ from parsers.sites.kyodo import parse as kyodo
 from parsers.sites.minoborony import parse as minoborony
 from parsers.sites.ng import parse as ng
 from parsers.sites.kommersant import parse as kommersant
+from parsers.sites.izvestia import parse as izvestia
+from parsers.sites.rg import parse as rg
+from parsers.sites.vedomosti import parse as vedomosti
+from parsers.sites.redstar import parse as redstar
 
 
 GOVERNMENT_SITES = [
@@ -102,6 +106,10 @@ KYODO_SITES = [
 NEWSPAPER_SITES = [
     ("Независимая газета", ng),
     ("Коммерсантъ", kommersant),
+    ("Известия", izvestia),
+    ("Российская газета", rg),
+    ("Ведомости", vedomosti),
+    ("Красная звезда", redstar),
 ]
 
 SITES = [

@@ -21,6 +21,10 @@ class SourceGroupTests(unittest.TestCase):
         self.assertEqual(source_group("Киодо (共同通信)"), AGENCIES_GROUP)
         self.assertEqual(source_group("Независимая газета"), NEWSPAPERS_GROUP)
         self.assertEqual(source_group("Коммерсантъ"), NEWSPAPERS_GROUP)
+        self.assertEqual(source_group("Известия"), NEWSPAPERS_GROUP)
+        self.assertEqual(source_group("Российская газета"), NEWSPAPERS_GROUP)
+        self.assertEqual(source_group("Ведомости"), NEWSPAPERS_GROUP)
+        self.assertEqual(source_group("Красная звезда"), NEWSPAPERS_GROUP)
         self.assertEqual(source_group("МЧС"), GOVERNMENT_GROUP)
 
     def test_filters_news_without_losing_fields(self):

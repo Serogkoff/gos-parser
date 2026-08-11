@@ -11,40 +11,46 @@ from utils.news import deduplicate_news
 
 SOURCE_NAME = "Независимая газета"
 FRESH_ISSUE_URL = "https://www.ng.ru/gazeta/"
+LEGACY_ISSUE_URL = "https://www.ng.ru/n2013/"
+FRESH_ISSUE_URLS = (FRESH_ISSUE_URL, LEGACY_ISSUE_URL)
 ARTICLE_DATE_RE = re.compile(r"/(20\d{2}-\d{2}-\d{2})/")
 ISSUE_NUMBER_RE = re.compile(r"\((\d+)\)")
 PAGE_SUFFIX_RE = re.compile(r"\s*\(\d+\s+полоса\)\s*$", re.IGNORECASE)
 
 
 def parse():
-    soup = fetch_soup(
-        FRESH_ISSUE_URL,
-        SOURCE_NAME,
-        timeout=30,
-        verify=True,
-    )
-    if soup is None:
-        print("  ℹ️ Обычный запрос НГ не сработал — пробую через браузер")
+    news = []
+    for url in FRESH_ISSUE_URLS:
+        soup = fetch_soup(
+            url,
+            SOURCE_NAME,
+            timeout=20,
+            verify=True,
+            attempts=1,
+        )
+        news = _parse_fresh_issue(soup, base_url=url) if soup else []
+        if news:
+            break
+
+    if not news:
+        print("  ℹ️ Обычные страницы НГ не сработали — пробую браузер один раз")
         soup = fetch_soup_js(
             FRESH_ISSUE_URL,
             SOURCE_NAME,
-            wait_ms=2500,
-            timeout_ms=60000,
+            wait_ms=2000,
+            timeout_ms=45000,
             wait_until="domcontentloaded",
             use_partial_on_timeout=True,
         )
-    if soup is None:
-        print("  ✅ 0")
-        return []
+        news = _parse_fresh_issue(soup) if soup else []
 
-    news = _parse_fresh_issue(soup)
     print(f"  ✅ {len(news)}")
     return news
 
 
-def _parse_fresh_issue(soup):
+def _parse_fresh_issue(soup, base_url=FRESH_ISSUE_URL):
     """Берёт только статьи номера, указанного в заголовке «Газета»."""
-    issue_node = soup.select_one("h1.htitle .num")
+    issue_node = soup.select_one("h1.htitle .num, h1 .num, .htitle .num")
     issue_text = (
         " ".join(issue_node.get_text(" ", strip=True).split())
         if issue_node
@@ -59,8 +65,11 @@ def _parse_fresh_issue(soup):
         return []
 
     news = []
-    for link in soup.select('div[role="main"] .anonce h3 a[href]'):
-        url = urljoin(FRESH_ISSUE_URL, link.get("href", ""))
+    for link in soup.select(
+        'div[role="main"] .anonce h3 a[href], '
+        'main .anonce h3 a[href], .anonce h3 a[href]'
+    ):
+        url = urljoin(base_url, link.get("href", ""))
         path = urlsplit(url).path
         if (
             not path.endswith(".html")

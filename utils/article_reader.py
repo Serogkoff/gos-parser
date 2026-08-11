@@ -39,6 +39,32 @@ VERIFIED_ARTICLE_SELECTORS = {
     "ng.ru": (
         "article.typical",
     ),
+    "iz.ru": (
+        "[itemprop='articleBody']",
+        ".text-article__inside",
+        ".article__text",
+        ".article__body",
+        "article",
+    ),
+    "rg.ru": (
+        "[itemprop='articleBody']",
+        ".PageContentCommonStyling",
+        ".article__text",
+        ".article__body",
+        "article",
+    ),
+    "vedomosti.ru": (
+        "[itemprop='articleBody']",
+        ".article__body",
+        ".article__content",
+        "article",
+    ),
+    "redstar.ru": (
+        "[itemprop='articleBody']",
+        ".entry-content",
+        ".post-content",
+        "article",
+    ),
     "z.mil.ru": (
         "[itemprop='articleBody']",
         "article",
