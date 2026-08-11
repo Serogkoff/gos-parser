@@ -1,11 +1,25 @@
 import unittest
+from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 
-from parsers.sites.ng import _parse_fresh_issue
+from parsers.sites.ng import FRESH_ISSUE_URL, _parse_fresh_issue, parse
 
 
 class NgFreshIssueTests(unittest.TestCase):
+    def test_failed_run_makes_only_one_network_request(self):
+        with patch("parsers.sites.ng.fetch_soup", return_value=None) as fetch:
+            result = parse()
+
+        self.assertEqual(result, [])
+        fetch.assert_called_once_with(
+            FRESH_ISSUE_URL,
+            "Независимая газета",
+            timeout=25,
+            verify=True,
+            attempts=1,
+        )
+
     def test_reads_only_articles_from_current_issue(self):
         soup = BeautifulSoup(
             """

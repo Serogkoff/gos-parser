@@ -236,20 +236,8 @@ def run_schedule(sites, group_name, interval, stop_event):
 
 
 def run_daily_schedule(sites, group_name, hour, stop_event):
-    """Проверяет группу сразу при старте, затем ежедневно в заданный час."""
+    """Проверяет группу строго раз в сутки в заданный час."""
     while not stop_event.is_set():
-        try:
-            run_once(
-                sites,
-                group_name=group_name,
-                merge_status=True,
-            )
-        except Exception as error:
-            print(
-                f"\n❌ Ошибка цикла «{group_name}»: "
-                f"{type(error).__name__}: {error}"
-            )
-
         now = datetime.now()
         next_run = now.replace(
             hour=hour,
@@ -266,6 +254,20 @@ def run_daily_schedule(sites, group_name, hour, stop_event):
                 f"{next_run:%d.%m.%Y в %H:%M}."
             )
         stop_event.wait(wait_seconds)
+        if stop_event.is_set():
+            break
+
+        try:
+            run_once(
+                sites,
+                group_name=group_name,
+                merge_status=True,
+            )
+        except Exception as error:
+            print(
+                f"\n❌ Ошибка цикла «{group_name}»: "
+                f"{type(error).__name__}: {error}"
+            )
 
 
 def main():

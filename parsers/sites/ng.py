@@ -1,48 +1,34 @@
-"""Парсер статей свежего номера «Независимой газеты»."""
+"""Бережный парсер статей свежего номера «Независимой газеты»."""
 
 import re
 from urllib.parse import urljoin, urlsplit
 
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
-from utils.js_client import fetch_soup_js
 from utils.news import deduplicate_news
 
 
 SOURCE_NAME = "Независимая газета"
 FRESH_ISSUE_URL = "https://www.ng.ru/gazeta/"
-LEGACY_ISSUE_URL = "https://www.ng.ru/n2013/"
-FRESH_ISSUE_URLS = (FRESH_ISSUE_URL, LEGACY_ISSUE_URL)
 ARTICLE_DATE_RE = re.compile(r"/(20\d{2}-\d{2}-\d{2})/")
 ISSUE_NUMBER_RE = re.compile(r"\((\d+)\)")
 PAGE_SUFFIX_RE = re.compile(r"\s*\(\d+\s+полоса\)\s*$", re.IGNORECASE)
 
 
 def parse():
-    news = []
-    for url in FRESH_ISSUE_URLS:
-        soup = fetch_soup(
-            url,
-            SOURCE_NAME,
-            timeout=20,
-            verify=True,
-            attempts=1,
-        )
-        news = _parse_fresh_issue(soup, base_url=url) if soup else []
-        if news:
-            break
-
+    # У НГ агрессивная защита по IP. Здесь намеренно нет резервного URL,
+    # повторного HTTP-запроса и Playwright: одна проверка номера в сутки
+    # безопаснее серии почти одинаковых обращений к одному серверу.
+    soup = fetch_soup(
+        FRESH_ISSUE_URL,
+        SOURCE_NAME,
+        timeout=25,
+        verify=True,
+        attempts=1,
+    )
+    news = _parse_fresh_issue(soup) if soup else []
     if not news:
-        print("  ℹ️ Обычные страницы НГ не сработали — пробую браузер один раз")
-        soup = fetch_soup_js(
-            FRESH_ISSUE_URL,
-            SOURCE_NAME,
-            wait_ms=2000,
-            timeout_ms=45000,
-            wait_until="domcontentloaded",
-            use_partial_on_timeout=True,
-        )
-        news = _parse_fresh_issue(soup) if soup else []
+        print("  ℹ️ НГ не ответила — следующая попытка только завтра в 08:00")
 
     print(f"  ✅ {len(news)}")
     return news
