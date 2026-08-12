@@ -4,19 +4,26 @@ import re
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlsplit
 
+import requests
 from bs4 import BeautifulSoup
 
 from utils.filters import is_junk
-from utils.http_client import fetch_soup
+from utils.http_client import HEADERS, fetch_soup
+from utils.logger import get_logger
 from utils.news import deduplicate_news
 
 
 SOURCE_NAME = "Независимая газета"
 FRESH_ISSUE_URL = "https://www.ng.ru/gazeta/"
 RSS_URL = "https://www.ng.ru/rss/"
+RSS_PROXY_URL = (
+    "https://api.rss2json.com/v1/api.json"
+    "?rss_url=https%3A%2F%2Fwww.ng.ru%2Frss%2F"
+)
 ARTICLE_DATE_RE = re.compile(r"/(20\d{2}-\d{2}-\d{2})/")
 ISSUE_NUMBER_RE = re.compile(r"\((\d+)\)")
 PAGE_SUFFIX_RE = re.compile(r"\s*\(\d+\s+полоса\)\s*$", re.IGNORECASE)
+logger = get_logger("ng")
 
 
 def parse():
@@ -43,10 +50,50 @@ def parse():
         )
         news = _parse_rss(rss) if rss else []
         if not news:
-            print("  ℹ️ НГ заблокировала и номер, и RSS — повтор завтра в 08:00")
+            print("  ℹ️ НГ заблокировала IP — пробую RSS через внешний шлюз")
+            news = _parse_proxy_feed(_fetch_rss_proxy())
+        if not news:
+            print("  ℹ️ Все три способа НГ недоступны — повтор завтра в 08:00")
 
     print(f"  ✅ {len(news)}")
     return news
+
+
+def _fetch_rss_proxy():
+    """Один раз получает публичный RSS через внешний IP без API-ключа."""
+    try:
+        response = requests.get(
+            RSS_PROXY_URL,
+            headers=HEADERS,
+            timeout=25,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("status") != "ok":
+            raise ValueError(payload.get("message") or "неизвестный ответ")
+        return payload
+    except (requests.RequestException, ValueError) as error:
+        logger.warning(f"[{SOURCE_NAME} · RSS-шлюз] Ошибка: {error}")
+        return None
+
+
+def _parse_proxy_feed(payload):
+    if not isinstance(payload, dict):
+        return []
+    parsed = []
+    for entry in payload.get("items", []):
+        if not isinstance(entry, dict):
+            continue
+        publication_date = str(entry.get("pubDate", ""))[:10]
+        item = _rss_item(
+            entry.get("title", ""),
+            entry.get("link", ""),
+            publication_date,
+            entry.get("description", ""),
+        )
+        if item:
+            parsed.append(item)
+    return _latest_rss_day(parsed)
 
 
 def _parse_rss(soup):
@@ -65,34 +112,47 @@ def _parse_rss(soup):
         publication_date = _rss_date(
             date_tag.get_text(" ", strip=True) if date_tag else ""
         )
-        if len(title) < 15 or not url or not publication_date or is_junk(title):
-            continue
-
-        item = {
-            "source": SOURCE_NAME,
-            "title": title,
-            "url": url,
-            "date": publication_date,
-            "section": "Онлайн НГ · резерв",
-        }
         description = entry.find("description")
-        if description:
-            summary_soup = BeautifulSoup(
-                description.get_text(),
-                "html.parser",
-            )
-            summary = " ".join(
-                summary_soup.get_text(" ", strip=True).split()
-            )
-            if len(summary) >= 30:
-                item["summary"] = summary
-        parsed.append(item)
+        item = _rss_item(
+            title,
+            url,
+            publication_date,
+            description.get_text() if description else "",
+        )
+        if item:
+            parsed.append(item)
 
-    if not parsed:
+    return _latest_rss_day(parsed)
+
+
+def _rss_item(title, url, publication_date, description=""):
+    title = " ".join(str(title).split())
+    url = str(url).strip()
+    if len(title) < 15 or not url or not publication_date or is_junk(title):
+        return None
+    item = {
+        "source": SOURCE_NAME,
+        "title": title,
+        "url": url,
+        "date": publication_date,
+        "section": "Онлайн НГ · резерв",
+    }
+    summary = " ".join(
+        BeautifulSoup(str(description), "html.parser")
+        .get_text(" ", strip=True)
+        .split()
+    )
+    if len(summary) >= 30:
+        item["summary"] = summary
+    return item
+
+
+def _latest_rss_day(items):
+    if not items:
         return []
-    newest_date = max(item["date"] for item in parsed)
+    newest_date = max(item["date"] for item in items)
     return deduplicate_news([
-        item for item in parsed if item["date"] == newest_date
+        item for item in items if item["date"] == newest_date
     ])
 
 

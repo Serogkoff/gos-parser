@@ -7,6 +7,7 @@ from parsers.sites.ng import (
     FRESH_ISSUE_URL,
     RSS_URL,
     _parse_fresh_issue,
+    _parse_proxy_feed,
     _parse_rss,
     parse,
 )
@@ -14,7 +15,10 @@ from parsers.sites.ng import (
 
 class NgFreshIssueTests(unittest.TestCase):
     def test_failed_run_makes_one_request_per_official_endpoint(self):
-        with patch("parsers.sites.ng.fetch_soup", return_value=None) as fetch:
+        with patch("parsers.sites.ng.fetch_soup", return_value=None) as fetch, patch(
+            "parsers.sites.ng._fetch_rss_proxy",
+            return_value=None,
+        ) as proxy:
             result = parse()
 
         self.assertEqual(result, [])
@@ -30,6 +34,7 @@ class NgFreshIssueTests(unittest.TestCase):
         )
         self.assertEqual(fetch.call_args_list[1].kwargs["parser"], "xml")
         self.assertEqual(fetch.call_args_list[1].kwargs["attempts"], 1)
+        proxy.assert_called_once_with()
 
     def test_rss_fallback_keeps_only_newest_day(self):
         soup = BeautifulSoup(
@@ -64,6 +69,29 @@ class NgFreshIssueTests(unittest.TestCase):
             all(item["section"] == "Онлайн НГ · резерв" for item in result)
         )
         self.assertIn("официальный анонс", result[0]["summary"])
+
+    def test_external_gateway_keeps_only_newest_day(self):
+        result = _parse_proxy_feed({
+            "status": "ok",
+            "items": [
+                {
+                    "title": "Свежая публикация Независимой газеты",
+                    "link": "https://www.ng.ru/news/301.html",
+                    "pubDate": "2026-08-12 06:45:00",
+                    "description": "Официальный анонс свежей публикации НГ.",
+                },
+                {
+                    "title": "Предыдущая публикация Независимой газеты",
+                    "link": "https://www.ng.ru/news/300.html",
+                    "pubDate": "2026-08-11 21:00:00",
+                    "description": "Официальный анонс предыдущего материала.",
+                },
+            ],
+        })
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["date"], "2026-08-12")
+        self.assertEqual(result[0]["section"], "Онлайн НГ · резерв")
 
     def test_reads_only_articles_from_current_issue(self):
         soup = BeautifulSoup(
