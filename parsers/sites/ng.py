@@ -16,6 +16,7 @@ from utils.news import deduplicate_news
 SOURCE_NAME = "Независимая газета"
 FRESH_ISSUE_URL = "https://www.ng.ru/gazeta/"
 RSS_URL = "https://www.ng.ru/rss/"
+ISSUE_READER_URL = "https://r.jina.ai/https://www.ng.ru/gazeta/"
 RSS_PROXY_URL = (
     "https://api.rss2json.com/v1/api.json"
     "?rss_url=https%3A%2F%2Fwww.ng.ru%2Frss%2F"
@@ -39,7 +40,11 @@ def parse():
     )
     news = _parse_fresh_issue(soup) if soup else []
     if not news:
-        print("  ℹ️ Свежий номер НГ недоступен — пробую официальный RSS")
+        print("  ℹ️ НГ заблокировала IP — пробую свежий номер через шлюз")
+        proxy_issue = _fetch_issue_proxy()
+        news = _parse_markdown_issue(proxy_issue) if proxy_issue else []
+    if not news:
+        print("  ℹ️ Страница номера недоступна — пробую официальный RSS")
         rss = fetch_soup(
             RSS_URL,
             f"{SOURCE_NAME} · RSS",
@@ -50,13 +55,94 @@ def parse():
         )
         news = _parse_rss(rss) if rss else []
         if not news:
-            print("  ℹ️ НГ заблокировала IP — пробую RSS через внешний шлюз")
+            print("  ℹ️ Прямой RSS недоступен — пробую его через шлюз")
             news = _parse_proxy_feed(_fetch_rss_proxy())
         if not news:
-            print("  ℹ️ Все три способа НГ недоступны — повтор завтра в 08:00")
+            print("  ℹ️ Все способы НГ недоступны — повтор завтра в 08:00")
 
     print(f"  ✅ {len(news)}")
     return news
+
+
+def _fetch_issue_proxy():
+    """Получает Markdown свежего номера через внешний IP один раз в сутки."""
+    try:
+        response = requests.get(
+            ISSUE_READER_URL,
+            # Jina Reader — API, а не обычная веб-страница. Браузерный
+            # User-Agent вызывает у его Cloudflare лишнюю HTML-проверку.
+            headers={
+                "User-Agent": "gos-parser/1.0",
+                "Accept": "text/plain",
+            },
+            timeout=40,
+        )
+        response.raise_for_status()
+        if not response.text.strip():
+            raise ValueError("получен пустой ответ")
+        return response.text
+    except (requests.RequestException, ValueError) as error:
+        logger.warning(f"[{SOURCE_NAME} · шлюз номера] Ошибка: {error}")
+        return None
+
+
+def _parse_markdown_issue(markdown):
+    """Извлекает статьи самого частого номера из Markdown-копии страницы."""
+    if not isinstance(markdown, str) or not markdown.strip():
+        return []
+    markdown = "\n".join(line.strip() for line in markdown.splitlines())
+
+    candidates = []
+    pattern = re.compile(
+        r"(?m)^(?:#{1,6}\s+)?\[([^\]\n]{15,})\]"
+        r"\((https?://(?:www\.)?ng\.ru/[^\s)]+/"
+        r"20\d{2}-\d{2}-\d{2}/[^\s)]+_\d+_[^\s)]+\.html)\)\s*$"
+    )
+    for title, url in pattern.findall(markdown):
+        issue_match = re.search(r"_(\d+)_", url)
+        date_match = ARTICLE_DATE_RE.search(urlsplit(url).path)
+        if not issue_match or not date_match:
+            continue
+        candidates.append({
+            "title": " ".join(title.split()),
+            "url": url,
+            "issue_number": issue_match.group(1),
+            "date": date_match.group(1),
+        })
+    if not candidates:
+        return []
+
+    issue_counts = {}
+    for item in candidates:
+        number = item["issue_number"]
+        issue_counts[number] = issue_counts.get(number, 0) + 1
+    current_issue = max(issue_counts, key=issue_counts.get)
+
+    edition_match = re.search(r"\b(\d{2})\.(\d{2})\.(20\d{2})\b", markdown)
+    edition_date = (
+        f"{edition_match.group(3)}-{edition_match.group(2)}-{edition_match.group(1)}"
+        if edition_match
+        else ""
+    )
+    news = []
+    for item in candidates:
+        title = PAGE_SUFFIX_RE.sub("", item["title"]).strip()
+        if (
+            item["issue_number"] != current_issue
+            or len(title) < 15
+            or is_junk(title)
+        ):
+            continue
+        news_item = {
+            "source": SOURCE_NAME,
+            "title": title,
+            "url": item["url"],
+            "date": item["date"],
+        }
+        if edition_date:
+            news_item["edition_date"] = edition_date
+        news.append(news_item)
+    return deduplicate_news(news)
 
 
 def _fetch_rss_proxy():
