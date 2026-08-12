@@ -2,7 +2,7 @@
 
 import json
 import re
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urlencode, urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
 
@@ -207,6 +207,11 @@ def extract_article(url, fallback_title=""):
     is_mvd = _is_mvd_url(url)
     if _is_minobrnauki_url(url) or _is_mnr_url(url):
         fetch_url = url.rstrip("/") + "/"
+    elif _is_ng_url(url):
+        # НГ блокирует IP после нескольких последовательных обращений.
+        # Текст читаем из того же Google-представления, которое используется
+        # для полного номера, не отправляя ещё один запрос самому ng.ru.
+        fetch_url = _ng_mirror_url(url)
 
     if _is_minoborony_url(url):
         soup = fetch_soup_js(
@@ -238,6 +243,14 @@ def extract_article(url, fallback_title=""):
                 timeout=30,
                 verify=False,
             )
+    elif _is_ng_url(url):
+        soup = fetch_soup(
+            fetch_url,
+            "Просмотр НГ через копию",
+            timeout=40,
+            verify=True,
+            attempts=1,
+        )
     else:
         soup = fetch_soup(fetch_url, "Просмотр новости", timeout=25, verify=False)
         if soup is None and verified_selectors:
@@ -328,6 +341,28 @@ def extract_article(url, fallback_title=""):
 def _is_minobrnauki_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
     return hostname == "minobrnauki.gov.ru" or hostname.endswith(".minobrnauki.gov.ru")
+
+
+def _is_ng_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return hostname == "ng.ru" or hostname.endswith(".ng.ru")
+
+
+def _ng_mirror_url(url):
+    """Строит Google-копию публичной статьи НГ без исходных query-параметров."""
+    parts = urlsplit(url)
+    query = urlencode({
+        "_x_tr_sl": "auto",
+        "_x_tr_tl": "ru",
+        "_x_tr_hl": "ru",
+    })
+    return urlunsplit((
+        "https",
+        "www-ng-ru.translate.goog",
+        parts.path,
+        query,
+        "",
+    ))
 
 
 def _is_mnr_url(url):
