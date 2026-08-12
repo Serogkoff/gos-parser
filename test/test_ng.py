@@ -17,6 +17,9 @@ from parsers.sites.ng import (
 class NgFreshIssueTests(unittest.TestCase):
     def test_failed_run_makes_one_request_per_official_endpoint(self):
         with patch("parsers.sites.ng.fetch_soup", return_value=None) as fetch, patch(
+            "parsers.sites.ng._fetch_issue_mirror",
+            return_value=None,
+        ) as issue_mirror, patch(
             "parsers.sites.ng._fetch_issue_proxy",
             return_value=None,
         ) as issue_proxy, patch(
@@ -38,6 +41,7 @@ class NgFreshIssueTests(unittest.TestCase):
         )
         self.assertEqual(fetch.call_args_list[1].kwargs["parser"], "xml")
         self.assertEqual(fetch.call_args_list[1].kwargs["attempts"], 1)
+        issue_mirror.assert_called_once_with()
         issue_proxy.assert_called_once_with()
         rss_proxy.assert_called_once_with()
 
@@ -157,6 +161,31 @@ class NgFreshIssueTests(unittest.TestCase):
         )
         self.assertEqual(result[0]["date"], "2026-08-05")
         self.assertEqual(result[0]["edition_date"], "2026-08-06")
+
+    def test_restores_original_links_from_google_issue_copy(self):
+        soup = BeautifulSoup(
+            """
+            <div role="main">
+                <h1 class="htitle">Газета
+                    <span class="num">2026-08-12 146 (9557)</span>
+                </h1>
+                <div class="anonce"><h3>
+                    <a href="https://www-ng-ru.translate.goog/world/2026-08-11/1_9557_story.html?_x_tr_sl=auto&amp;_x_tr_tl=ru">
+                        Полный материал свежего выпуска газеты
+                    </a>
+                </h3></div>
+            </div>
+            """,
+            "html.parser",
+        )
+
+        result = _parse_fresh_issue(soup)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(
+            result[0]["url"],
+            "https://www.ng.ru/world/2026-08-11/1_9557_story.html",
+        )
 
 
 if __name__ == "__main__":

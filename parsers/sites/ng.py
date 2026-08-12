@@ -2,7 +2,7 @@
 
 import re
 from email.utils import parsedate_to_datetime
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -16,6 +16,10 @@ from utils.news import deduplicate_news
 SOURCE_NAME = "Независимая газета"
 FRESH_ISSUE_URL = "https://www.ng.ru/gazeta/"
 RSS_URL = "https://www.ng.ru/rss/"
+ISSUE_MIRROR_URL = (
+    "https://www-ng-ru.translate.goog/gazeta/"
+    "?_x_tr_sl=auto&_x_tr_tl=ru&_x_tr_hl=ru"
+)
 ISSUE_READER_URL = "https://r.jina.ai/https://www.ng.ru/gazeta/"
 RSS_PROXY_URL = (
     "https://api.rss2json.com/v1/api.json"
@@ -40,7 +44,11 @@ def parse():
     )
     news = _parse_fresh_issue(soup) if soup else []
     if not news:
-        print("  ℹ️ НГ заблокировала IP — пробую свежий номер через шлюз")
+        print("  ℹ️ НГ заблокировала IP — пробую копию свежего номера")
+        mirror = _fetch_issue_mirror()
+        news = _parse_fresh_issue(mirror) if mirror else []
+    if not news:
+        print("  ℹ️ Копия номера недоступна — пробую текстовый шлюз")
         proxy_issue = _fetch_issue_proxy()
         news = _parse_markdown_issue(proxy_issue) if proxy_issue else []
     if not news:
@@ -62,6 +70,26 @@ def parse():
 
     print(f"  ✅ {len(news)}")
     return news
+
+
+def _fetch_issue_mirror():
+    """Получает HTML номера через общедоступное представление Google."""
+    try:
+        response = requests.get(
+            ISSUE_MIRROR_URL,
+            headers={
+                "User-Agent": HEADERS.get("User-Agent", "Mozilla/5.0"),
+                "Accept": "text/html,application/xhtml+xml",
+            },
+            timeout=40,
+        )
+        response.raise_for_status()
+        if not response.content.strip():
+            raise ValueError("получен пустой ответ")
+        return BeautifulSoup(response.content, "html.parser")
+    except (requests.RequestException, ValueError) as error:
+        logger.warning(f"[{SOURCE_NAME} · копия номера] Ошибка: {error}")
+        return None
 
 
 def _fetch_issue_proxy():
@@ -270,7 +298,9 @@ def _parse_fresh_issue(soup, base_url=FRESH_ISSUE_URL):
         'div[role="main"] .anonce h3 a[href], '
         'main .anonce h3 a[href], .anonce h3 a[href]'
     ):
-        url = urljoin(base_url, link.get("href", ""))
+        url = _restore_original_url(
+            urljoin(base_url, link.get("href", ""))
+        )
         path = urlsplit(url).path
         if (
             not path.endswith(".html")
@@ -300,3 +330,12 @@ def _parse_fresh_issue(soup, base_url=FRESH_ISSUE_URL):
         news.append(item)
 
     return deduplicate_news(news)
+
+
+def _restore_original_url(url):
+    """Возвращает ссылку Google-представления к оригинальному домену НГ."""
+    parts = urlsplit(url)
+    hostname = (parts.hostname or "").casefold()
+    if hostname in {"www-ng-ru.translate.goog", "ng-ru.translate.goog"}:
+        return urlunsplit(("https", "www.ng.ru", parts.path, "", ""))
+    return url
