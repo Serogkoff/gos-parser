@@ -54,6 +54,8 @@ class SourceGroupTests(unittest.TestCase):
 
 class SourceGroupPageTests(unittest.TestCase):
     def setUp(self):
+        self.previous_auth_disabled = web_app.app.config["AUTH_DISABLED"]
+        web_app.app.config["AUTH_DISABLED"] = True
         self.files = {
             "all_news.json": [
                 {
@@ -118,6 +120,9 @@ class SourceGroupPageTests(unittest.TestCase):
                 ],
             },
         }
+
+    def tearDown(self):
+        web_app.app.config["AUTH_DISABLED"] = self.previous_auth_disabled
 
     def _load_json(self, filename, default):
         return self.files.get(filename, default)

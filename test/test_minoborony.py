@@ -19,6 +19,13 @@ TITLE = "Министр обороны России проинспектиров
 
 
 class MinoboronyParserTests(unittest.TestCase):
+    def setUp(self):
+        self.previous_auth_disabled = web_app.app.config["AUTH_DISABLED"]
+        web_app.app.config["AUTH_DISABLED"] = True
+
+    def tearDown(self):
+        web_app.app.config["AUTH_DISABLED"] = self.previous_auth_disabled
+
     def test_reads_real_article_links_and_card_dates(self):
         soup = BeautifulSoup(
             f"""

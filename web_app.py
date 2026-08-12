@@ -1,10 +1,23 @@
 import json
 import os
+import secrets
 from collections import Counter
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
-from flask import Flask, abort, jsonify, render_template_string, request
+from flask import (
+    Flask,
+    abort,
+    g,
+    jsonify,
+    redirect,
+    render_template_string,
+    request,
+    session,
+    url_for,
+)
+from utils.auth import load_secret_key
 from utils.article_reader import extract_article
 from utils.keywords import (
     add_keyword,
@@ -21,9 +34,13 @@ from utils.source_groups import (
     source_group as get_source_group,
 )
 from utils.storage import (
+    authenticate_user,
+    count_users,
+    create_user,
     load_all_news,
     load_cached_article,
     load_found_news,
+    load_user,
     save_cached_article,
 )
 
@@ -31,6 +48,66 @@ from utils.storage import (
 app = Flask(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent
 NEWS_PER_PAGE = 20
+app.config.update(
+    SECRET_KEY=load_secret_key(),
+    PERMANENT_SESSION_LIFETIME=timedelta(days=14),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("MONITOR_HTTPS") == "1",
+    AUTH_DISABLED=os.environ.get("MONITOR_AUTH_DISABLED") == "1",
+)
+
+
+AUTH_HTML = """
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{'Первый запуск' if mode == 'setup' else 'Вход'}} — Монитор</title>
+    <style>
+        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45}
+        *{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:24px;color:var(--ink);background:radial-gradient(circle at 0 0,#fff,transparent 42rem),var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}
+        .card{width:min(440px,100%);padding:38px;border:1px solid var(--line);border-radius:9px;background:var(--surface);box-shadow:0 25px 70px rgba(46,38,27,.08)}
+        .eyebrow{margin:0 0 9px;color:var(--coral);font-size:11px;font-weight:750;letter-spacing:.12em;text-transform:uppercase}
+        h1{margin:0;font-size:38px;line-height:1;letter-spacing:-.045em}p{margin:15px 0 25px;color:var(--muted);font-size:14px;line-height:1.55}
+        label{display:block;margin-top:15px;color:#514c45;font-size:13px;font-weight:650}input{width:100%;height:48px;margin-top:7px;padding:0 13px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}input:focus{outline:3px solid rgba(228,79,69,.18);border-color:var(--coral)}
+        button{width:100%;height:49px;margin-top:23px;border:0;border-radius:6px;color:#fff;background:var(--coral);font:700 15px inherit;cursor:pointer}button:hover{background:#c93c35}
+        .error{margin:18px 0 0;padding:12px;color:#a72d27;border-left:3px solid var(--coral);background:#fff1ed;font-size:13px}
+        .hint{margin:13px 0 0;font-size:11px}.brand{margin-bottom:30px;font-size:19px;font-weight:800;letter-spacing:-.035em}
+    </style>
+</head>
+<body><main class="card">
+    <div class="brand">Монитор</div>
+    <p class="eyebrow">{{'Настройка владельца' if mode == 'setup' else 'Личный кабинет'}}</p>
+    <h1>{{'Первый запуск' if mode == 'setup' else 'Вход'}}</h1>
+    <p>
+        {% if mode == 'setup' %}
+        Создай первую учётную запись. Она получит роль администратора и полный доступ к настройкам.
+        {% else %}
+        Войди в свою учётную запись, чтобы открыть мониторинг и личные данные.
+        {% endif %}
+    </p>
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="{{csrf_token}}">
+        <input type="hidden" name="next" value="{{next_url}}">
+        <label>Логин
+            <input name="username" value="{{username}}" minlength="3" maxlength="50" autocomplete="username" required autofocus>
+        </label>
+        <label>Пароль
+            <input type="password" name="password" minlength="10" maxlength="256" autocomplete="{{'new-password' if mode == 'setup' else 'current-password'}}" required>
+        </label>
+        {% if mode == 'setup' %}
+        <label>Повтори пароль
+            <input type="password" name="password_confirm" minlength="10" maxlength="256" autocomplete="new-password" required>
+        </label>
+        {% endif %}
+        <button type="submit">{{'Создать администратора' if mode == 'setup' else 'Войти'}}</button>
+    </form>
+    {% if error %}<div class="error">{{error}}</div>{% endif %}
+    {% if mode == 'setup' %}<p class="hint">Пароль хранится в SQLite только в виде защищённого хеша.</p>{% endif %}
+</main></body></html>
+"""
 
 
 HTML = """
@@ -122,6 +199,9 @@ HTML = """
         }
         .health.warning{color:#9b691e;border-color:rgba(227,153,42,.55)}
         .health-dot{width:10px;height:10px;border-radius:50%;background:currentColor;box-shadow:0 0 0 5px rgba(62,118,85,.09)}
+        .account{display:flex;align-items:center;gap:9px;color:#5e574e;font-size:12px;white-space:nowrap}
+        .account-copy{display:grid;line-height:1.2}.account-copy strong{font-size:12px}.account-copy small{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.05em}
+        .logout{width:30px;height:30px;padding:0;border:1px solid var(--line);border-radius:50%;color:var(--muted);background:var(--surface);cursor:pointer}.logout:hover{color:var(--coral);border-color:var(--coral)}
         .intro{padding-top:38px;border-bottom:1px solid var(--line)}
         .eyebrow{margin:0 0 10px;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
         h1{margin:0;font-size:clamp(38px,4vw,58px);line-height:1;letter-spacing:-.055em;font-weight:720}
@@ -249,6 +329,7 @@ HTML = """
             .topbar-tools{align-items:flex-end;flex-direction:column-reverse;gap:10px}
             .site-sections{gap:18px;overflow-x:auto}.site-section{font-size:13px}
             .clock-copy{display:none}
+            .account-copy{display:none}
             .brand-easter-logo{left:-7px;width:140px}
             .health{min-height:38px;padding:0 12px;font-size:11px}
             .toolbar,.sidebar{grid-template-columns:1fr}.news-card{padding:20px 48px 20px 18px}
@@ -299,6 +380,16 @@ HTML = """
                 <span class="health-dot"></span>
                 {{health_ok}} из {{health_total}} источников работают
             </div>
+            <div class="account">
+                <div class="account-copy">
+                    <strong>{{current_user.username}}</strong>
+                    <small>{{'Администратор' if current_user.role == 'admin' else 'Пользователь'}}</small>
+                </div>
+                <form method="post" action="/logout">
+                    <input type="hidden" name="csrf_token" value="{{csrf_token}}">
+                    <button class="logout" type="submit" aria-label="Выйти">↪</button>
+                </form>
+            </div>
         </div>
     </header>
 
@@ -327,7 +418,9 @@ HTML = """
             </select>
         </label>
         <button class="tool-button" id="toggle-sidebar" type="button">☷ Фильтры</button>
+        {% if current_user.role == 'admin' %}
         <button class="tool-button" id="keywords-open" type="button">✣ Ключевые слова</button>
+        {% endif %}
         <button class="tool-button" id="saved-only" type="button">
             ♡ Сохранённые <span class="saved-count hidden" id="saved-count">0</span>
         </button>
@@ -452,6 +545,7 @@ HTML = """
         </aside>
     </div>
 </main>
+{% if current_user.role == 'admin' %}
 <div class="keyword-backdrop hidden" id="keyword-modal" role="dialog" aria-modal="true" aria-labelledby="keyword-title">
     <section class="keyword-dialog">
         <header class="dialog-head">
@@ -466,6 +560,7 @@ HTML = """
         <p class="form-message" id="keyword-message"></p>
     </section>
 </div>
+{% endif %}
 <script>
     const cards = [...document.querySelectorAll('.news-card')];
     const search = document.getElementById('news-search');
@@ -647,6 +742,7 @@ HTML = """
     }
     updateClocks(); setInterval(updateClocks, 1000);
 
+    {% if current_user.role == 'admin' %}
     const keywordModal = document.getElementById('keyword-modal');
     const keywordList = document.getElementById('keyword-list');
     const keywordMessage = document.getElementById('keyword-message');
@@ -667,7 +763,12 @@ HTML = """
     async function changeKeyword(method, keyword){
         keywordMessage.textContent = 'Обновляю совпадения…';
         const response = await fetch('/api/keywords', {
-            method, headers:{'Content-Type':'application/json'}, body:JSON.stringify({keyword})
+            method,
+            headers:{
+                'Content-Type':'application/json',
+                'X-CSRF-Token': {{csrf_token|tojson}}
+            },
+            body:JSON.stringify({keyword})
         });
         const data = await response.json();
         if(!response.ok){ keywordMessage.textContent = data.error || 'Не удалось сохранить'; return; }
@@ -685,6 +786,7 @@ HTML = """
         const input = document.getElementById('keyword-input');
         await changeKeyword('POST', input.value); input.value = '';
     });
+    {% endif %}
     refreshSavedIcons();
     refreshUnread();
     applyFilters();
@@ -729,6 +831,7 @@ ARTICLE_HTML = """
             <a class="original" href="{{item.url}}" target="_blank" rel="noopener noreferrer">Открыть оригинал ↗</a>
             {% if article.paragraphs %}
             <form method="post" action="/article">
+                <input type="hidden" name="csrf_token" value="{{csrf_token}}">
                 <input type="hidden" name="url" value="{{item.url}}">
                 <input type="hidden" name="back_url" value="{{back_url}}">
                 <button class="refresh" type="submit">Обновить текст</button>
@@ -760,9 +863,156 @@ def load_json(filename, default):
         return default
 
 
+def csrf_token():
+    """Возвращает CSRF-токен текущей сессии, создавая его при необходимости."""
+    token = session.get("_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["_csrf_token"] = token
+    return token
+
+
+def csrf_is_valid():
+    """Проверяет токен для изменяющих состояние запросов."""
+    if app.config.get("AUTH_DISABLED"):
+        return True
+    expected = str(session.get("_csrf_token", ""))
+    supplied = str(
+        request.form.get("csrf_token", "")
+        or request.headers.get("X-CSRF-Token", "")
+    )
+    return bool(expected and supplied and secrets.compare_digest(expected, supplied))
+
+
+def current_user():
+    """Возвращает вошедшего пользователя для проверок прав."""
+    return getattr(g, "current_user", None)
+
+
+def safe_next_url(value):
+    """Разрешает возврат после входа только на локальный URL приложения."""
+    value = str(value or "").strip()
+    if value.startswith("/") and not value.startswith("//"):
+        return value
+    return "/"
+
+
+@app.before_request
+def load_current_user():
+    """Загружает сессию и закрывает приложение от анонимного доступа."""
+    if app.config.get("AUTH_DISABLED"):
+        g.current_user = {
+            "id": 0,
+            "username": "Тест",
+            "role": "admin",
+            "is_active": True,
+        }
+        return None
+
+    user = load_user(session.get("user_id"))
+    if user and user.get("is_active"):
+        g.current_user = user
+    else:
+        session.pop("user_id", None)
+        g.current_user = None
+
+    endpoint = request.endpoint or ""
+    if endpoint == "static":
+        return None
+
+    users_exist = count_users() > 0
+    if not users_exist:
+        if endpoint != "setup":
+            return redirect(url_for("setup"))
+        return None
+
+    if endpoint == "setup":
+        return redirect(url_for("index") if g.current_user else url_for("login"))
+    if endpoint == "login":
+        if g.current_user:
+            return redirect(url_for("index"))
+        return None
+    if not g.current_user:
+        return redirect(
+            url_for("login", next=safe_next_url(request.full_path or request.path))
+        )
+    return None
+
+
+@app.route("/setup", methods=["GET", "POST"])
+def setup():
+    """На первом запуске создаёт единственного первого администратора."""
+    error = ""
+    username = str(request.form.get("username", "")).strip()
+    if request.method == "POST":
+        if not csrf_is_valid():
+            abort(400)
+        password = request.form.get("password", "")
+        password_confirm = request.form.get("password_confirm", "")
+        if password != password_confirm:
+            error = "Пароли не совпадают"
+        else:
+            try:
+                user = create_user(username, password, role="admin")
+            except ValueError as creation_error:
+                error = str(creation_error)
+            else:
+                session.clear()
+                session.permanent = True
+                session["user_id"] = user["id"]
+                csrf_token()
+                return redirect(url_for("index"))
+    return render_template_string(
+        AUTH_HTML,
+        mode="setup",
+        error=error,
+        username=username,
+        csrf_token=csrf_token(),
+        next_url="/",
+    )
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """Открывает защищённую сессию после проверки логина и пароля."""
+    error = ""
+    username = str(request.form.get("username", "")).strip()
+    next_url = safe_next_url(request.values.get("next", "/"))
+    if request.method == "POST":
+        if not csrf_is_valid():
+            abort(400)
+        user = authenticate_user(username, request.form.get("password", ""))
+        if user is None:
+            error = "Неверный логин или пароль"
+        else:
+            session.clear()
+            session.permanent = True
+            session["user_id"] = user["id"]
+            csrf_token()
+            return redirect(next_url)
+    return render_template_string(
+        AUTH_HTML,
+        mode="login",
+        error=error,
+        username=username,
+        csrf_token=csrf_token(),
+        next_url=next_url,
+    )
+
+
+@app.post("/logout")
+def logout():
+    """Завершает текущую пользовательскую сессию."""
+    if not csrf_is_valid():
+        abort(400)
+    session.clear()
+    return redirect(url_for("login"))
+
+
 def can_view_admin_diagnostics():
-    """Локальный режим принадлежит владельцу; позже здесь будет проверка роли."""
-    return True
+    """Служебная диагностика видна только администратору."""
+    user = current_user()
+    return bool(user and user.get("role") == "admin")
 
 
 def render_news_page(
@@ -942,6 +1192,8 @@ def render_news_page(
         next_url=page_url(page + 1) if page < page_count else "",
         page_label=page_label,
         show_admin_diagnostics=can_view_admin_diagnostics(),
+        current_user=current_user(),
+        csrf_token=csrf_token(),
     )
 
 
@@ -1036,6 +1288,8 @@ def newspapers_filter_source(source):
 
 @app.route("/article", methods=["GET", "POST"])
 def article_page():
+    if request.method == "POST" and not csrf_is_valid():
+        abort(400)
     url = request.values.get("url", "").strip()
     item = next(
         (news for news in load_json("all_news.json", []) if news.get("url") == url),
@@ -1099,7 +1353,11 @@ def article_page():
             else "/"
         )
     return render_template_string(
-        ARTICLE_HTML, article=article, item=item, back_url=back_url
+        ARTICLE_HTML,
+        article=article,
+        item=item,
+        back_url=back_url,
+        csrf_token=csrf_token(),
     )
 
 
@@ -1107,6 +1365,12 @@ def article_page():
 def keywords_api():
     if request.method == "GET":
         return jsonify(keywords=load_keywords())
+
+    user = current_user()
+    if not user or user.get("role") != "admin":
+        return jsonify(error="Недостаточно прав"), 403
+    if not csrf_is_valid():
+        return jsonify(error="Сессия устарела. Обновите страницу."), 400
 
     payload = request.get_json(silent=True) or {}
     keyword = str(payload.get("keyword", "")).strip()

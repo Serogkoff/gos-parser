@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from threading import RLock
 
+from werkzeug.security import check_password_hash, generate_password_hash
+
 from utils.logger import get_logger
 from utils.news import deduplicate_news, merge_news, normalize_url
 
@@ -114,14 +116,145 @@ def _create_schema(connection):
             fetched_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user'
+                CHECK(role IN ('admin', 'user')),
+            is_active INTEGER NOT NULL DEFAULT 1
+                CHECK(is_active IN (0, 1)),
+            created_at TEXT NOT NULL,
+            last_login_at TEXT NOT NULL DEFAULT ''
+        );
+
         CREATE INDEX IF NOT EXISTS idx_news_source
             ON news_items(source);
         CREATE INDEX IF NOT EXISTS idx_news_publication_date
             ON news_items(publication_date DESC, parsed_date DESC);
         CREATE INDEX IF NOT EXISTS idx_news_normalized_url
             ON news_items(normalized_url);
+        CREATE INDEX IF NOT EXISTS idx_users_role
+            ON users(role, is_active);
         """
     )
+
+
+def count_users():
+    """Возвращает число учётных записей, включая отключённые."""
+    initialize_database()
+    with _connect() as connection:
+        return int(connection.execute("SELECT COUNT(*) FROM users").fetchone()[0])
+
+
+def create_user(username, password, role="user"):
+    """Создаёт пользователя с хешем пароля; открытый пароль не хранится."""
+    username = _validate_username(username)
+    password = _validate_password(password)
+    role = str(role or "user").strip().casefold()
+    if role not in {"admin", "user"}:
+        raise ValueError("Неизвестная роль пользователя")
+
+    initialize_database()
+    created_at = datetime.now().isoformat(timespec="seconds")
+    try:
+        with STORAGE_LOCK, _connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO users(
+                    username, password_hash, role, is_active, created_at
+                ) VALUES (?, ?, ?, 1, ?)
+                """,
+                (
+                    username,
+                    generate_password_hash(password),
+                    role,
+                    created_at,
+                ),
+            )
+            user_id = cursor.lastrowid
+    except sqlite3.IntegrityError as error:
+        raise ValueError("Пользователь с таким именем уже существует") from error
+    return load_user(user_id)
+
+
+def load_user(user_id):
+    """Возвращает безопасные поля пользователя без хеша пароля."""
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        return None
+    initialize_database()
+    with _connect() as connection:
+        row = connection.execute(
+            """
+            SELECT id, username, role, is_active, created_at, last_login_at
+            FROM users WHERE id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+    return _user_from_row(row)
+
+
+def authenticate_user(username, password):
+    """Проверяет пароль и возвращает активного пользователя."""
+    username = " ".join(str(username or "").split())
+    password = str(password or "")
+    if not username or not password:
+        return None
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        row = connection.execute(
+            """
+            SELECT id, username, password_hash, role, is_active,
+                   created_at, last_login_at
+            FROM users WHERE username = ? COLLATE NOCASE
+            """,
+            (username,),
+        ).fetchone()
+        if (
+            row is None
+            or not bool(row["is_active"])
+            or not check_password_hash(row["password_hash"], password)
+        ):
+            return None
+        logged_at = datetime.now().isoformat(timespec="seconds")
+        connection.execute(
+            "UPDATE users SET last_login_at = ? WHERE id = ?",
+            (logged_at, row["id"]),
+        )
+    user = _user_from_row(row)
+    user["last_login_at"] = logged_at
+    return user
+
+
+def _validate_username(value):
+    username = " ".join(str(value or "").split())
+    if not 3 <= len(username) <= 50:
+        raise ValueError("Логин должен содержать от 3 до 50 символов")
+    if not all(character.isalnum() or character in "._-" for character in username):
+        raise ValueError("В логине разрешены буквы, цифры, точка, дефис и подчёркивание")
+    return username
+
+
+def _validate_password(value):
+    password = str(value or "")
+    if not 10 <= len(password) <= 256:
+        raise ValueError("Пароль должен содержать не менее 10 символов")
+    return password
+
+
+def _user_from_row(row):
+    if row is None:
+        return None
+    return {
+        "id": int(row["id"]),
+        "username": row["username"],
+        "role": row["role"],
+        "is_active": bool(row["is_active"]),
+        "created_at": row["created_at"],
+        "last_login_at": row["last_login_at"],
+    }
 
 
 def initialize_database():

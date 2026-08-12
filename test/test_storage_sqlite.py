@@ -13,6 +13,8 @@ from utils import storage
 
 class SQLiteStorageTests(unittest.TestCase):
     def setUp(self):
+        self.previous_auth_disabled = web_app.app.config["AUTH_DISABLED"]
+        web_app.app.config["AUTH_DISABLED"] = True
         self.temporary = tempfile.TemporaryDirectory()
         directory = Path(self.temporary.name)
         self.database = directory / "news.db"
@@ -29,6 +31,7 @@ class SQLiteStorageTests(unittest.TestCase):
             patcher.start()
 
     def tearDown(self):
+        web_app.app.config["AUTH_DISABLED"] = self.previous_auth_disabled
         for patcher in reversed(self.patchers):
             patcher.stop()
         self.temporary.cleanup()

@@ -11,5 +11,6 @@ backups/
 .idea/
 parser_errors.log
 .env
+.monitor_secret
 .DS_Store
 .pytest_cache/
