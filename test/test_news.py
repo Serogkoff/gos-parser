@@ -193,6 +193,31 @@ class DeduplicateNewsTests(unittest.TestCase):
             "Тренировки лётчиков морской авиации",
         )
 
+    def test_removes_rg_official_documents_but_keeps_news_about_laws(self):
+        items = [
+            {
+                "source": "Российская газета",
+                "title": (
+                    "Федеральный закон от 4 августа 2026 г. N 323-ФЗ "
+                    "О безопасном обращении с пестицидами"
+                ),
+                "url": "https://rg.ru/2026/08/12/fz323-dok.html",
+            },
+            {
+                "source": "Российская газета",
+                "title": "Новый закон изменит правила для предприятий",
+                "url": "https://rg.ru/2026/08/12/novye-pravila.html",
+            },
+        ]
+
+        cleaned = deduplicate_news(items)
+
+        self.assertEqual(len(cleaned), 1)
+        self.assertEqual(
+            cleaned[0]["title"],
+            "Новый закон изменит правила для предприятий",
+        )
+
     def test_removes_impossible_future_publication_date(self):
         items = [{
             "source": "Сахалинская обл.",

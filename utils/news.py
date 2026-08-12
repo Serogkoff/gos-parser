@@ -38,6 +38,14 @@ REDSTAR_ISSUE_PATH = re.compile(
     re.IGNORECASE,
 )
 
+RG_OFFICIAL_DOCUMENT_TITLE = re.compile(
+    r"^(?:федеральный закон|закон российской федерации|"
+    r"указ президента российской федерации|"
+    r"постановление правительства российской федерации|"
+    r"распоряжение правительства российской федерации)\s+от\s+\d",
+    re.IGNORECASE,
+)
+
 TRAILING_SLASH_ARTICLE_RULES = (
     (
         "mcx.gov.ru",
@@ -200,6 +208,17 @@ def is_valid_news_item(item):
         # deduplicate_news применяется и к уже сохранённой SQLite-базе,
         # поэтому старые карточки также исчезнут при следующем цикле.
         return REDSTAR_ISSUE_PATH.fullmatch(urlsplit(url).path) is None
+
+    if source == "Российская газета":
+        # РГ включает в свежий номер тексты официальных документов.
+        # Для новостной ленты оставляем редакционные статьи, а публикации
+        # законов, указов и постановлений с пометкой *-dok.html исключаем.
+        title = " ".join(str(item.get("title", "")).split())
+        path = urlsplit(url).path.casefold()
+        return (
+            not path.endswith("-dok.html")
+            and RG_OFFICIAL_DOCUMENT_TITLE.match(title) is None
+        )
 
     if source in SOURCE_ARTICLE_RULES:
         required_host, article_path = SOURCE_ARTICLE_RULES[source]
