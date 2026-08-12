@@ -212,6 +212,10 @@ def extract_article(url, fallback_title=""):
         # Текст читаем из того же Google-представления, которое используется
         # для полного номера, не отправляя ещё один запрос самому ng.ru.
         fetch_url = _ng_mirror_url(url)
+    elif _is_rg_url(url):
+        # РГ отдаёт приложению 401, хотя сама статья публична. Внутренний
+        # просмотр читает её Google-представление, сохраняя исходную ссылку.
+        fetch_url = _rg_mirror_url(url)
 
     if _is_minoborony_url(url):
         soup = fetch_soup_js(
@@ -247,6 +251,14 @@ def extract_article(url, fallback_title=""):
         soup = fetch_soup(
             fetch_url,
             "Просмотр НГ через копию",
+            timeout=40,
+            verify=True,
+            attempts=1,
+        )
+    elif _is_rg_url(url):
+        soup = fetch_soup(
+            fetch_url,
+            "Просмотр РГ через копию",
             timeout=40,
             verify=True,
             attempts=1,
@@ -359,6 +371,28 @@ def _ng_mirror_url(url):
     return urlunsplit((
         "https",
         "www-ng-ru.translate.goog",
+        parts.path,
+        query,
+        "",
+    ))
+
+
+def _is_rg_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return hostname == "rg.ru" or hostname.endswith(".rg.ru")
+
+
+def _rg_mirror_url(url):
+    """Строит Google-копию публичной статьи «Российской газеты»."""
+    parts = urlsplit(url)
+    query = urlencode({
+        "_x_tr_sl": "auto",
+        "_x_tr_tl": "ru",
+        "_x_tr_hl": "ru",
+    })
+    return urlunsplit((
+        "https",
+        "rg-ru.translate.goog",
         parts.path,
         query,
         "",
