@@ -114,8 +114,10 @@ class PersonalSourceOrderTests(unittest.TestCase):
             html.index('data-source-name="Правительство РФ"'),
             html.index('data-source-name="МЧС"'),
         )
-        self.assertIn("data-source-up", html)
-        self.assertIn("data-source-down", html)
+        self.assertIn('id="source-order-toggle"', html)
+        self.assertIn('class="source-drag-handle"', html)
+        self.assertNotIn("data-source-up", html)
+        self.assertNotIn("data-source-down", html)
 
     def test_header_is_compact_and_filters_button_is_removed(self):
         client = web_app.app.test_client()
@@ -130,7 +132,7 @@ class PersonalSourceOrderTests(unittest.TestCase):
         self.assertNotIn('id="toggle-sidebar"', html)
         self.assertNotIn("☷ Фильтры", html)
         self.assertIn('id="keywords-open"', html)
-        self.assertIn("Порядок ↑↓", html)
+        self.assertIn('id="source-order-toggle"', html)
         self.assertIn('class="account-status"', header)
         self.assertGreater(header.index('class="health '), header.index('class="account"'))
         self.assertIn('href="/">Все</a>', html)

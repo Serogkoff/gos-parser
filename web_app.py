@@ -427,11 +427,12 @@ HTML = """
         .sidebar{display:grid;gap:16px}.panel{overflow:hidden}
         .panel-title{min-height:58px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line)}
         .panel-title-actions{display:flex;align-items:center;gap:8px}
-        .order-hint{color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
         .panel-title button{border:0;color:var(--muted);background:transparent}
         .panel-title .collapse-button{font-size:20px}
         .mark-all-read{padding:5px 7px;border-radius:4px!important;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
         .mark-all-read:hover{color:var(--coral-dark);background:#fff3ed}
+        .source-order-toggle{padding:5px 7px!important;border-radius:4px!important;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+        .source-order-toggle:hover,.source-order-toggle[aria-pressed="true"]{color:var(--coral-dark);background:#fff3ed}
         .source-list{padding:10px 0}
         .source-row{
             width:100%;min-height:40px;display:flex;align-items:center;
@@ -447,13 +448,13 @@ HTML = """
         .check{width:16px;height:16px;display:grid;place-items:center;color:#fff;border:1px solid #bdb5a9;border-radius:3px;font-size:11px}
         .source-row.active .check{border-color:var(--coral);background:var(--coral)}
         .source-row b{min-width:28px;padding:3px 5px;color:#827b71;border:1px solid var(--line);border-radius:5px;background:#f8f4ed;text-align:center;font-size:10px;font-weight:500}
-        .source-order-actions{display:flex;flex:0 0 40px;gap:1px;padding-right:7px}
-        .source-order-actions button{
-            width:19px;height:22px;padding:0;border:0;
-            color:#81796f;background:transparent;font-size:12px;font-weight:700;line-height:1
-        }
-        .source-order-actions button:hover{color:var(--coral);background:transparent}
-        .source-order-actions button:disabled{opacity:.28;cursor:default}
+        .source-drag-handle{display:none;flex:0 0 22px;color:#aaa196;text-align:center;font-size:13px;letter-spacing:-2px;cursor:grab;user-select:none}
+        .source-list.order-editing .sortable-source{cursor:grab;background:#fffbf6}
+        .source-list.order-editing .sortable-source:hover{background:#fff4ea}
+        .source-list.order-editing .source-drag-handle{display:block}
+        .source-list.order-editing .source-link{padding-left:4px;pointer-events:none}
+        .sortable-source.source-dragging{opacity:.38}
+        .sortable-source.source-drag-over{box-shadow:inset 0 2px 0 var(--coral)}
         .unread-count{min-width:28px;color:var(--green);text-align:right;font-size:11px;font-weight:700}
         .unread-count:empty{display:none}
         .unread-label{margin-left:auto;padding:3px 6px;color:var(--green);border:1px solid rgba(62,118,85,.35);border-radius:4px;background:rgba(62,118,85,.08);font-size:10px;text-transform:uppercase;letter-spacing:.04em}
@@ -662,7 +663,7 @@ HTML = """
                 <header class="panel-title">
                     <h2>Источники</h2>
                     <div class="panel-title-actions">
-                        <span class="order-hint">Порядок ↑↓</span>
+                        <button class="source-order-toggle" id="source-order-toggle" type="button" aria-pressed="false">Изменить</button>
                         <button class="mark-all-read" id="mark-all-read" type="button">Прочитать всё</button>
                         <button class="collapse-button" id="collapse-sources" type="button" aria-label="Свернуть список">−</button>
                     </div>
@@ -678,16 +679,13 @@ HTML = """
                     </div>
                     {% for src, count in sources %}
                     <div class="source-row sortable-source {{'active' if src == source_filter else ''}}" data-source-row data-source-name="{{src}}">
+                        <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
                         <a class="source-link" href="{{source_base}}{{src|urlencode}}">
                             <span class="check">{{'✓' if src == source_filter else ''}}</span>
                             <span>{{src}}</span>
                             <b>{{count}}</b>
                             <span class="unread-count" data-unread-source="{{src}}"></span>
                         </a>
-                        <span class="source-order-actions">
-                            <button type="button" data-source-up title="Поднять источник" aria-label="Поднять {{src}}">↑</button>
-                            <button type="button" data-source-down title="Опустить источник" aria-label="Опустить {{src}}">↓</button>
-                        </span>
                     </div>
                     {% endfor %}
                 </div>
@@ -935,16 +933,8 @@ HTML = """
     function orderedSourceRows(){
         return [...sourceList.querySelectorAll('[data-source-row]')];
     }
-    function refreshSourceOrderButtons(){
-        const rows = orderedSourceRows();
-        rows.forEach((row, index) => {
-            row.querySelector('[data-source-up]').disabled = index === 0;
-            row.querySelector('[data-source-down]').disabled = index === rows.length - 1;
-        });
-    }
     async function saveSourceOrder(){
         const rows = orderedSourceRows();
-        rows.forEach(row => row.querySelectorAll('.source-order-actions button').forEach(button => button.disabled = true));
         const response = await fetch('/api/source-order', {
             method:'POST',
             headers:{
@@ -960,30 +950,60 @@ HTML = """
             const data = await response.json().catch(() => ({}));
             throw new Error(data.error || 'Не удалось сохранить порядок источников');
         }
-        refreshSourceOrderButtons();
     }
-    sourceList.querySelectorAll('[data-source-up],[data-source-down]').forEach(button => {
-        button.addEventListener('click', async () => {
-            const row = button.closest('[data-source-row]');
-            const rows = orderedSourceRows();
-            const index = rows.indexOf(row);
-            const movingUp = button.hasAttribute('data-source-up');
-            if(movingUp && index > 0){
-                sourceList.insertBefore(row, rows[index - 1]);
-            }else if(!movingUp && index < rows.length - 1){
-                sourceList.insertBefore(rows[index + 1], row);
-            }else{
-                return;
-            }
-            try{
-                await saveSourceOrder();
-            }catch(error){
-                window.alert(error.message);
-                window.location.reload();
-            }
-        });
+    const sourceOrderToggle = document.getElementById('source-order-toggle');
+    let draggedSourceRow = null;
+    let sourceOrderChanged = false;
+    function setSourceOrderEditing(editing){
+        sourceList.classList.toggle('order-editing', editing);
+        sourceOrderToggle.setAttribute('aria-pressed', String(editing));
+        sourceOrderToggle.textContent = editing ? 'Готово' : 'Изменить';
+        orderedSourceRows().forEach(row => row.draggable = editing);
+    }
+    sourceOrderToggle.addEventListener('click', async () => {
+        const editing = sourceList.classList.contains('order-editing');
+        if(!editing){
+            sourceOrderChanged = false;
+            setSourceOrderEditing(true);
+            return;
+        }
+        sourceOrderToggle.disabled = true;
+        try{
+            if(sourceOrderChanged) await saveSourceOrder();
+            setSourceOrderEditing(false);
+        }catch(error){
+            window.alert(error.message);
+            window.location.reload();
+        }finally{
+            sourceOrderToggle.disabled = false;
+        }
     });
-    refreshSourceOrderButtons();
+    sourceList.addEventListener('dragstart', event => {
+        const row = event.target.closest('[data-source-row]');
+        if(!row || !sourceList.classList.contains('order-editing')) return;
+        draggedSourceRow = row;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', row.dataset.sourceName);
+        requestAnimationFrame(() => row.classList.add('source-dragging'));
+    });
+    sourceList.addEventListener('dragover', event => {
+        if(!draggedSourceRow) return;
+        const target = event.target.closest('[data-source-row]');
+        if(!target || target === draggedSourceRow) return;
+        event.preventDefault();
+        orderedSourceRows().forEach(row => row.classList.remove('source-drag-over'));
+        target.classList.add('source-drag-over');
+        const before = event.clientY < target.getBoundingClientRect().top + target.offsetHeight / 2;
+        sourceList.insertBefore(draggedSourceRow, before ? target : target.nextSibling);
+        sourceOrderChanged = true;
+    });
+    sourceList.addEventListener('drop', event => {
+        if(draggedSourceRow) event.preventDefault();
+    });
+    sourceList.addEventListener('dragend', () => {
+        orderedSourceRows().forEach(row => row.classList.remove('source-dragging', 'source-drag-over'));
+        draggedSourceRow = null;
+    });
     function goToSource(source){
         window.location.href = source ? sourceBase + encodeURIComponent(source) : groupHome;
     }
