@@ -55,6 +55,7 @@ VERIFIED_ARTICLE_SELECTORS = {
     ),
     "rg.ru": (
         "[itemprop='articleBody']",
+        ".text",
         ".PageContentCommonStyling",
         ".article__text",
         ".article__body",
@@ -213,9 +214,9 @@ def extract_article(url, fallback_title=""):
         # для полного номера, не отправляя ещё один запрос самому ng.ru.
         fetch_url = _ng_mirror_url(url)
     elif _is_rg_url(url):
-        # РГ отдаёт приложению 401, хотя сама статья публична. Внутренний
-        # просмотр читает её Google-представление, сохраняя исходную ссылку.
-        fetch_url = _rg_mirror_url(url)
+        # Основная страница РГ отдаёт приложению 401, но официальный AMP-
+        # вариант доступен и содержит полный текст той же публикации.
+        fetch_url = _rg_amp_url(url)
 
     if _is_minoborony_url(url):
         soup = fetch_soup_js(
@@ -258,11 +259,21 @@ def extract_article(url, fallback_title=""):
     elif _is_rg_url(url):
         soup = fetch_soup(
             fetch_url,
-            "Просмотр РГ через копию",
+            "Просмотр РГ через AMP",
             timeout=40,
             verify=True,
             attempts=1,
         )
+        if soup is None:
+            # Для старых публикаций AMP может отсутствовать. Тогда остаётся
+            # прежний резерв через Google-представление страницы.
+            soup = fetch_soup(
+                _rg_mirror_url(url),
+                "Просмотр РГ через копию",
+                timeout=40,
+                verify=True,
+                attempts=1,
+            )
     else:
         soup = fetch_soup(fetch_url, "Просмотр новости", timeout=25, verify=False)
         if soup is None and verified_selectors:
@@ -380,6 +391,15 @@ def _ng_mirror_url(url):
 def _is_rg_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
     return hostname == "rg.ru" or hostname.endswith(".rg.ru")
+
+
+def _rg_amp_url(url):
+    """Строит официальный AMP-адрес статьи «Российской газеты»."""
+    parts = urlsplit(url)
+    path = parts.path
+    if not path.startswith("/amp/"):
+        path = "/amp" + (path if path.startswith("/") else f"/{path}")
+    return urlunsplit(("https", "rg.ru", path, "", ""))
 
 
 def _rg_mirror_url(url):

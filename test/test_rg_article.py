@@ -3,10 +3,20 @@ from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 
-from utils.article_reader import _rg_mirror_url, extract_article
+from utils.article_reader import _rg_amp_url, _rg_mirror_url, extract_article
 
 
 class RgArticleReaderTests(unittest.TestCase):
+    def test_builds_official_amp_url_without_original_query(self):
+        result = _rg_amp_url(
+            "https://www.rg.ru/2026/08/12/test.html?utm_source=x"
+        )
+
+        self.assertEqual(
+            result,
+            "https://rg.ru/amp/2026/08/12/test.html",
+        )
+
     def test_builds_google_copy_url_without_original_query(self):
         result = _rg_mirror_url(
             "https://rg.ru/2026/08/11/test.html?utm_source=x"
@@ -18,7 +28,7 @@ class RgArticleReaderTests(unittest.TestCase):
             "?_x_tr_sl=auto&_x_tr_tl=ru&_x_tr_hl=ru",
         )
 
-    def test_reads_rg_article_only_through_google_copy(self):
+    def test_reads_rg_article_through_official_amp_page(self):
         soup = BeautifulSoup(
             """
             <html><head>
@@ -50,14 +60,52 @@ class RgArticleReaderTests(unittest.TestCase):
 
         requested_url = fetch.call_args.args[0]
         self.assertEqual(fetch.call_count, 1)
-        self.assertTrue(requested_url.startswith("https://rg-ru.translate.goog/"))
-        self.assertNotIn("https://rg.ru/", requested_url)
+        self.assertEqual(
+            requested_url,
+            "https://rg.ru/amp/2026/08/11/test.html",
+        )
         self.assertEqual(fetch.call_args.kwargs["attempts"], 1)
         browser.assert_not_called()
         self.assertFalse(result["error"])
         article_text = " ".join(result["paragraphs"])
         self.assertIn("Первый содержательный абзац", article_text)
         self.assertIn("Второй содержательный абзац", article_text)
+
+    def test_uses_google_copy_when_amp_page_is_unavailable(self):
+        soup = BeautifulSoup(
+            """
+            <html><body>
+                <h1>Резервный материал Российской газеты</h1>
+                <div class="text">
+                    <p>Содержательный абзац из резервной копии публикации Российской газеты.</p>
+                </div>
+            </body></html>
+            """,
+            "html.parser",
+        )
+        original = "https://rg.ru/2026/08/12/reserve.html"
+
+        with patch(
+            "utils.article_reader.fetch_soup",
+            side_effect=[None, soup],
+        ) as fetch:
+            result = extract_article(
+                original,
+                "Резервный материал Российской газеты",
+            )
+
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(
+            fetch.call_args_list[0].args[0],
+            "https://rg.ru/amp/2026/08/12/reserve.html",
+        )
+        self.assertTrue(
+            fetch.call_args_list[1].args[0].startswith(
+                "https://rg-ru.translate.goog/"
+            )
+        )
+        self.assertFalse(result["error"])
+        self.assertIn("резервной копии", " ".join(result["paragraphs"]))
 
 
 if __name__ == "__main__":
