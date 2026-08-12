@@ -1047,6 +1047,14 @@ def article_page():
     cached = load_cached_article(url)
     if cached is not None and not force_refresh:
         article = cached
+    elif item.get("article_paragraphs"):
+        # Atom Кремля содержит официальный текст публикации. Используем его
+        # сразу: повторно открывать защищённую страницу источника не нужно.
+        article = {
+            "title": item.get("title", ""),
+            "paragraphs": item["article_paragraphs"],
+            "error": "",
+        }
     elif item.get("source") == "ТАСС" and item.get("summary"):
         # RSS ТАСС отдаёт официальный анонс сразу и без браузерной проверки.
         # Полную публикацию при необходимости можно открыть по ссылке.

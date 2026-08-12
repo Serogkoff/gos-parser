@@ -61,9 +61,11 @@ from parsers.sites.rg import parse as rg
 from parsers.sites.vedomosti import parse as vedomosti
 from parsers.sites.redstar import parse as redstar
 from parsers.sites.kp import parse as kp
+from parsers.sites.kremlin import parse as kremlin
 
 
 GOVERNMENT_SITES = [
+    ("Президент России", kremlin),
     ("МИД РФ", mid),
     ("Правительство РФ", gov),
     ("Трутнев", trutnev),

@@ -6,6 +6,7 @@ AGENCIES_GROUP = "agencies"
 NEWSPAPERS_GROUP = "newspapers"
 
 GOVERNMENT_SOURCES = frozenset({
+    "Президент России",
     "МИД РФ",
     "Правительство РФ",
     "Трутнев",

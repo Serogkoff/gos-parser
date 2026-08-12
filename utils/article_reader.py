@@ -36,6 +36,13 @@ GENERIC_TITLES = {
 }
 
 VERIFIED_ARTICLE_SELECTORS = {
+    "kremlin.ru": (
+        "[itemprop='articleBody']",
+        ".read__content",
+        ".entry-content",
+        ".article__content",
+        "article",
+    ),
     "ng.ru": (
         "article.typical",
     ),

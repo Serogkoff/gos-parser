@@ -30,6 +30,7 @@ class SourceGroupTests(unittest.TestCase):
             NEWSPAPERS_GROUP,
         )
         self.assertEqual(source_group("МЧС"), GOVERNMENT_GROUP)
+        self.assertEqual(source_group("Президент России"), GOVERNMENT_GROUP)
 
     def test_filters_news_without_losing_fields(self):
         items = [
@@ -60,6 +61,15 @@ class SourceGroupPageTests(unittest.TestCase):
                     "title": "Материал государственного ведомства",
                     "url": "https://mchs.gov.ru/news/1",
                     "date": "2026-07-29",
+                },
+                {
+                    "source": "Президент России",
+                    "title": "Материал сайта Президента России",
+                    "url": "http://kremlin.ru/events/president/news/80509",
+                    "date": "2026-08-11",
+                    "article_paragraphs": [
+                        "Официальный полный текст публикации Президента России."
+                    ],
                 },
                 {
                     "source": "Минсельхоз",
@@ -275,6 +285,17 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Материал ТАСС", html)
         self.assertIn("Официальный анонс публикации ТАСС.", html)
+
+    def test_kremlin_article_uses_full_atom_text(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get(
+                "/article?url=http%3A%2F%2Fkremlin.ru%2Fevents%2Fpresident%2Fnews%2F80509"
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Материал сайта Президента России", html)
+        self.assertIn("Официальный полный текст публикации", html)
 
 
 if __name__ == "__main__":

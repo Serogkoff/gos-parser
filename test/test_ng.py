@@ -3,22 +3,67 @@ from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 
-from parsers.sites.ng import FRESH_ISSUE_URL, _parse_fresh_issue, parse
+from parsers.sites.ng import (
+    FRESH_ISSUE_URL,
+    RSS_URL,
+    _parse_fresh_issue,
+    _parse_rss,
+    parse,
+)
 
 
 class NgFreshIssueTests(unittest.TestCase):
-    def test_failed_run_makes_only_one_network_request(self):
+    def test_failed_run_makes_one_request_per_official_endpoint(self):
         with patch("parsers.sites.ng.fetch_soup", return_value=None) as fetch:
             result = parse()
 
         self.assertEqual(result, [])
-        fetch.assert_called_once_with(
-            FRESH_ISSUE_URL,
-            "Независимая газета",
-            timeout=25,
-            verify=True,
-            attempts=1,
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(
+            fetch.call_args_list[0].args,
+            (FRESH_ISSUE_URL, "Независимая газета"),
         )
+        self.assertEqual(fetch.call_args_list[0].kwargs["attempts"], 1)
+        self.assertEqual(
+            fetch.call_args_list[1].args,
+            (RSS_URL, "Независимая газета · RSS"),
+        )
+        self.assertEqual(fetch.call_args_list[1].kwargs["parser"], "xml")
+        self.assertEqual(fetch.call_args_list[1].kwargs["attempts"], 1)
+
+    def test_rss_fallback_keeps_only_newest_day(self):
+        soup = BeautifulSoup(
+            """
+            <rss><channel>
+                <item>
+                    <title>Свежий материал Независимой газеты</title>
+                    <link>https://www.ng.ru/news/200.html</link>
+                    <pubDate>Tue, 11 Aug 2026 15:20:00 +0300</pubDate>
+                    <description><![CDATA[Краткий официальный анонс свежего материала газеты.]]></description>
+                </item>
+                <item>
+                    <title>Второй свежий материал Независимой газеты</title>
+                    <link>https://www.ng.ru/news/201.html</link>
+                    <pubDate>Tue, 11 Aug 2026 12:00:00 +0300</pubDate>
+                </item>
+                <item>
+                    <title>Вчерашний материал Независимой газеты</title>
+                    <link>https://www.ng.ru/news/199.html</link>
+                    <pubDate>Mon, 10 Aug 2026 18:00:00 +0300</pubDate>
+                </item>
+            </channel></rss>
+            """,
+            "xml",
+        )
+
+        result = _parse_rss(soup)
+
+        self.assertEqual(len(result), 2)
+        self.assertTrue(all(item["date"] == "2026-08-11" for item in result))
+        self.assertTrue(
+            all(item["section"] == "Онлайн НГ · резерв" for item in result)
+        )
+        self.assertIn("официальный анонс", result[0]["summary"])
 
     def test_reads_only_articles_from_current_issue(self):
         soup = BeautifulSoup(
