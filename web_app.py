@@ -447,12 +447,12 @@ HTML = """
         .check{width:16px;height:16px;display:grid;place-items:center;color:#fff;border:1px solid #bdb5a9;border-radius:3px;font-size:11px}
         .source-row.active .check{border-color:var(--coral);background:var(--coral)}
         .source-row b{min-width:28px;padding:3px 5px;color:#827b71;border:1px solid var(--line);border-radius:5px;background:#f8f4ed;text-align:center;font-size:10px;font-weight:500}
-        .source-order-actions{display:flex;flex:0 0 60px;gap:4px;padding-right:8px}
+        .source-order-actions{display:flex;flex:0 0 40px;gap:1px;padding-right:7px}
         .source-order-actions button{
-            width:27px;height:28px;padding:0;border:1px solid #c9c1b5;border-radius:5px;
-            color:#5f5850;background:var(--surface);font-size:16px;font-weight:750;line-height:1
+            width:19px;height:22px;padding:0;border:0;
+            color:#81796f;background:transparent;font-size:12px;font-weight:700;line-height:1
         }
-        .source-order-actions button:hover{color:#fff;border-color:var(--coral);background:var(--coral)}
+        .source-order-actions button:hover{color:var(--coral);background:transparent}
         .source-order-actions button:disabled{opacity:.28;cursor:default}
         .unread-count{min-width:28px;color:var(--green);text-align:right;font-size:11px;font-weight:700}
         .unread-count:empty{display:none}
