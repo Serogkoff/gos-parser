@@ -149,15 +149,19 @@ class AuthenticationTests(unittest.TestCase):
         html = page.get_data(as_text=True)
         self.assertEqual(page.status_code, 200)
         self.assertIn("reader", html)
-        self.assertNotIn('id="keywords-open"', html)
+        self.assertIn('id="keywords-open"', html)
         self.assertNotIn("Сводка покрытия", html)
 
-        forbidden = self.client.post(
-            "/api/keywords",
-            json={"keyword": "Япония"},
-            headers={"X-CSRF-Token": self._csrf(page)},
-        )
-        self.assertEqual(forbidden.status_code, 403)
+        with (
+            patch.object(web_app, "add_keyword", return_value=["Япония"]),
+            patch.object(web_app, "rebuild_found_news", return_value=[]),
+        ):
+            allowed = self.client.post(
+                "/api/keywords",
+                json={"keyword": "Япония"},
+                headers={"X-CSRF-Token": self._csrf(page)},
+            )
+        self.assertEqual(allowed.status_code, 200)
         self.assertEqual(self.client.get("/admin/users").status_code, 403)
 
     def test_admin_creates_manages_and_reactivates_user(self):

@@ -129,8 +129,12 @@ class PersonalSourceOrderTests(unittest.TestCase):
         self.assertNotIn("Газеты <span>", header)
         self.assertNotIn('id="toggle-sidebar"', html)
         self.assertNotIn("☷ Фильтры", html)
+        self.assertIn('id="keywords-open"', html)
+        self.assertIn("Порядок ↑↓", html)
         self.assertIn('class="account-status"', header)
         self.assertGreater(header.index('class="health '), header.index('class="account"'))
+        self.assertIn('href="/">Все</a>', html)
+        self.assertIn('href="/found">Совпадения</a>', html)
 
     def test_source_order_api_requires_csrf(self):
         client = web_app.app.test_client()

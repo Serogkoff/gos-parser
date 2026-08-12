@@ -357,7 +357,6 @@ HTML = """
         h1{margin:0;font-size:clamp(38px,4vw,58px);line-height:1;letter-spacing:-.055em;font-weight:720}
         .tabs{display:flex;gap:28px;margin-top:28px}
         .tab{position:relative;padding:0 2px 16px;color:var(--muted);font-size:17px;font-weight:610}
-        .tab span{margin-left:6px;font-variant-numeric:tabular-nums}
         .tab:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;background:var(--coral);transform:scaleX(0);transition:transform .18s}
         .tab.active{color:var(--ink)}.tab.active:after{transform:scaleX(1)}
         .toolbar{display:flex;gap:14px;padding:22px 0}
@@ -428,6 +427,7 @@ HTML = """
         .sidebar{display:grid;gap:16px}.panel{overflow:hidden}
         .panel-title{min-height:58px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line)}
         .panel-title-actions{display:flex;align-items:center;gap:8px}
+        .order-hint{color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
         .panel-title button{border:0;color:var(--muted);background:transparent}
         .panel-title .collapse-button{font-size:20px}
         .mark-all-read{padding:5px 7px;border-radius:4px!important;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
@@ -443,16 +443,17 @@ HTML = """
             grid-template-columns:20px minmax(0,1fr) auto auto;align-items:center;
             gap:9px;text-align:left
         }
+        .source-link>span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .check{width:16px;height:16px;display:grid;place-items:center;color:#fff;border:1px solid #bdb5a9;border-radius:3px;font-size:11px}
         .source-row.active .check{border-color:var(--coral);background:var(--coral)}
         .source-row b{min-width:28px;padding:3px 5px;color:#827b71;border:1px solid var(--line);border-radius:5px;background:#f8f4ed;text-align:center;font-size:10px;font-weight:500}
-        .source-order-actions{display:flex;gap:2px;padding-right:9px}
+        .source-order-actions{display:flex;flex:0 0 60px;gap:4px;padding-right:8px}
         .source-order-actions button{
-            width:23px;height:25px;padding:0;border:1px solid transparent;border-radius:4px;
-            color:#8a8379;background:transparent;font-size:13px;line-height:1
+            width:27px;height:28px;padding:0;border:1px solid #c9c1b5;border-radius:5px;
+            color:#5f5850;background:var(--surface);font-size:16px;font-weight:750;line-height:1
         }
-        .source-order-actions button:hover{color:var(--coral);border-color:var(--line);background:var(--surface)}
-        .source-order-actions button:disabled{opacity:.2;cursor:default}
+        .source-order-actions button:hover{color:#fff;border-color:var(--coral);background:var(--coral)}
+        .source-order-actions button:disabled{opacity:.28;cursor:default}
         .unread-count{min-width:28px;color:var(--green);text-align:right;font-size:11px;font-weight:700}
         .unread-count:empty{display:none}
         .unread-label{margin-left:auto;padding:3px 6px;color:var(--green);border:1px solid rgba(62,118,85,.35);border-radius:4px;background:rgba(62,118,85,.08);font-size:10px;text-transform:uppercase;letter-spacing:.04em}
@@ -565,8 +566,8 @@ HTML = """
         <p class="eyebrow">{{group_eyebrow}}</p>
         <h1>{{group_title}}</h1>
         <nav class="tabs">
-            <a class="tab {{'active' if mode == 'all' else ''}}" href="{{group_home}}">Все <span>{{total}}</span></a>
-            <a class="tab {{'active' if mode == 'found' else ''}}" href="{{group_found}}">Совпадения <span>{{found_count}}</span></a>
+            <a class="tab {{'active' if mode == 'all' else ''}}" href="{{group_home}}">Все</a>
+            <a class="tab {{'active' if mode == 'found' else ''}}" href="{{group_found}}">Совпадения</a>
         </nav>
     </section>
 
@@ -585,9 +586,7 @@ HTML = """
                 {% endfor %}
             </select>
         </label>
-        {% if current_user.role == 'admin' %}
         <button class="tool-button" id="keywords-open" type="button">✣ Ключевые слова</button>
-        {% endif %}
         <a class="tool-button" href="/bookmarks">
             ♡ Закладки <span class="saved-count {{'hidden' if not bookmark_count else ''}}" id="saved-count">{{bookmark_count}}</span>
         </a>
@@ -663,6 +662,7 @@ HTML = """
                 <header class="panel-title">
                     <h2>Источники</h2>
                     <div class="panel-title-actions">
+                        <span class="order-hint">Порядок ↑↓</span>
                         <button class="mark-all-read" id="mark-all-read" type="button">Прочитать всё</button>
                         <button class="collapse-button" id="collapse-sources" type="button" aria-label="Свернуть список">−</button>
                     </div>
@@ -720,7 +720,6 @@ HTML = """
         </aside>
     </div>
 </main>
-{% if current_user.role == 'admin' %}
 <div class="keyword-backdrop hidden" id="keyword-modal" role="dialog" aria-modal="true" aria-labelledby="keyword-title">
     <section class="keyword-dialog">
         <header class="dialog-head">
@@ -735,7 +734,6 @@ HTML = """
         <p class="form-message" id="keyword-message"></p>
     </section>
 </div>
-{% endif %}
 <script>
     const cards = [...document.querySelectorAll('.news-card')];
     const search = document.getElementById('news-search');
@@ -1006,7 +1004,6 @@ HTML = """
     }
     updateClocks(); setInterval(updateClocks, 1000);
 
-    {% if current_user.role == 'admin' %}
     const keywordModal = document.getElementById('keyword-modal');
     const keywordList = document.getElementById('keyword-list');
     const keywordMessage = document.getElementById('keyword-message');
@@ -1050,7 +1047,6 @@ HTML = """
         const input = document.getElementById('keyword-input');
         await changeKeyword('POST', input.value); input.value = '';
     });
-    {% endif %}
     refreshSavedIcons();
     refreshUnread();
     applyFilters();
@@ -1843,9 +1839,6 @@ def keywords_api():
     if request.method == "GET":
         return jsonify(keywords=load_keywords())
 
-    user = current_user()
-    if not user or user.get("role") != "admin":
-        return jsonify(error="Недостаточно прав"), 403
     if not csrf_is_valid():
         return jsonify(error="Сессия устарела. Обновите страницу."), 400
 
