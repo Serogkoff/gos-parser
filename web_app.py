@@ -35,17 +35,28 @@ from utils.source_groups import (
 )
 from utils.storage import (
     authenticate_user,
+    bookmarked_urls,
     count_users,
+    count_bookmarks,
+    create_bookmark_folder,
     create_user,
+    delete_bookmark_folder,
+    find_news_by_url,
     list_users,
+    list_bookmark_folders,
+    list_bookmarks,
     load_all_news,
     load_cached_article,
     load_found_news,
     load_user,
+    remove_bookmark,
+    rename_bookmark_folder,
     save_cached_article,
+    save_bookmark,
     set_user_active,
     set_user_password,
     set_user_role,
+    update_bookmark,
 )
 
 
@@ -191,6 +202,61 @@ SETTINGS_HTML = """
         {% endfor %}
     </section>
     {% endif %}
+</main></body></html>
+"""
+
+
+BOOKMARKS_HTML = """
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Закладки — Монитор</title>
+    <style>
+        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655}
+        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}a{color:inherit;text-decoration:none}.shell{width:min(1250px,calc(100% - 34px));margin:auto;padding:28px 0 80px}.top{display:flex;align-items:center;justify-content:space-between;gap:15px}.back{color:var(--muted)}.account{font-size:12px;color:var(--muted)}header{margin:38px 0 26px}h1{margin:0;font-size:clamp(42px,6vw,70px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:20px;align-items:start}.panel,.feed{border:1px solid var(--line);border-radius:8px;background:var(--surface)}.panel{position:sticky;top:18px;overflow:hidden}.panel h2{margin:0;padding:19px;border-bottom:1px solid var(--line);font-size:17px}.folder-list{padding:9px}.folder{min-height:42px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-radius:5px;color:#5e574e;font-size:13px}.folder:hover,.folder.active{color:var(--coral);background:#fff3ed}.folder b{font-size:11px}.create{padding:15px;border-top:1px solid var(--line)}label{display:grid;gap:6px;color:var(--muted);font-size:11px}input,select,textarea{width:100%;padding:10px 11px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}input,select{height:42px}textarea{min-height:92px;resize:vertical}button{min-height:40px;padding:0 13px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;font:650 12px Inter,Arial,sans-serif;cursor:pointer}.primary{color:#fff;background:var(--coral)}.create button{width:100%;margin-top:8px}.message,.error{margin:0 0 16px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.feed-head{padding:20px 23px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.feed-head h2{margin:0;font-size:18px}.bookmark{padding:24px;border-bottom:1px solid var(--line)}.bookmark:last-child{border-bottom:0}.meta{display:flex;flex-wrap:wrap;gap:9px;color:var(--muted);font-size:12px}.bookmark h3{margin:10px 0 18px;font-size:clamp(21px,3vw,31px);line-height:1.15;letter-spacing:-.035em}.bookmark h3 a:hover{color:var(--coral)}.edit{display:grid;grid-template-columns:190px minmax(0,1fr) auto;gap:10px;align-items:end}.remove{margin-top:9px;border-color:var(--line);color:var(--muted)}.folder-tools{margin:0 9px 10px;padding:12px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.folder-tools form{display:flex;gap:7px}.folder-tools form+form{margin-top:7px}.folder-tools input{min-width:0}.empty{padding:70px 25px;color:var(--muted);text-align:center}.empty strong{display:block;margin-bottom:7px;color:var(--ink);font-size:20px}
+        @media(max-width:800px){.layout{grid-template-columns:1fr}.panel{position:static}.edit{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
+    </style>
+</head>
+<body><main class="shell">
+    <div class="top"><a class="back" href="/">← Вернуться к Монитору</a><a class="account" href="/account">{{current_user.username}} · настройки аккаунта</a></div>
+    <header><h1>Закладки</h1><p class="subtitle">Личные папки, сохранённые новости и рабочие заметки</p></header>
+    {% if message %}<p class="message">{{message}}</p>{% endif %}{% if error %}<p class="error">{{error}}</p>{% endif %}
+    <div class="layout">
+        <aside class="panel">
+            <h2>Папки</h2>
+            <nav class="folder-list">
+                <a class="folder {{'active' if selected_folder == 'all' else ''}}" href="/bookmarks"><span>Все закладки</span><b>{{total_count}}</b></a>
+                <a class="folder {{'active' if selected_folder == 'unfiled' else ''}}" href="/bookmarks?folder=unfiled"><span>Без папки</span><b>{{unfiled_count}}</b></a>
+                {% for folder in folders %}<a class="folder {{'active' if selected_folder == folder.id|string else ''}}" href="/bookmarks?folder={{folder.id}}"><span>{{folder.name}}</span><b>{{folder.bookmark_count}}</b></a>{% endfor %}
+            </nav>
+            {% if selected_folder not in ('all','unfiled') and selected_folder_data %}
+            <div class="folder-tools">
+                <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="rename_folder"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input name="name" value="{{selected_folder_data.name}}" maxlength="80" required><button type="submit">Переименовать</button></form>
+                <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_folder"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><button type="submit">Удалить папку</button></form>
+            </div>
+            {% endif %}
+            <form class="create" method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="create_folder"><label>Новая папка<input name="name" maxlength="80" placeholder="Например: Выборы" required></label><button class="primary" type="submit">Создать папку</button></form>
+        </aside>
+        <section class="feed">
+            <div class="feed-head"><h2>{{selected_title}}</h2><span>{{bookmarks|length}} материалов</span></div>
+            {% if bookmarks %}
+                {% for bookmark in bookmarks %}
+                <article class="bookmark">
+                    <div class="meta"><span>{{bookmark.source}}</span><span>•</span><time>{{bookmark.date or 'дата не указана'}}</time>{% if bookmark.folder_name %}<span>•</span><span>{{bookmark.folder_name}}</span>{% endif %}</div>
+                    <h3><a href="/article?url={{bookmark.url|urlencode}}">{{bookmark.title}}</a></h3>
+                    <form class="edit" method="post">
+                        <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="update_bookmark"><input type="hidden" name="bookmark_url" value="{{bookmark.url}}">
+                        <label>Папка<select name="folder_id"><option value="">Без папки</option>{% for folder in folders %}<option value="{{folder.id}}" {{'selected' if bookmark.folder_id == folder.id else ''}}>{{folder.name}}</option>{% endfor %}</select></label>
+                        <label>Заметка<textarea name="note" maxlength="5000" placeholder="Что важно в этой публикации?">{{bookmark.note}}</textarea></label>
+                        <button class="primary" type="submit">Сохранить</button>
+                    </form>
+                    <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="remove_bookmark"><input type="hidden" name="bookmark_url" value="{{bookmark.url}}"><button class="remove" type="submit">Удалить из закладок</button></form>
+                </article>
+                {% endfor %}
+            {% else %}<div class="empty"><strong>Здесь пока пусто</strong><span>Нажми ♡ у новости в ленте, чтобы сохранить её.</span></div>{% endif %}
+        </section>
+    </div>
 </main></body></html>
 """
 
@@ -449,6 +515,9 @@ HTML = """
             <a class="site-section {{'active' if source_group == 'newspapers' else ''}}" href="/newspapers">
                 Газеты <span>{{newspapers_total}}</span>
             </a>
+            <a class="site-section" href="/bookmarks">
+                Закладки <span>{{bookmark_count}}</span>
+            </a>
         </nav>
         <div class="topbar-tools">
             <div class="clocks">
@@ -506,9 +575,9 @@ HTML = """
         {% if current_user.role == 'admin' %}
         <button class="tool-button" id="keywords-open" type="button">✣ Ключевые слова</button>
         {% endif %}
-        <button class="tool-button" id="saved-only" type="button">
-            ♡ Сохранённые <span class="saved-count hidden" id="saved-count">0</span>
-        </button>
+        <a class="tool-button" href="/bookmarks">
+            ♡ Закладки <span class="saved-count {{'hidden' if not bookmark_count else ''}}" id="saved-count">{{bookmark_count}}</span>
+        </a>
     </section>
 
     <div class="content-grid">
@@ -651,14 +720,13 @@ HTML = """
     const search = document.getElementById('news-search');
     const visibleCount = document.getElementById('visible-count');
     const emptyState = document.getElementById('empty-state');
-    const savedButton = document.getElementById('saved-only');
     const savedCount = document.getElementById('saved-count');
     const brandHome = document.getElementById('brand-home');
     const newsIndex = {{news_index|tojson}};
     const groupHome = {{group_home|tojson}};
     const sourceBase = {{source_base|tojson}};
-    let savedOnly = false;
-    let saved = new Set(JSON.parse(localStorage.getItem('monitor-saved') || '[]'));
+    let saved = new Set({{saved_urls|tojson}});
+    const legacySavedStorageKey = 'monitor-saved';
     const unreadStorageKey = 'monitor-unread-v1';
     let unreadState;
     let brandClicks = 0;
@@ -762,27 +830,71 @@ HTML = """
         savedCount.textContent = saved.size;
         savedCount.classList.toggle('hidden', saved.size === 0);
     }
+
+    async function migrateLegacySaved(){
+        let legacySaved = [];
+        try{
+            const stored = JSON.parse(localStorage.getItem(legacySavedStorageKey) || '[]');
+            if(Array.isArray(stored)) legacySaved = stored.filter(url => typeof url === 'string' && url);
+        }catch(error){
+            return;
+        }
+        if(!legacySaved.length) return;
+        try{
+            const response = await fetch('/api/bookmarks', {
+                method:'POST',
+                headers:{
+                    'Content-Type':'application/json',
+                    'X-CSRF-Token': {{csrf_token|tojson}}
+                },
+                body:JSON.stringify({urls:legacySaved})
+            });
+            if(!response.ok) return;
+            const data = await response.json();
+            saved = new Set(data.urls || []);
+            localStorage.removeItem(legacySavedStorageKey);
+            refreshSavedIcons();
+        }catch(error){
+            // При временной сетевой ошибке старые данные остаются в браузере,
+            // поэтому перенос безопасно повторится при следующем открытии.
+        }
+    }
     function applyFilters(){
         const query = search.value.trim().toLowerCase();
         let count = 0;
         cards.forEach(card => {
             const matchesText = !query || card.dataset.search.includes(query);
-            const matchesSaved = !savedOnly || saved.has(card.dataset.id);
-            const visible = matchesText && matchesSaved;
+            const visible = matchesText;
             card.classList.toggle('hidden', !visible);
             if(visible) count++;
         });
-        visibleCount.textContent = (!query && !savedOnly)
+        visibleCount.textContent = !query
             ? visibleCount.dataset.default
             : count + ' материалов';
         emptyState.classList.toggle('hidden', count !== 0);
     }
     document.querySelectorAll('[data-save]').forEach(button => {
-        button.addEventListener('click', () => {
+        button.addEventListener('click', async () => {
             const id = button.dataset.save;
-            saved.has(id) ? saved.delete(id) : saved.add(id);
-            localStorage.setItem('monitor-saved', JSON.stringify([...saved]));
-            refreshSavedIcons(); applyFilters();
+            const removing = saved.has(id);
+            button.disabled = true;
+            try{
+                const response = await fetch('/api/bookmarks', {
+                    method: removing ? 'DELETE' : 'POST',
+                    headers:{
+                        'Content-Type':'application/json',
+                        'X-CSRF-Token': {{csrf_token|tojson}}
+                    },
+                    body:JSON.stringify({url:id})
+                });
+                if(!response.ok) throw new Error('Не удалось изменить закладку');
+                removing ? saved.delete(id) : saved.add(id);
+                refreshSavedIcons();
+            }catch(error){
+                window.alert(error.message);
+            }finally{
+                button.disabled = false;
+            }
         });
     });
     document.querySelectorAll('[data-read-url]').forEach(link => {
@@ -794,11 +906,6 @@ HTML = """
         refreshUnread();
     });
     search.addEventListener('input', applyFilters);
-    savedButton.addEventListener('click', () => {
-        savedOnly = !savedOnly;
-        savedButton.classList.toggle('active', savedOnly);
-        applyFilters();
-    });
     document.getElementById('toggle-sidebar').addEventListener('click', () => {
         document.getElementById('sidebar').classList.toggle('hidden');
     });
@@ -875,6 +982,7 @@ HTML = """
     refreshSavedIcons();
     refreshUnread();
     applyFilters();
+    migrateLegacySaved();
 </script>
 </body>
 </html>
@@ -1197,6 +1305,88 @@ def admin_users():
     )
 
 
+@app.route("/bookmarks", methods=["GET", "POST"])
+def bookmarks_page():
+    """Показывает личные папки, новости и заметки текущего пользователя."""
+    user = current_user()
+    user_id = user["id"]
+    selected_folder = str(request.args.get("folder", "all")).strip() or "all"
+    folders = list_bookmark_folders(user_id)
+    folder_by_id = {str(folder["id"]): folder for folder in folders}
+    if selected_folder not in {"all", "unfiled", *folder_by_id}:
+        abort(404)
+
+    if request.method == "POST":
+        if not csrf_is_valid():
+            abort(400)
+        action = str(request.form.get("action", "")).strip()
+        try:
+            if action == "create_folder":
+                created = create_bookmark_folder(user_id, request.form.get("name"))
+                message = f"Папка «{created['name']}» создана"
+                selected_folder = str(created["id"])
+            elif action == "rename_folder":
+                renamed = rename_bookmark_folder(
+                    user_id,
+                    request.form.get("folder_id"),
+                    request.form.get("name"),
+                )
+                message = f"Папка переименована в «{renamed['name']}»"
+                selected_folder = str(renamed["id"])
+            elif action == "delete_folder":
+                delete_bookmark_folder(user_id, request.form.get("folder_id"))
+                message = "Папка удалена, её новости перенесены в «Без папки»"
+                selected_folder = "unfiled"
+            elif action == "update_bookmark":
+                update_bookmark(
+                    user_id,
+                    request.form.get("bookmark_url"),
+                    request.form.get("folder_id"),
+                    request.form.get("note"),
+                )
+                message = "Папка и заметка сохранены"
+            elif action == "remove_bookmark":
+                remove_bookmark(user_id, request.form.get("bookmark_url"))
+                message = "Новость удалена из закладок"
+            else:
+                raise ValueError("Неизвестное действие")
+        except ValueError as operation_error:
+            return redirect(
+                url_for(
+                    "bookmarks_page",
+                    folder=selected_folder,
+                    error=str(operation_error),
+                )
+            )
+        return redirect(
+            url_for("bookmarks_page", folder=selected_folder, message=message)
+        )
+
+    all_bookmarks = list_bookmarks(user_id)
+    bookmarks = list_bookmarks(user_id, selected_folder)
+    selected_folder_data = folder_by_id.get(selected_folder)
+    if selected_folder_data:
+        selected_title = selected_folder_data["name"]
+    elif selected_folder == "unfiled":
+        selected_title = "Без папки"
+    else:
+        selected_title = "Все закладки"
+    return render_template_string(
+        BOOKMARKS_HTML,
+        current_user=user,
+        csrf_token=csrf_token(),
+        folders=folders,
+        bookmarks=bookmarks,
+        selected_folder=selected_folder,
+        selected_folder_data=selected_folder_data,
+        selected_title=selected_title,
+        total_count=len(all_bookmarks),
+        unfiled_count=sum(item["folder_id"] is None for item in all_bookmarks),
+        message=str(request.args.get("message", "")).strip(),
+        error=str(request.args.get("error", "")).strip(),
+    )
+
+
 def can_view_admin_diagnostics():
     """Служебная диагностика видна только администратору."""
     user = current_user()
@@ -1209,6 +1399,13 @@ def render_news_page(
     source_filter="",
     source_group=GOVERNMENT_GROUP,
 ):
+    user = current_user()
+    if user["id"]:
+        user_saved_urls = bookmarked_urls(user["id"])
+        user_bookmark_count = count_bookmarks(user["id"])
+    else:
+        user_saved_urls = []
+        user_bookmark_count = 0
     all_news = load_json("all_news.json", [])
     found_news = load_json("found_news.json", [])
     status = load_json("parser_status.json", {})
@@ -1380,8 +1577,10 @@ def render_news_page(
         next_url=page_url(page + 1) if page < page_count else "",
         page_label=page_label,
         show_admin_diagnostics=can_view_admin_diagnostics(),
-        current_user=current_user(),
+        current_user=user,
         csrf_token=csrf_token(),
+        saved_urls=user_saved_urls,
+        bookmark_count=user_bookmark_count,
     )
 
 
@@ -1571,6 +1770,43 @@ def keywords_api():
         keywords = remove_keyword(keyword)
     found = rebuild_found_news()
     return jsonify(keywords=keywords, found_count=len(found))
+
+
+@app.route("/api/bookmarks", methods=["GET", "POST", "DELETE"])
+def bookmarks_api():
+    """Быстро переключает личное сердечко у новости в общей ленте."""
+    user = current_user()
+    user_id = user["id"]
+    if request.method == "GET":
+        return jsonify(
+            urls=bookmarked_urls(user_id),
+            count=count_bookmarks(user_id),
+        )
+    if not csrf_is_valid():
+        return jsonify(error="Сессия устарела. Обновите страницу."), 400
+
+    payload = request.get_json(silent=True) or {}
+    url = str(payload.get("url", "")).strip()
+    if request.method == "DELETE":
+        remove_bookmark(user_id, url)
+    else:
+        legacy_urls = payload.get("urls")
+        if isinstance(legacy_urls, list):
+            # Старый интерфейс хранил сердечки только в localStorage.
+            # Один ограниченный пакет переносит их в текущий аккаунт.
+            for legacy_url in legacy_urls[:500]:
+                item = find_news_by_url(str(legacy_url).strip())
+                if item is not None:
+                    save_bookmark(user_id, item)
+        else:
+            item = find_news_by_url(url)
+            if item is None:
+                return jsonify(error="Новость не найдена"), 404
+            save_bookmark(user_id, item)
+    return jsonify(
+        urls=bookmarked_urls(user_id),
+        count=count_bookmarks(user_id),
+    )
 
 
 if __name__ == "__main__":

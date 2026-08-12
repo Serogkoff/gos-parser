@@ -128,6 +128,33 @@ def _create_schema(connection):
             last_login_at TEXT NOT NULL DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS bookmark_folders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL COLLATE NOCASE,
+            created_at TEXT NOT NULL,
+            UNIQUE(user_id, name),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS bookmarks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            folder_id INTEGER,
+            normalized_url TEXT NOT NULL,
+            url TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL,
+            publication_date TEXT NOT NULL DEFAULT '',
+            note TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(user_id, normalized_url),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(folder_id) REFERENCES bookmark_folders(id)
+                ON DELETE SET NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_news_source
             ON news_items(source);
         CREATE INDEX IF NOT EXISTS idx_news_publication_date
@@ -136,6 +163,12 @@ def _create_schema(connection):
             ON news_items(normalized_url);
         CREATE INDEX IF NOT EXISTS idx_users_role
             ON users(role, is_active);
+        CREATE INDEX IF NOT EXISTS idx_bookmark_folders_user
+            ON bookmark_folders(user_id, name);
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_user
+            ON bookmarks(user_id, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_folder
+            ON bookmarks(user_id, folder_id, updated_at DESC);
         """
     )
 
@@ -317,6 +350,303 @@ def authenticate_user(username, password):
     user = _user_from_row(row)
     user["last_login_at"] = logged_at
     return user
+
+
+def list_bookmark_folders(user_id):
+    """Возвращает только папки указанного пользователя и число материалов."""
+    user_id = _validated_user_id(user_id)
+    initialize_database()
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT f.id, f.name, f.created_at, COUNT(b.id) AS bookmark_count
+            FROM bookmark_folders AS f
+            LEFT JOIN bookmarks AS b
+              ON b.folder_id = f.id AND b.user_id = f.user_id
+            WHERE f.user_id = ?
+            GROUP BY f.id, f.name, f.created_at
+            ORDER BY f.name COLLATE NOCASE
+            """,
+            (user_id,),
+        ).fetchall()
+    return [
+        {
+            "id": int(row["id"]),
+            "name": row["name"],
+            "created_at": row["created_at"],
+            "bookmark_count": int(row["bookmark_count"]),
+        }
+        for row in rows
+    ]
+
+
+def create_bookmark_folder(user_id, name):
+    """Создаёт личную папку с уникальным для пользователя названием."""
+    user_id = _validated_user_id(user_id)
+    name = _validated_folder_name(name)
+    initialize_database()
+    try:
+        with STORAGE_LOCK, _connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO bookmark_folders(user_id, name, created_at) VALUES (?, ?, ?)",
+                (user_id, name, datetime.now().isoformat(timespec="seconds")),
+            )
+            folder_id = cursor.lastrowid
+    except sqlite3.IntegrityError as error:
+        raise ValueError("Папка с таким названием уже существует") from error
+    return next(
+        folder for folder in list_bookmark_folders(user_id)
+        if folder["id"] == folder_id
+    )
+
+
+def rename_bookmark_folder(user_id, folder_id, name):
+    """Переименовывает только принадлежащую пользователю папку."""
+    user_id = _validated_user_id(user_id)
+    folder_id = _validated_folder_id(folder_id)
+    name = _validated_folder_name(name)
+    initialize_database()
+    try:
+        with STORAGE_LOCK, _connect() as connection:
+            cursor = connection.execute(
+                "UPDATE bookmark_folders SET name = ? WHERE id = ? AND user_id = ?",
+                (name, folder_id, user_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Папка не найдена")
+    except sqlite3.IntegrityError as error:
+        raise ValueError("Папка с таким названием уже существует") from error
+    return next(
+        folder for folder in list_bookmark_folders(user_id)
+        if folder["id"] == folder_id
+    )
+
+
+def delete_bookmark_folder(user_id, folder_id):
+    """Удаляет папку; её закладки остаются в разделе «Без папки»."""
+    user_id = _validated_user_id(user_id)
+    folder_id = _validated_folder_id(folder_id)
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        cursor = connection.execute(
+            "DELETE FROM bookmark_folders WHERE id = ? AND user_id = ?",
+            (folder_id, user_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("Папка не найдена")
+
+
+def save_bookmark(user_id, item, folder_id=None, note=""):
+    """Сохраняет снимок новости в личных закладках пользователя."""
+    user_id = _validated_user_id(user_id)
+    if not isinstance(item, dict):
+        raise ValueError("Новость не найдена")
+    normalized = normalize_url(item.get("url", ""))
+    title = " ".join(str(item.get("title", "")).split())[:1000]
+    if not normalized or not title:
+        raise ValueError("Новость не найдена")
+    folder_id = _owned_folder_id(user_id, folder_id)
+    note = _validated_bookmark_note(note)
+    now = datetime.now().isoformat(timespec="seconds")
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO bookmarks(
+                user_id, folder_id, normalized_url, url, source, title,
+                publication_date, note, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, normalized_url) DO UPDATE SET
+                folder_id = COALESCE(excluded.folder_id, bookmarks.folder_id),
+                url = excluded.url,
+                source = excluded.source,
+                title = excluded.title,
+                publication_date = excluded.publication_date,
+                note = CASE WHEN excluded.note != '' THEN excluded.note ELSE bookmarks.note END,
+                updated_at = excluded.updated_at
+            """,
+            (
+                user_id,
+                folder_id,
+                normalized,
+                item.get("url", ""),
+                str(item.get("source", ""))[:300],
+                title,
+                str(item.get("date", ""))[:50],
+                note,
+                now,
+                now,
+            ),
+        )
+    return load_bookmark(user_id, normalized)
+
+
+def update_bookmark(user_id, url, folder_id=None, note=""):
+    """Перемещает личную закладку и сохраняет заметку пользователя."""
+    user_id = _validated_user_id(user_id)
+    normalized = normalize_url(url)
+    folder_id = _owned_folder_id(user_id, folder_id)
+    note = _validated_bookmark_note(note)
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        cursor = connection.execute(
+            """
+            UPDATE bookmarks
+            SET folder_id = ?, note = ?, updated_at = ?
+            WHERE user_id = ? AND normalized_url = ?
+            """,
+            (
+                folder_id,
+                note,
+                datetime.now().isoformat(timespec="seconds"),
+                user_id,
+                normalized,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("Закладка не найдена")
+    return load_bookmark(user_id, normalized)
+
+
+def remove_bookmark(user_id, url):
+    """Удаляет одну личную закладку, не затрагивая новость в общей базе."""
+    user_id = _validated_user_id(user_id)
+    normalized = normalize_url(url)
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        cursor = connection.execute(
+            "DELETE FROM bookmarks WHERE user_id = ? AND normalized_url = ?",
+            (user_id, normalized),
+        )
+    return cursor.rowcount == 1
+
+
+def load_bookmark(user_id, url):
+    user_id = _validated_user_id(user_id)
+    normalized = normalize_url(url)
+    initialize_database()
+    with _connect() as connection:
+        row = connection.execute(
+            """
+            SELECT b.*, f.name AS folder_name
+            FROM bookmarks AS b
+            LEFT JOIN bookmark_folders AS f
+              ON f.id = b.folder_id AND f.user_id = b.user_id
+            WHERE b.user_id = ? AND b.normalized_url = ?
+            """,
+            (user_id, normalized),
+        ).fetchone()
+    return _bookmark_from_row(row)
+
+
+def list_bookmarks(user_id, folder_id="all"):
+    """Возвращает личные закладки, при необходимости фильтруя по папке."""
+    user_id = _validated_user_id(user_id)
+    initialize_database()
+    parameters = [user_id]
+    condition = ""
+    if folder_id == "unfiled":
+        condition = " AND b.folder_id IS NULL"
+    elif folder_id not in {"all", None, ""}:
+        owned_id = _owned_folder_id(user_id, folder_id)
+        condition = " AND b.folder_id = ?"
+        parameters.append(owned_id)
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT b.*, f.name AS folder_name
+            FROM bookmarks AS b
+            LEFT JOIN bookmark_folders AS f
+              ON f.id = b.folder_id AND f.user_id = b.user_id
+            WHERE b.user_id = ?
+            """ + condition + " ORDER BY b.updated_at DESC, b.id DESC",
+            parameters,
+        ).fetchall()
+    return [_bookmark_from_row(row) for row in rows]
+
+
+def bookmarked_urls(user_id):
+    """Возвращает URL личных закладок для подсветки сердечек в ленте."""
+    return [item["url"] for item in list_bookmarks(user_id)]
+
+
+def count_bookmarks(user_id):
+    user_id = _validated_user_id(user_id)
+    initialize_database()
+    with _connect() as connection:
+        return int(
+            connection.execute(
+                "SELECT COUNT(*) FROM bookmarks WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()[0]
+        )
+
+
+def _validated_user_id(value):
+    try:
+        user_id = int(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Пользователь не найден") from error
+    if user_id < 1 or load_user(user_id) is None:
+        raise ValueError("Пользователь не найден")
+    return user_id
+
+
+def _validated_folder_id(value):
+    try:
+        folder_id = int(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Папка не найдена") from error
+    if folder_id < 1:
+        raise ValueError("Папка не найдена")
+    return folder_id
+
+
+def _owned_folder_id(user_id, value):
+    if value in {None, "", "unfiled"}:
+        return None
+    folder_id = _validated_folder_id(value)
+    initialize_database()
+    with _connect() as connection:
+        exists = connection.execute(
+            "SELECT 1 FROM bookmark_folders WHERE id = ? AND user_id = ?",
+            (folder_id, user_id),
+        ).fetchone()
+    if exists is None:
+        raise ValueError("Папка не найдена")
+    return folder_id
+
+
+def _validated_folder_name(value):
+    name = " ".join(str(value or "").split())
+    if not 1 <= len(name) <= 80:
+        raise ValueError("Название папки должно содержать от 1 до 80 символов")
+    return name
+
+
+def _validated_bookmark_note(value):
+    note = str(value or "").strip()
+    if len(note) > 5000:
+        raise ValueError("Заметка не должна превышать 5000 символов")
+    return note
+
+
+def _bookmark_from_row(row):
+    if row is None:
+        return None
+    return {
+        "id": int(row["id"]),
+        "folder_id": int(row["folder_id"]) if row["folder_id"] else None,
+        "folder_name": row["folder_name"] or "",
+        "normalized_url": row["normalized_url"],
+        "url": row["url"],
+        "source": row["source"],
+        "title": row["title"],
+        "date": row["publication_date"],
+        "note": row["note"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
 
 
 def _validate_username(value):
