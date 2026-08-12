@@ -45,6 +45,7 @@ from utils.storage import (
     list_users,
     list_bookmark_folders,
     list_bookmarks,
+    load_source_order,
     load_all_news,
     load_cached_article,
     load_found_news,
@@ -53,6 +54,7 @@ from utils.storage import (
     rename_bookmark_folder,
     save_cached_article,
     save_bookmark,
+    save_source_order,
     set_user_active,
     set_user_password,
     set_user_role,
@@ -321,10 +323,6 @@ HTML = """
             position:relative;padding:0 3px;display:flex;align-items:center;gap:7px;
             color:var(--muted);font-size:15px;font-weight:680;white-space:nowrap
         }
-        .site-section span{
-            min-width:24px;padding:2px 6px;color:#7b746a;border-radius:999px;
-            background:#ece6dc;text-align:center;font-size:10px
-        }
         .site-section:after{
             content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;
             background:var(--coral);transform:scaleX(0);transition:transform .18s
@@ -343,13 +341,14 @@ HTML = """
         .clock-face:after{content:"";position:absolute;z-index:3;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:var(--coral);transform:translate(-50%,-50%)}
         .clock-copy{min-width:72px}.clock-city{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}
         .clock-time{display:block;margin-top:2px;font-size:13px;font-weight:680;font-variant-numeric:tabular-nums}
+        .account-status{display:grid;justify-items:end;gap:6px;min-width:205px}
         .health{
-            min-height:46px;display:flex;align-items:center;gap:12px;padding:0 18px;
-            color:var(--green);border:1px solid rgba(62,118,85,.48);
-            border-radius:6px;background:rgba(255,252,246,.55);font-size:15px;font-weight:550
+            min-height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;
+            color:var(--green);border:1px solid rgba(62,118,85,.38);
+            border-radius:5px;background:rgba(255,252,246,.55);font-size:10px;font-weight:650
         }
         .health.warning{color:#9b691e;border-color:rgba(227,153,42,.55)}
-        .health-dot{width:10px;height:10px;border-radius:50%;background:currentColor;box-shadow:0 0 0 5px rgba(62,118,85,.09)}
+        .health-dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px rgba(62,118,85,.09)}
         .account{display:flex;align-items:center;gap:9px;color:#5e574e;font-size:12px;white-space:nowrap}
         .account-copy{display:grid;line-height:1.2}.account-copy strong{font-size:12px}.account-copy small{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.05em}
         .logout{width:30px;height:30px;padding:0;border:1px solid var(--line);border-radius:50%;color:var(--muted);background:var(--surface);cursor:pointer}.logout:hover{color:var(--coral);border-color:var(--coral)}
@@ -361,12 +360,13 @@ HTML = """
         .tab span{margin-left:6px;font-variant-numeric:tabular-nums}
         .tab:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;background:var(--coral);transform:scaleX(0);transition:transform .18s}
         .tab.active{color:var(--ink)}.tab.active:after{transform:scaleX(1)}
-        .toolbar{display:grid;grid-template-columns:minmax(300px,1.6fr) minmax(210px,.8fr) auto auto auto;gap:14px;padding:22px 0}
+        .toolbar{display:flex;gap:14px;padding:22px 0}
         .search,.source-select,.tool-button{
             height:52px;border:1px solid #c9c1b5;border-radius:6px;
             background:rgba(255,252,246,.58)
         }
         .search,.source-select{display:flex;align-items:center;gap:12px;padding:0 16px}
+        .search{flex:1 1 520px}.source-select{flex:0 1 370px}
         .search-icon{font-size:25px;line-height:1}
         .search input{width:100%;border:0;outline:0;color:var(--ink);background:transparent;font-size:16px}
         .search input::placeholder{color:#918b81}
@@ -432,15 +432,27 @@ HTML = """
         .panel-title .collapse-button{font-size:20px}
         .mark-all-read{padding:5px 7px;border-radius:4px!important;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
         .mark-all-read:hover{color:var(--coral-dark);background:#fff3ed}
-        .source-list{padding-top:10px}
+        .source-list{padding:10px 0}
         .source-row{
-            width:100%;min-height:40px;padding:0 18px;display:grid;grid-template-columns:20px minmax(0,1fr) auto auto;
-            align-items:center;gap:9px;border:0;color:#4f4a43;background:transparent;text-align:left;font-size:13px
+            width:100%;min-height:40px;display:flex;align-items:center;
+            color:#4f4a43;background:transparent;font-size:13px
         }
         .source-row:hover{background:#fff8f2}
+        .source-link{
+            min-width:0;min-height:40px;padding:0 7px 0 18px;display:grid;flex:1;
+            grid-template-columns:20px minmax(0,1fr) auto auto;align-items:center;
+            gap:9px;text-align:left
+        }
         .check{width:16px;height:16px;display:grid;place-items:center;color:#fff;border:1px solid #bdb5a9;border-radius:3px;font-size:11px}
         .source-row.active .check{border-color:var(--coral);background:var(--coral)}
         .source-row b{min-width:28px;padding:3px 5px;color:#827b71;border:1px solid var(--line);border-radius:5px;background:#f8f4ed;text-align:center;font-size:10px;font-weight:500}
+        .source-order-actions{display:flex;gap:2px;padding-right:9px}
+        .source-order-actions button{
+            width:23px;height:25px;padding:0;border:1px solid transparent;border-radius:4px;
+            color:#8a8379;background:transparent;font-size:13px;line-height:1
+        }
+        .source-order-actions button:hover{color:var(--coral);border-color:var(--line);background:var(--surface)}
+        .source-order-actions button:disabled{opacity:.2;cursor:default}
         .unread-count{min-width:28px;color:var(--green);text-align:right;font-size:11px;font-weight:700}
         .unread-count:empty{display:none}
         .unread-label{margin-left:auto;padding:3px 6px;color:var(--green);border:1px solid rgba(62,118,85,.35);border-radius:4px;background:rgba(62,118,85,.08);font-size:10px;text-transform:uppercase;letter-spacing:.04em}
@@ -471,7 +483,7 @@ HTML = """
                 width:100%;height:50px;grid-column:1/-1;grid-row:2;
                 justify-content:flex-start
             }
-            .toolbar{grid-template-columns:1fr 1fr}.content-grid{grid-template-columns:1fr}
+            .toolbar{flex-wrap:wrap}.search{flex-basis:55%}.source-select{flex:1 1 35%}.content-grid{grid-template-columns:1fr}
             .sidebar{grid-template-columns:1fr 1fr;grid-row:1}
         }
         @media(max-width:680px){
@@ -482,8 +494,8 @@ HTML = """
             .clock-copy{display:none}
             .account-copy{display:none}
             .brand-easter-logo{left:-7px;width:140px}
-            .health{min-height:38px;padding:0 12px;font-size:11px}
-            .toolbar,.sidebar{grid-template-columns:1fr}.news-card{padding:20px 48px 20px 18px}
+            .account-status{min-width:0}.health{min-height:27px;padding:0 9px;font-size:9px}
+            .toolbar{display:grid;grid-template-columns:1fr}.sidebar{grid-template-columns:1fr}.news-card{padding:20px 48px 20px 18px}
             .news-card.match{padding-left:13px}.feed-heading{padding:0 18px}.news-card h3{font-size:21px}
             .pagination{padding:12px 8px;gap:4px}.page-link,.page-current{min-width:34px;padding:0 8px}
             .meta{align-items:flex-start;flex-direction:column;gap:4px}.meta i{display:none}
@@ -507,16 +519,16 @@ HTML = """
         </a>
         <nav class="site-sections" aria-label="Основные разделы">
             <a class="site-section {{'active' if source_group == 'government' else ''}}" href="/">
-                Госструктуры <span>{{government_total}}</span>
+                Госструктуры
             </a>
             <a class="site-section {{'active' if source_group == 'agencies' else ''}}" href="/agencies">
-                Информагентства <span>{{agencies_total}}</span>
+                Информагентства
             </a>
             <a class="site-section {{'active' if source_group == 'newspapers' else ''}}" href="/newspapers">
-                Газеты <span>{{newspapers_total}}</span>
+                Газеты
             </a>
             <a class="site-section" href="/bookmarks">
-                Закладки <span>{{bookmark_count}}</span>
+                Закладки
             </a>
         </nav>
         <div class="topbar-tools">
@@ -530,19 +542,21 @@ HTML = """
                     <div class="clock-copy"><span class="clock-city">Токио</span><time class="clock-time">--:--:--</time></div>
                 </div>
             </div>
-            <div class="health {{'warning' if health_ok < health_total else ''}}">
-                <span class="health-dot"></span>
-                {{health_ok}} из {{health_total}} источников работают
-            </div>
-            <div class="account">
-                <a class="account-copy" href="/account" title="Настройки аккаунта">
-                    <strong>{{current_user.username}}</strong>
-                    <small>{{'Администратор' if current_user.role == 'admin' else 'Пользователь'}}</small>
-                </a>
-                <form method="post" action="/logout">
-                    <input type="hidden" name="csrf_token" value="{{csrf_token}}">
-                    <button class="logout" type="submit" aria-label="Выйти">↪</button>
-                </form>
+            <div class="account-status">
+                <div class="account">
+                    <a class="account-copy" href="/account" title="Настройки аккаунта">
+                        <strong>{{current_user.username}}</strong>
+                        <small>{{'Администратор' if current_user.role == 'admin' else 'Пользователь'}}</small>
+                    </a>
+                    <form method="post" action="/logout">
+                        <input type="hidden" name="csrf_token" value="{{csrf_token}}">
+                        <button class="logout" type="submit" aria-label="Выйти">↪</button>
+                    </form>
+                </div>
+                <div class="health {{'warning' if health_ok < health_total else ''}}">
+                    <span class="health-dot"></span>
+                    {{health_ok}} из {{health_total}} источников работают
+                </div>
             </div>
         </div>
     </header>
@@ -571,7 +585,6 @@ HTML = """
                 {% endfor %}
             </select>
         </label>
-        <button class="tool-button" id="toggle-sidebar" type="button">☷ Фильтры</button>
         {% if current_user.role == 'admin' %}
         <button class="tool-button" id="keywords-open" type="button">✣ Ключевые слова</button>
         {% endif %}
@@ -655,19 +668,27 @@ HTML = """
                     </div>
                 </header>
                 <div class="source-list" id="source-list">
-                    <a class="source-row {{'active' if not source_filter else ''}}" href="{{group_home}}">
-                        <span class="check">{{'✓' if not source_filter else ''}}</span>
-                        <span>Все источники</span>
-                        <b>{{total}}</b>
-                        <span class="unread-count" data-unread-source="__all__"></span>
-                    </a>
+                    <div class="source-row {{'active' if not source_filter else ''}}">
+                        <a class="source-link" href="{{group_home}}">
+                            <span class="check">{{'✓' if not source_filter else ''}}</span>
+                            <span>Все источники</span>
+                            <b>{{total}}</b>
+                            <span class="unread-count" data-unread-source="__all__"></span>
+                        </a>
+                    </div>
                     {% for src, count in sources %}
-                    <a class="source-row {{'active' if src == source_filter else ''}}" href="{{source_base}}{{src|urlencode}}">
-                        <span class="check">{{'✓' if src == source_filter else ''}}</span>
-                        <span>{{src}}</span>
-                        <b>{{count}}</b>
-                        <span class="unread-count" data-unread-source="{{src}}"></span>
-                    </a>
+                    <div class="source-row sortable-source {{'active' if src == source_filter else ''}}" data-source-row data-source-name="{{src}}">
+                        <a class="source-link" href="{{source_base}}{{src|urlencode}}">
+                            <span class="check">{{'✓' if src == source_filter else ''}}</span>
+                            <span>{{src}}</span>
+                            <b>{{count}}</b>
+                            <span class="unread-count" data-unread-source="{{src}}"></span>
+                        </a>
+                        <span class="source-order-actions">
+                            <button type="button" data-source-up title="Поднять источник" aria-label="Поднять {{src}}">↑</button>
+                            <button type="button" data-source-down title="Опустить источник" aria-label="Опустить {{src}}">↓</button>
+                        </span>
+                    </div>
                     {% endfor %}
                 </div>
             </section>
@@ -725,6 +746,7 @@ HTML = """
     const newsIndex = {{news_index|tojson}};
     const groupHome = {{group_home|tojson}};
     const sourceBase = {{source_base|tojson}};
+    const currentSourceGroup = {{source_group|tojson}};
     let saved = new Set({{saved_urls|tojson}});
     const legacySavedStorageKey = 'monitor-saved';
     const unreadStorageKey = 'monitor-unread-v1';
@@ -906,14 +928,64 @@ HTML = """
         refreshUnread();
     });
     search.addEventListener('input', applyFilters);
-    document.getElementById('toggle-sidebar').addEventListener('click', () => {
-        document.getElementById('sidebar').classList.toggle('hidden');
-    });
     document.getElementById('collapse-sources').addEventListener('click', event => {
         const list = document.getElementById('source-list');
         list.classList.toggle('hidden');
         event.currentTarget.textContent = list.classList.contains('hidden') ? '+' : '−';
     });
+    const sourceList = document.getElementById('source-list');
+    function orderedSourceRows(){
+        return [...sourceList.querySelectorAll('[data-source-row]')];
+    }
+    function refreshSourceOrderButtons(){
+        const rows = orderedSourceRows();
+        rows.forEach((row, index) => {
+            row.querySelector('[data-source-up]').disabled = index === 0;
+            row.querySelector('[data-source-down]').disabled = index === rows.length - 1;
+        });
+    }
+    async function saveSourceOrder(){
+        const rows = orderedSourceRows();
+        rows.forEach(row => row.querySelectorAll('.source-order-actions button').forEach(button => button.disabled = true));
+        const response = await fetch('/api/source-order', {
+            method:'POST',
+            headers:{
+                'Content-Type':'application/json',
+                'X-CSRF-Token': {{csrf_token|tojson}}
+            },
+            body:JSON.stringify({
+                source_group:currentSourceGroup,
+                sources:rows.map(row => row.dataset.sourceName)
+            })
+        });
+        if(!response.ok){
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'Не удалось сохранить порядок источников');
+        }
+        refreshSourceOrderButtons();
+    }
+    sourceList.querySelectorAll('[data-source-up],[data-source-down]').forEach(button => {
+        button.addEventListener('click', async () => {
+            const row = button.closest('[data-source-row]');
+            const rows = orderedSourceRows();
+            const index = rows.indexOf(row);
+            const movingUp = button.hasAttribute('data-source-up');
+            if(movingUp && index > 0){
+                sourceList.insertBefore(row, rows[index - 1]);
+            }else if(!movingUp && index < rows.length - 1){
+                sourceList.insertBefore(rows[index + 1], row);
+            }else{
+                return;
+            }
+            try{
+                await saveSourceOrder();
+            }catch(error){
+                window.alert(error.message);
+                window.location.reload();
+            }
+        });
+    });
+    refreshSourceOrderButtons();
     function goToSource(source){
         window.location.href = source ? sourceBase + encodeURIComponent(source) : groupHome;
     }
@@ -1393,6 +1465,25 @@ def can_view_admin_diagnostics():
     return bool(user and user.get("role") == "admin")
 
 
+def apply_source_order(sources, preferred_names):
+    """Ставит сохранённые пользователем источники первыми, новые — в конец."""
+    remaining = {
+        str(name).casefold(): (name, count)
+        for name, count in sources
+    }
+    ordered = []
+    for preferred in preferred_names or []:
+        item = remaining.pop(str(preferred).casefold(), None)
+        if item is not None:
+            ordered.append(item)
+    ordered.extend(
+        item
+        for item in sources
+        if str(item[0]).casefold() in remaining
+    )
+    return ordered
+
+
 def render_news_page(
     news,
     mode="all",
@@ -1410,9 +1501,6 @@ def render_news_page(
     found_news = load_json("found_news.json", [])
     status = load_json("parser_status.json", {})
 
-    government_news = filter_news_by_group(all_news, GOVERNMENT_GROUP)
-    agency_news = filter_news_by_group(all_news, AGENCIES_GROUP)
-    newspaper_news = filter_news_by_group(all_news, NEWSPAPERS_GROUP)
     group_news = filter_news_by_group(all_news, source_group)
     group_found_news = filter_news_by_group(found_news, source_group)
     news = filter_news_by_group(news, source_group)
@@ -1422,6 +1510,11 @@ def render_news_page(
         for item in group_news
     )
     sources = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    if user["id"]:
+        sources = apply_source_order(
+            sources,
+            load_source_order(user["id"], source_group),
+        )
 
     status_sources = [
         item
@@ -1553,9 +1646,6 @@ def render_news_page(
         group_home=group_home,
         group_found=group_found,
         source_base=source_base,
-        government_total=len(government_news),
-        agencies_total=len(agency_news),
-        newspapers_total=len(newspaper_news),
         health_total=total_sources,
         health_ok=ok_sources,
         health_empty=sum(
@@ -1807,6 +1897,38 @@ def bookmarks_api():
         urls=bookmarked_urls(user_id),
         count=count_bookmarks(user_id),
     )
+
+
+@app.post("/api/source-order")
+def source_order_api():
+    """Сохраняет личный порядок правой панели для выбранного раздела."""
+    user = current_user()
+    if not csrf_is_valid():
+        return jsonify(error="Сессия устарела. Обновите страницу."), 400
+    payload = request.get_json(silent=True) or {}
+    source_group = str(payload.get("source_group", "")).strip().casefold()
+    if source_group not in {
+        GOVERNMENT_GROUP,
+        AGENCIES_GROUP,
+        NEWSPAPERS_GROUP,
+    }:
+        return jsonify(error="Неизвестный раздел источников"), 400
+    requested = payload.get("sources")
+    if not isinstance(requested, list):
+        return jsonify(error="Некорректный порядок источников"), 400
+
+    group_news = filter_news_by_group(load_json("all_news.json", []), source_group)
+    counts = Counter(
+        item.get("source", "Неизвестный источник")
+        for item in group_news
+    )
+    available = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    final_order = [name for name, _ in apply_source_order(available, requested)]
+    try:
+        saved = save_source_order(user["id"], source_group, final_order)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+    return jsonify(sources=saved)
 
 
 if __name__ == "__main__":

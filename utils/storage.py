@@ -155,6 +155,15 @@ def _create_schema(connection):
                 ON DELETE SET NULL
         );
 
+        CREATE TABLE IF NOT EXISTS user_source_orders (
+            user_id INTEGER NOT NULL,
+            source_group TEXT NOT NULL,
+            source_order_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(user_id, source_group),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
         CREATE INDEX IF NOT EXISTS idx_news_source
             ON news_items(source);
         CREATE INDEX IF NOT EXISTS idx_news_publication_date
@@ -169,6 +178,8 @@ def _create_schema(connection):
             ON bookmarks(user_id, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_bookmarks_folder
             ON bookmarks(user_id, folder_id, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_user_source_orders_user
+            ON user_source_orders(user_id, source_group);
         """
     )
 
@@ -350,6 +361,74 @@ def authenticate_user(username, password):
     user = _user_from_row(row)
     user["last_login_at"] = logged_at
     return user
+
+
+def load_source_order(user_id, source_group):
+    """Возвращает личный порядок источников для одного раздела."""
+    user_id = _validated_user_id(user_id)
+    source_group = _validated_source_group(source_group)
+    initialize_database()
+    with _connect() as connection:
+        row = connection.execute(
+            """
+            SELECT source_order_json
+            FROM user_source_orders
+            WHERE user_id = ? AND source_group = ?
+            """,
+            (user_id, source_group),
+        ).fetchone()
+    if row is None:
+        return []
+    try:
+        values = json.loads(row["source_order_json"])
+    except (TypeError, json.JSONDecodeError):
+        return []
+    if not isinstance(values, list):
+        return []
+    result = []
+    seen = set()
+    for value in values:
+        source = " ".join(str(value or "").split())[:300]
+        if source and source.casefold() not in seen:
+            seen.add(source.casefold())
+            result.append(source)
+    return result
+
+
+def save_source_order(user_id, source_group, sources):
+    """Сохраняет личный порядок источников, не затрагивая других пользователей."""
+    user_id = _validated_user_id(user_id)
+    source_group = _validated_source_group(source_group)
+    if not isinstance(sources, list) or len(sources) > 500:
+        raise ValueError("Некорректный список источников")
+    order = []
+    seen = set()
+    for value in sources:
+        source = " ".join(str(value or "").split())
+        key = source.casefold()
+        if not source or len(source) > 300 or key in seen:
+            continue
+        seen.add(key)
+        order.append(source)
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO user_source_orders(
+                user_id, source_group, source_order_json, updated_at
+            ) VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, source_group) DO UPDATE SET
+                source_order_json = excluded.source_order_json,
+                updated_at = excluded.updated_at
+            """,
+            (
+                user_id,
+                source_group,
+                json.dumps(order, ensure_ascii=False),
+                datetime.now().isoformat(timespec="seconds"),
+            ),
+        )
+    return order
 
 
 def list_bookmark_folders(user_id):
@@ -590,6 +669,13 @@ def _validated_user_id(value):
     if user_id < 1 or load_user(user_id) is None:
         raise ValueError("Пользователь не найден")
     return user_id
+
+
+def _validated_source_group(value):
+    source_group = str(value or "").strip().casefold()
+    if source_group not in {"government", "agencies", "newspapers"}:
+        raise ValueError("Неизвестный раздел источников")
+    return source_group
 
 
 def _validated_folder_id(value):
