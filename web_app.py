@@ -37,11 +37,15 @@ from utils.storage import (
     authenticate_user,
     count_users,
     create_user,
+    list_users,
     load_all_news,
     load_cached_article,
     load_found_news,
     load_user,
     save_cached_article,
+    set_user_active,
+    set_user_password,
+    set_user_role,
 )
 
 
@@ -106,6 +110,87 @@ AUTH_HTML = """
     </form>
     {% if error %}<div class="error">{{error}}</div>{% endif %}
     {% if mode == 'setup' %}<p class="hint">Пароль хранится в SQLite только в виде защищённого хеша.</p>{% endif %}
+</main></body></html>
+"""
+
+
+SETTINGS_HTML = """
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{title}} — Монитор</title>
+    <style>
+        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655}
+        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}.shell{width:min(1050px,calc(100% - 34px));margin:auto;padding:30px 0 80px}
+        a{color:inherit}.back{color:var(--muted);text-decoration:none}.back:hover{color:var(--coral)}header{display:flex;align-items:end;justify-content:space-between;gap:20px;margin:34px 0 25px}h1{margin:0;font-size:clamp(36px,5vw,58px);letter-spacing:-.05em}.subtitle{margin:8px 0 0;color:var(--muted)}
+        .card{padding:25px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.card h2{margin:0 0 18px;font-size:21px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.wide{grid-column:1/-1}label{display:grid;gap:7px;color:#5e574e;font-size:12px;font-weight:650}input,select{width:100%;height:44px;padding:0 12px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}button,.button{min-height:42px;padding:0 15px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;font:650 13px inherit;cursor:pointer}.primary{color:#fff;background:var(--coral)}button:disabled{cursor:not-allowed;opacity:.42}.message,.error{margin:0 0 18px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}
+        .users{display:grid;gap:12px;margin-top:18px}.user{display:grid;grid-template-columns:minmax(150px,1fr) 145px 130px minmax(230px,1.4fr);gap:14px;align-items:center;padding:18px;border:1px solid var(--line);border-radius:7px;background:var(--surface)}.identity strong{display:block}.identity small,.last-login{color:var(--muted);font-size:11px}.status{width:max-content;padding:5px 8px;border-radius:999px;color:var(--green);background:#edf6ef;font-size:10px;font-weight:750;text-transform:uppercase}.status.off{color:#9d302a;background:#fff0ed}.inline{display:flex;gap:7px;align-items:end}.inline label{flex:1}.inline button{flex:0 0 auto}.role-form{display:flex;gap:7px}.role-form select{min-width:0}.top-actions{display:flex;gap:9px;align-items:center}.button{display:inline-flex;align-items:center;text-decoration:none}
+        @media(max-width:850px){.user{grid-template-columns:1fr 1fr}.user-actions{grid-column:1/-1}}@media(max-width:580px){header{align-items:start;flex-direction:column}.grid,.user{grid-template-columns:1fr}.wide,.user-actions{grid-column:auto}.inline,.role-form{align-items:stretch;flex-direction:column}}
+    </style>
+</head>
+<body><main class="shell">
+    <a class="back" href="/">← Вернуться к Монитору</a>
+    <header>
+        <div><h1>{{title}}</h1><p class="subtitle">{{subtitle}}</p></div>
+        <div class="top-actions">
+            {% if mode == 'account' and current_user.role == 'admin' %}<a class="button" href="/admin/users">Пользователи</a>{% endif %}
+            {% if mode == 'users' %}<a class="button" href="/account">Мой аккаунт</a>{% endif %}
+        </div>
+    </header>
+    {% if message %}<p class="message">{{message}}</p>{% endif %}
+    {% if error %}<p class="error">{{error}}</p>{% endif %}
+
+    {% if mode == 'account' %}
+    <section class="card">
+        <h2>Сменить пароль</h2>
+        <form method="post" class="grid">
+            <input type="hidden" name="csrf_token" value="{{csrf_token}}">
+            <label class="wide">Текущий пароль<input type="password" name="current_password" autocomplete="current-password" required></label>
+            <label>Новый пароль<input type="password" name="new_password" minlength="10" autocomplete="new-password" required></label>
+            <label>Повтори новый пароль<input type="password" name="password_confirm" minlength="10" autocomplete="new-password" required></label>
+            <div class="wide"><button class="primary" type="submit">Сохранить новый пароль</button></div>
+        </form>
+    </section>
+    {% else %}
+    <section class="card">
+        <h2>Новый пользователь</h2>
+        <form method="post" class="grid">
+            <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="create">
+            <label>Логин<input name="username" minlength="3" maxlength="50" required></label>
+            <label>Роль<select name="role"><option value="user">Пользователь</option><option value="admin">Администратор</option></select></label>
+            <label>Временный пароль<input type="password" name="password" minlength="10" autocomplete="new-password" required></label>
+            <label>Повтори пароль<input type="password" name="password_confirm" minlength="10" autocomplete="new-password" required></label>
+            <div class="wide"><button class="primary" type="submit">Создать аккаунт</button></div>
+        </form>
+    </section>
+
+    <section class="users">
+        {% for user in users %}
+        <article class="user">
+            <div class="identity"><strong>{{user.username}}{{' · это вы' if user.id == current_user.id else ''}}</strong><small>Создан {{user.created_at.replace('T',' ')}}</small></div>
+            <span class="status {{'off' if not user.is_active else ''}}">{{'Активен' if user.is_active else 'Отключён'}}</span>
+            <form class="role-form" method="post">
+                <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{user.id}}">
+                <select name="role" {{'disabled' if user.id == current_user.id else ''}}><option value="user" {{'selected' if user.role == 'user' else ''}}>Пользователь</option><option value="admin" {{'selected' if user.role == 'admin' else ''}}>Администратор</option></select>
+                <button type="submit" {{'disabled' if user.id == current_user.id else ''}}>Роль</button>
+            </form>
+            <div class="user-actions">
+                <form class="inline" method="post">
+                    <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="password"><input type="hidden" name="user_id" value="{{user.id}}">
+                    <label>Новый пароль<input type="password" name="password" minlength="10" autocomplete="new-password" required></label><button type="submit">Сменить</button>
+                </form>
+                <form method="post" style="margin-top:8px">
+                    <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="toggle"><input type="hidden" name="user_id" value="{{user.id}}">
+                    <button type="submit" {{'disabled' if user.id == current_user.id else ''}}>{{'Отключить вход' if user.is_active else 'Включить вход'}}</button>
+                    <span class="last-login">Последний вход: {{user.last_login_at.replace('T',' ') if user.last_login_at else 'ещё не входил'}}</span>
+                </form>
+            </div>
+        </article>
+        {% endfor %}
+    </section>
+    {% endif %}
 </main></body></html>
 """
 
@@ -381,10 +466,10 @@ HTML = """
                 {{health_ok}} из {{health_total}} источников работают
             </div>
             <div class="account">
-                <div class="account-copy">
+                <a class="account-copy" href="/account" title="Настройки аккаунта">
                     <strong>{{current_user.username}}</strong>
                     <small>{{'Администратор' if current_user.role == 'admin' else 'Пользователь'}}</small>
-                </div>
+                </a>
                 <form method="post" action="/logout">
                     <input type="hidden" name="csrf_token" value="{{csrf_token}}">
                     <button class="logout" type="submit" aria-label="Выйти">↪</button>
@@ -1007,6 +1092,109 @@ def logout():
         abort(400)
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/account", methods=["GET", "POST"])
+def account():
+    """Позволяет вошедшему пользователю безопасно сменить свой пароль."""
+    user = current_user()
+    error = ""
+    message = str(request.args.get("message", "")).strip()
+    if request.method == "POST":
+        if not csrf_is_valid():
+            abort(400)
+        current_password = request.form.get("current_password", "")
+        new_password = request.form.get("new_password", "")
+        password_confirm = request.form.get("password_confirm", "")
+        if authenticate_user(user["username"], current_password) is None:
+            error = "Текущий пароль введён неверно"
+        elif new_password != password_confirm:
+            error = "Новые пароли не совпадают"
+        else:
+            try:
+                set_user_password(user["id"], new_password)
+            except ValueError as password_error:
+                error = str(password_error)
+            else:
+                session.clear()
+                session.permanent = True
+                session["user_id"] = user["id"]
+                csrf_token()
+                return redirect(
+                    url_for("account", message="Пароль успешно изменён")
+                )
+    return render_template_string(
+        SETTINGS_HTML,
+        mode="account",
+        title="Мой аккаунт",
+        subtitle=f"{user['username']} · "
+        + ("администратор" if user["role"] == "admin" else "пользователь"),
+        current_user=user,
+        csrf_token=csrf_token(),
+        message=message,
+        error=error,
+    )
+
+
+@app.route("/admin/users", methods=["GET", "POST"])
+def admin_users():
+    """Управляет аккаунтами, не удаляя связанные пользовательские данные."""
+    administrator = current_user()
+    if not administrator or administrator.get("role") != "admin":
+        abort(403)
+
+    if request.method == "POST":
+        if not csrf_is_valid():
+            abort(400)
+        action = str(request.form.get("action", "")).strip()
+        try:
+            if action == "create":
+                password = request.form.get("password", "")
+                if password != request.form.get("password_confirm", ""):
+                    raise ValueError("Пароли нового пользователя не совпадают")
+                created = create_user(
+                    request.form.get("username", ""),
+                    password,
+                    request.form.get("role", "user"),
+                )
+                message = f"Пользователь {created['username']} создан"
+            else:
+                target = load_user(request.form.get("user_id"))
+                if target is None:
+                    raise ValueError("Пользователь не найден")
+                if action == "role":
+                    if target["id"] == administrator["id"]:
+                        raise ValueError("Нельзя менять собственную роль")
+                    updated = set_user_role(target["id"], request.form.get("role"))
+                    message = f"Роль пользователя {updated['username']} изменена"
+                elif action == "toggle":
+                    if target["id"] == administrator["id"]:
+                        raise ValueError("Нельзя отключить собственный аккаунт")
+                    updated = set_user_active(target["id"], not target["is_active"])
+                    state = "включён" if updated["is_active"] else "отключён"
+                    message = f"Вход для {updated['username']} {state}"
+                elif action == "password":
+                    updated = set_user_password(
+                        target["id"], request.form.get("password", "")
+                    )
+                    message = f"Пароль пользователя {updated['username']} изменён"
+                else:
+                    raise ValueError("Неизвестное действие")
+        except ValueError as operation_error:
+            return redirect(url_for("admin_users", error=str(operation_error)))
+        return redirect(url_for("admin_users", message=message))
+
+    return render_template_string(
+        SETTINGS_HTML,
+        mode="users",
+        title="Пользователи",
+        subtitle="Аккаунты, роли и доступ к Монитору",
+        current_user=administrator,
+        users=list_users(),
+        csrf_token=csrf_token(),
+        message=str(request.args.get("message", "")).strip(),
+        error=str(request.args.get("error", "")).strip(),
+    )
 
 
 def can_view_admin_diagnostics():

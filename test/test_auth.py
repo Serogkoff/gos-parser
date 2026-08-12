@@ -158,6 +158,100 @@ class AuthenticationTests(unittest.TestCase):
             headers={"X-CSRF-Token": self._csrf(page)},
         )
         self.assertEqual(forbidden.status_code, 403)
+        self.assertEqual(self.client.get("/admin/users").status_code, 403)
+
+    def test_admin_creates_manages_and_reactivates_user(self):
+        self._create_first_admin()
+        page = self.client.get("/admin/users")
+        token = self._csrf(page)
+        created = self.client.post(
+            "/admin/users",
+            data={
+                "csrf_token": token,
+                "action": "create",
+                "username": "journalist",
+                "role": "user",
+                "password": "temporary-2026",
+                "password_confirm": "temporary-2026",
+            },
+        )
+        self.assertEqual(created.status_code, 302)
+        user = next(
+            item for item in storage.list_users() if item["username"] == "journalist"
+        )
+        self.assertEqual(user["role"], "user")
+
+        promoted = self.client.post(
+            "/admin/users",
+            data={
+                "csrf_token": token,
+                "action": "role",
+                "user_id": user["id"],
+                "role": "admin",
+            },
+        )
+        self.assertEqual(promoted.status_code, 302)
+        self.assertEqual(storage.load_user(user["id"])["role"], "admin")
+
+        disabled = self.client.post(
+            "/admin/users",
+            data={
+                "csrf_token": token,
+                "action": "toggle",
+                "user_id": user["id"],
+            },
+        )
+        self.assertEqual(disabled.status_code, 302)
+        self.assertFalse(storage.load_user(user["id"])["is_active"])
+        self.assertIsNone(storage.authenticate_user("journalist", "temporary-2026"))
+
+        self.client.post(
+            "/admin/users",
+            data={
+                "csrf_token": token,
+                "action": "toggle",
+                "user_id": user["id"],
+            },
+        )
+        self.client.post(
+            "/admin/users",
+            data={
+                "csrf_token": token,
+                "action": "password",
+                "user_id": user["id"],
+                "password": "replacement-2026",
+            },
+        )
+        self.assertIsNotNone(
+            storage.authenticate_user("journalist", "replacement-2026")
+        )
+
+    def test_user_can_change_own_password(self):
+        self._create_first_admin()
+        page = self.client.get("/account")
+        changed = self.client.post(
+            "/account",
+            data={
+                "csrf_token": self._csrf(page),
+                "current_password": "super-secret-2026",
+                "new_password": "new-owner-secret-2026",
+                "password_confirm": "new-owner-secret-2026",
+            },
+        )
+        self.assertEqual(changed.status_code, 302)
+        self.assertIsNone(storage.authenticate_user("owner", "super-secret-2026"))
+        self.assertIsNotNone(
+            storage.authenticate_user("owner", "new-owner-secret-2026")
+        )
+
+    def test_last_active_admin_cannot_be_disabled_or_demoted(self):
+        admin = storage.create_user("owner", "super-secret-2026", role="admin")
+        with self.assertRaisesRegex(ValueError, "последнего активного"):
+            storage.set_user_active(admin["id"], False)
+        with self.assertRaisesRegex(ValueError, "последнего активного"):
+            storage.set_user_role(admin["id"], "user")
+        self.assertTrue(storage.load_user(admin["id"])["is_active"])
+        self.assertEqual(storage.load_user(admin["id"])["role"], "admin")
 
     def test_external_next_url_is_not_accepted(self):
         self.assertEqual(web_app.safe_next_url("https://example.com"), "/")

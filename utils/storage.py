@@ -196,6 +196,97 @@ def load_user(user_id):
     return _user_from_row(row)
 
 
+def list_users():
+    """Возвращает безопасный список пользователей без хешей паролей."""
+    initialize_database()
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, username, role, is_active, created_at, last_login_at
+            FROM users
+            ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END,
+                     username COLLATE NOCASE
+            """
+        ).fetchall()
+    return [_user_from_row(row) for row in rows]
+
+
+def set_user_password(user_id, password):
+    """Заменяет пароль пользователя новым защищённым хешем."""
+    password = _validate_password(password)
+    user = load_user(user_id)
+    if user is None:
+        raise ValueError("Пользователь не найден")
+    with STORAGE_LOCK, _connect() as connection:
+        connection.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (generate_password_hash(password), user["id"]),
+        )
+    return load_user(user["id"])
+
+
+def set_user_role(user_id, role):
+    """Меняет роль, не позволяя убрать последнего активного администратора."""
+    role = str(role or "").strip().casefold()
+    if role not in {"admin", "user"}:
+        raise ValueError("Неизвестная роль пользователя")
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Пользователь не найден") from error
+
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT role, is_active FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("Пользователь не найден")
+        if row["role"] == "admin" and role != "admin" and row["is_active"]:
+            active_admins = connection.execute(
+                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1"
+            ).fetchone()[0]
+            if active_admins <= 1:
+                raise ValueError("Нельзя понизить последнего активного администратора")
+        connection.execute(
+            "UPDATE users SET role = ? WHERE id = ?",
+            (role, user_id),
+        )
+    return load_user(user_id)
+
+
+def set_user_active(user_id, is_active):
+    """Включает или отключает вход, сохраняя все данные пользователя."""
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Пользователь не найден") from error
+    is_active = bool(is_active)
+
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT role, is_active FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("Пользователь не найден")
+        if row["role"] == "admin" and row["is_active"] and not is_active:
+            active_admins = connection.execute(
+                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1"
+            ).fetchone()[0]
+            if active_admins <= 1:
+                raise ValueError("Нельзя отключить последнего активного администратора")
+        connection.execute(
+            "UPDATE users SET is_active = ? WHERE id = ?",
+            (int(is_active), user_id),
+        )
+    return load_user(user_id)
+
+
 def authenticate_user(username, password):
     """Проверяет пароль и возвращает активного пользователя."""
     username = " ".join(str(username or "").split())
