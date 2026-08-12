@@ -88,6 +88,41 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual(saved[0]["date"], "2026-08-03")
         self.assertIn("официальный", saved[0]["summary"].casefold())
 
+    def test_load_hides_invalid_items_already_stored_in_sqlite(self):
+        self._write_json(self.all_json, [])
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+        invalid = {
+            "source": "Российская газета",
+            "title": (
+                "Федеральный закон от 4 августа 2026 г. N 331-ФЗ "
+                "О внесении изменений в законодательные акты"
+            ),
+            "url": "https://rg.ru/2026/08/12/fz331-dok.html",
+            "date": "2026-08-12",
+        }
+        with storage._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO news_items(
+                    news_key, normalized_url, source, title,
+                    publication_date, parsed_date, payload_json, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "legacy-rg-document",
+                    invalid["url"],
+                    invalid["source"],
+                    invalid["title"],
+                    invalid["date"],
+                    "",
+                    json.dumps(invalid, ensure_ascii=False),
+                    "2026-08-12T15:00:00",
+                ),
+            )
+
+        self.assertEqual(storage.load_all_news(), [])
+
     def test_replace_found_news_removes_old_matches(self):
         first = {
             "source": "МЧС",

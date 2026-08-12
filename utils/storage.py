@@ -209,13 +209,16 @@ def initialize_database():
 def load_all_news():
     initialize_database()
     with _connect() as connection:
-        return _load_collection(connection, "news_items")
+        # Правила очистки развиваются вместе с парсерами. Применяем их и к
+        # уже накопленной SQLite-базе, чтобы старые служебные карточки не
+        # оставались в интерфейсе до следующего запуска своего источника.
+        return deduplicate_news(_load_collection(connection, "news_items"))
 
 
 def load_found_news():
     initialize_database()
     with _connect() as connection:
-        return _load_collection(connection, "found_items")
+        return deduplicate_news(_load_collection(connection, "found_items"))
 
 
 def find_news_by_url(url):
