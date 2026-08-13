@@ -705,9 +705,9 @@ HTML = """
                     <h3>Требуют внимания</h3>
                     {% for item in problem_sources %}
                     <div class="problem-source" title="{{item.error or item.checked_at}}">
-                        <span class="dot {{'coral' if item.status == 'error' else 'amber'}}"></span>
+                        <span class="dot {{'amber' if item.availability == 'temporary' else 'coral'}}"></span>
                         <span>{{item.source}}</span>
-                        <em>{{'ошибка' if item.status == 'error' else 'пусто'}}</em>
+                        <em>{% if item.availability == 'temporary' %}временно{% elif item.status == 'error' %}ошибка{% else %}недоступен{% endif %}</em>
                     </div>
                     {% endfor %}
                 </div>

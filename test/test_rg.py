@@ -1,8 +1,10 @@
 import unittest
+from unittest import mock
 
 from bs4 import BeautifulSoup
 
-from parsers.sites.rg import _parse_fresh_issue
+from parsers.sites import rg
+from parsers.sites.rg import _parse_fresh_issue, _parse_xml_feed
 
 
 class RussianGazetteTests(unittest.TestCase):
@@ -42,6 +44,64 @@ class RussianGazetteTests(unittest.TestCase):
             "Новый закон изменит правила обращения с пестицидами",
         )
         self.assertFalse(any("323-ФЗ" in item["title"] for item in result))
+
+    def test_reads_only_newest_day_from_official_xml_fallback(self):
+        soup = BeautifulSoup(
+            """
+            <rss><channel>
+              <item>
+                <title>Новая редакционная статья Российской газеты</title>
+                <link>https://rg.ru/2026/08/13/novyi-material.html</link>
+                <pubDate>Thu, 13 Aug 2026 08:00:00 +0300</pubDate>
+                <description><![CDATA[<p>Краткий анонс свежего материала.</p>]]></description>
+              </item>
+              <item>
+                <title>Вчерашняя редакционная статья Российской газеты</title>
+                <link>https://rg.ru/2026/08/12/staryi-material.html</link>
+                <pubDate>Wed, 12 Aug 2026 08:00:00 +0300</pubDate>
+              </item>
+              <item>
+                <title>Федеральный закон от 12 августа 2026 г. N 1-ФЗ</title>
+                <link>https://rg.ru/2026/08/13/fz1-dok.html</link>
+                <pubDate>Thu, 13 Aug 2026 09:00:00 +0300</pubDate>
+              </item>
+            </channel></rss>
+            """,
+            "html.parser",
+        )
+
+        result = _parse_xml_feed(soup)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["date"], "2026-08-13")
+        self.assertEqual(result[0]["section"], "XML · резерв")
+        self.assertIn("Краткий анонс", result[0]["summary"])
+
+    def test_parse_uses_xml_after_page_and_browser_fail(self):
+        feed = BeautifulSoup(
+            """
+            <rss><channel><item>
+              <title>Свежая редакционная статья Российской газеты</title>
+              <link>https://rg.ru/2026/08/13/novyi-material.html</link>
+              <pubDate>Thu, 13 Aug 2026 08:00:00 +0300</pubDate>
+            </item></channel></rss>
+            """,
+            "html.parser",
+        )
+        with mock.patch.object(
+            rg,
+            "fetch_soup",
+            side_effect=[None, feed],
+        ) as fetch, mock.patch.object(
+            rg,
+            "fetch_soup_js",
+            return_value=None,
+        ):
+            result = rg.parse()
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(fetch.call_args.kwargs["attempts"], 1)
 
 
 if __name__ == "__main__":

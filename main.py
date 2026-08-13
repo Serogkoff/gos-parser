@@ -1,4 +1,5 @@
 import time
+import multiprocessing
 from datetime import datetime, timedelta
 from threading import Event, Thread
 
@@ -7,11 +8,15 @@ from config import (
     DATABASE_BACKUP_RETENTION,
     GOVERNMENT_UPDATE_INTERVAL,
     KYODO_UPDATE_INTERVAL,
+    KYODO_MAX_BACKOFF_SECONDS,
     MAX_RETRIES,
     NEWSPAPER_UPDATE_HOUR,
     PAUSE_BETWEEN_REQUESTS,
     PROJECT_VERSION,
+    SOURCE_TIMEOUT_OVERRIDES,
+    SOURCE_TIMEOUT_SECONDS,
 )
+from utils.parser_runner import ParserTimeoutError, run_parser_with_timeout
 from utils.news import deduplicate_news
 from utils.status import print_status_table, save_parser_status
 from utils.storage import (
@@ -124,11 +129,11 @@ SITES = [
 ]
 
 
-def safe_parse(parser_func, max_retries=2):
+def safe_parse(parser_func, max_retries=2, timeout_seconds=SOURCE_TIMEOUT_SECONDS):
     last_error = ""
     for attempt in range(1, max_retries + 1):
         try:
-            news = parser_func()
+            news = run_parser_with_timeout(parser_func, timeout_seconds)
             if news is None:
                 raise ValueError("Парсер вернул None")
             if not isinstance(news, list):
@@ -137,6 +142,9 @@ def safe_parse(parser_func, max_retries=2):
         except Exception as error:
             last_error = f"{type(error).__name__}: {str(error)[:200]}"
             print(f"  ❌ попытка {attempt}/{max_retries}: {type(error).__name__}: {str(error)[:100]}")
+            if isinstance(error, ParserTimeoutError):
+                print("  ℹ️ Источник остановлен, остальные продолжают работу")
+                break
             if attempt < max_retries:
                 time.sleep(3)
     return [], last_error
@@ -160,7 +168,14 @@ def run_once(sites=None, group_name="Все источники", merge_status=Fa
     for name, parser_func in sites:
         print(f"\n{name}:")
         started = time.perf_counter()
-        news, error = safe_parse(parser_func, max_retries=MAX_RETRIES)
+        news, error = safe_parse(
+            parser_func,
+            max_retries=MAX_RETRIES,
+            timeout_seconds=SOURCE_TIMEOUT_OVERRIDES.get(
+                name,
+                SOURCE_TIMEOUT_SECONDS,
+            ),
+        )
         duration = time.perf_counter() - started
         all_news.extend(news)
         matches = search_keywords(news)
@@ -214,11 +229,22 @@ def run_once(sites=None, group_name="Все источники", merge_status=Fa
             if url:
                 print(f"     🔗 {url}")
 
+    return parser_statuses
 
-def run_schedule(sites, group_name, interval, stop_event):
+
+def run_schedule(
+    sites,
+    group_name,
+    interval,
+    stop_event,
+    failure_backoff=False,
+    max_backoff_seconds=None,
+):
+    consecutive_failures = 0
     while not stop_event.is_set():
+        statuses = []
         try:
-            run_once(
+            statuses = run_once(
                 sites,
                 group_name=group_name,
                 merge_status=True,
@@ -229,12 +255,39 @@ def run_schedule(sites, group_name, interval, stop_event):
                 f"{type(error).__name__}: {error}"
             )
 
+        group_worked = any(
+            item.get("status") == "ok"
+            for item in statuses
+        )
+        consecutive_failures = (
+            0 if group_worked else consecutive_failures + 1
+        )
+        wait_seconds = _schedule_delay(
+            interval,
+            consecutive_failures,
+            failure_backoff=failure_backoff,
+            max_backoff_seconds=max_backoff_seconds,
+        )
+
         if not stop_event.is_set():
             print(
                 f"\n⏳ {group_name}: следующая проверка "
-                f"через {interval // 60} мин."
+                f"через {wait_seconds // 60} мин."
             )
-        stop_event.wait(interval)
+        stop_event.wait(wait_seconds)
+
+
+def _schedule_delay(
+    interval,
+    consecutive_failures,
+    failure_backoff=False,
+    max_backoff_seconds=None,
+):
+    """Увеличивает паузу только для полностью неработающей группы."""
+    if not failure_backoff or consecutive_failures <= 0:
+        return interval
+    maximum = max_backoff_seconds or interval * 8
+    return min(interval * (2 ** min(consecutive_failures, 3)), maximum)
 
 
 def run_daily_schedule(sites, group_name, hour, stop_event):
@@ -308,6 +361,8 @@ def main():
             "Киодо",
             KYODO_UPDATE_INTERVAL,
             stop_event,
+            True,
+            KYODO_MAX_BACKOFF_SECONDS,
         ),
         name="kyodo-parser",
         daemon=True,
@@ -344,4 +399,5 @@ def main():
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()

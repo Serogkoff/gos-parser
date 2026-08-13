@@ -1,4 +1,4 @@
-PROJECT_VERSION = "2026.08.12.16"
+PROJECT_VERSION = "2026.08.13.1"
 
 KEYWORDS = [
     "Курил", "Сахалин", "Владивосток", "Хабаровск", "Камчатка", "Дальний Восток",
@@ -34,6 +34,16 @@ NEWSPAPER_UPDATE_HOUR = 8
 # Старое имя оставлено для совместимости с локальными скриптами.
 UPDATE_INTERVAL = GOVERNMENT_UPDATE_INTERVAL
 MAX_RETRIES = 2
+
+# Даже зависший браузер одного ведомства не должен задерживать весь цикл.
+SOURCE_TIMEOUT_SECONDS = 120
+SOURCE_TIMEOUT_OVERRIDES = {
+    "Сахалин": 90,
+    "Киодо (共同通信)": 45,
+}
+
+# После серии пустых проверок Киодо увеличивает паузу до одного часа.
+KYODO_MAX_BACKOFF_SECONDS = 3600
 
 # SQLite: один автоматический снимок в сутки, храним последнюю неделю.
 DATABASE_BACKUP_RETENTION = 7

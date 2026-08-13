@@ -56,15 +56,16 @@ def parse():
 
 
 def _fetch_page_props():
-    """Получает компактные данные Next.js, не скачивая тяжёлую главную."""
+    """Получает данные Next.js и обновляет изменившийся buildId."""
     global _next_build_id
 
     data_url = f"{HOME_URL}_next/data/{_next_build_id}/news.json"
+    stale_build = False
     try:
         response = requests.get(
             data_url,
             headers={**HEADERS, "Accept": "application/json"},
-            timeout=(10, 45),
+            timeout=(4, 8),
         )
         response.raise_for_status()
         payload = response.json()
@@ -72,33 +73,35 @@ def _fetch_page_props():
         if page_props:
             return page_props
     except (requests.RequestException, ValueError) as error:
+        stale_build = getattr(getattr(error, "response", None), "status_code", None) == 404
         logger.warning(
             f"[{SOURCE_NAME}] Компактная лента 47NEWS недоступна: "
             f"{type(error).__name__}: {error}"
         )
 
-    # На некоторых российских маршрутах CloudFront зависает именно для
-    # requests (HTTP/1.1), хотя браузер открывает сайт. Системный curl умеет
-    # HTTP/2 и обычно проходит тем же путём, что и обычный браузер.
-    page_props = _fetch_page_props_with_curl(data_url)
-    if page_props:
-        return page_props
+    # При сетевом сбое curl иногда проходит по HTTP/2. При 404 повторять
+    # заведомо устаревший JSON бессмысленно — сразу узнаём новый buildId.
+    if not stale_build:
+        page_props = _fetch_page_props_with_curl(data_url)
+        if page_props:
+            return page_props
 
-    # После обновления 47NEWS меняется buildId. Браузерный резерв получает
-    # новый идентификатор и одновременно возвращает данные текущей страницы.
-    print("  ℹ️ JSON-лента недоступна — пробую 47NEWS через браузер")
-    soup = fetch_soup_js(
-        NEWS_URL,
-        SOURCE_NAME,
-        wait_ms=1200,
-        timeout_ms=60000,
-        wait_until="domcontentloaded",
-        use_partial_on_timeout=True,
-    )
-    if soup is None:
-        return {}
+    payload = _fetch_news_payload_http()
+    if not payload:
+        payload = _fetch_news_payload_with_curl()
 
-    payload = _next_payload(soup)
+    if not payload:
+        print("  ℹ️ JSON-лента недоступна — пробую 47NEWS через браузер")
+        soup = fetch_soup_js(
+            NEWS_URL,
+            SOURCE_NAME,
+            wait_ms=800,
+            timeout_ms=18000,
+            wait_until="domcontentloaded",
+            use_partial_on_timeout=True,
+        )
+        payload = _next_payload(soup) if soup else {}
+
     build_id = str(payload.get("buildId", "")).strip()
     if build_id:
         _next_build_id = build_id
@@ -118,9 +121,9 @@ def _fetch_page_props_with_curl(data_url):
                 "--silent",
                 "--show-error",
                 "--connect-timeout",
-                "10",
+                "4",
                 "--max-time",
-                "60",
+                "10",
                 "--header",
                 f"User-Agent: {HEADERS['User-Agent']}",
                 "--header",
@@ -129,7 +132,7 @@ def _fetch_page_props_with_curl(data_url):
             ],
             capture_output=True,
             check=True,
-            timeout=70,
+            timeout=12,
         )
         payload = json.loads(completed.stdout.decode("utf-8"))
         return payload.get("pageProps", {})
@@ -138,6 +141,50 @@ def _fetch_page_props_with_curl(data_url):
             f"[{SOURCE_NAME}] Системный curl не получил ленту: "
             f"{type(error).__name__}: {error}"
         )
+        return {}
+
+
+def _fetch_news_payload_http():
+    """Пытается прочитать HTML /news без запуска Chromium."""
+    try:
+        response = requests.get(
+            NEWS_URL,
+            headers={**HEADERS, "Accept": "text/html,*/*;q=0.8"},
+            timeout=(4, 8),
+        )
+        response.raise_for_status()
+        return _next_payload(BeautifulSoup(response.content, "html.parser"))
+    except requests.RequestException:
+        return {}
+
+
+def _fetch_news_payload_with_curl():
+    """HTTP/2-резерв для получения нового buildId без браузера."""
+    curl = shutil.which("curl.exe") or shutil.which("curl")
+    if not curl:
+        return {}
+    try:
+        completed = subprocess.run(
+            [
+                curl,
+                "--location",
+                "--silent",
+                "--show-error",
+                "--connect-timeout",
+                "4",
+                "--max-time",
+                "10",
+                "--header",
+                f"User-Agent: {HEADERS['User-Agent']}",
+                NEWS_URL,
+            ],
+            capture_output=True,
+            check=True,
+            timeout=12,
+        )
+        soup = BeautifulSoup(completed.stdout, "html.parser")
+        return _next_payload(soup)
+    except subprocess.SubprocessError:
         return {}
 
 

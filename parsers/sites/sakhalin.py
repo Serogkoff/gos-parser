@@ -12,11 +12,19 @@ SOURCE_NAME = "Сахалинская обл."
 def parse():
     news, seen = [], set()
     cutoff = datetime.now() - timedelta(days=30)
+    detail_checks = 0
 
     for pg in range(2):
         u = f"https://sakhalin.gov.ru/news?page={pg + 1}" if pg else "https://sakhalin.gov.ru/news"
 
-        soup = fetch_soup_js(u, SOURCE_NAME, wait_ms=3000, timeout_ms=60000)
+        soup = fetch_soup_js(
+            u,
+            SOURCE_NAME,
+            wait_ms=1200,
+            timeout_ms=25000,
+            wait_until="domcontentloaded",
+            use_partial_on_timeout=True,
+        )
         if soup is None:
             continue
 
@@ -33,11 +41,13 @@ def parse():
                 a,
                 r"/news/",
             )
-            if not date_str:
+            if not date_str and detail_checks < 8:
+                detail_checks += 1
                 detail = fetch_soup(
                     full_url,
                     SOURCE_NAME,
-                    timeout=15,
+                    timeout=8,
+                    attempts=1,
                 )
                 date_str = date_from_document(detail)
 

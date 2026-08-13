@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from threading import RLock
 
@@ -41,8 +41,15 @@ def _save_parser_status(statuses, project_version, now=None, merge=False):
         old = previous_by_source.get(item.get("source"), {})
         if item.get("status") == "ok":
             item["last_success"] = checked_at
+            item["failure_streak"] = 0
+            item["availability"] = "ok"
         else:
             item["last_success"] = old.get("last_success", "")
+            item["failure_streak"] = int(old.get("failure_streak", 0)) + 1
+            item["availability"] = _availability(
+                item["last_success"],
+                now,
+            )
         prepared.append(item)
 
     if merge:
@@ -74,6 +81,17 @@ def _save_parser_status(statuses, project_version, now=None, merge=False):
     }
     _write_atomic(document)
     return document
+
+
+def _availability(last_success, now):
+    """Отличает краткий сетевой сбой от длительно неработающего источника."""
+    if not last_success:
+        return "down"
+    try:
+        successful_at = datetime.strptime(last_success, "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return "down"
+    return "temporary" if now - successful_at <= timedelta(hours=24) else "down"
 
 
 def print_status_table(statuses):

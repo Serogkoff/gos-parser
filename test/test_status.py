@@ -44,6 +44,32 @@ class ParserStatusTests(unittest.TestCase):
             second["sources"][0]["last_success"],
             "2026-07-27 10:00:00",
         )
+        self.assertEqual(second["sources"][0]["failure_streak"], 1)
+        self.assertEqual(second["sources"][0]["availability"], "temporary")
+
+    def test_marks_long_failure_as_down_and_resets_after_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "parser_status.json"
+            with patch.object(status, "STATUS_FILE", path):
+                status.save_parser_status(
+                    [{"source": "Источник", "status": "ok"}],
+                    "test",
+                    now=datetime(2026, 7, 27, 10, 0),
+                )
+                failed = status.save_parser_status(
+                    [{"source": "Источник", "status": "error"}],
+                    "test",
+                    now=datetime(2026, 7, 29, 10, 1),
+                )
+                restored = status.save_parser_status(
+                    [{"source": "Источник", "status": "ok"}],
+                    "test",
+                    now=datetime(2026, 7, 29, 10, 2),
+                )
+
+        self.assertEqual(failed["sources"][0]["availability"], "down")
+        self.assertEqual(restored["sources"][0]["availability"], "ok")
+        self.assertEqual(restored["sources"][0]["failure_streak"], 0)
 
     def test_merges_independent_source_groups(self):
         with tempfile.TemporaryDirectory() as directory:

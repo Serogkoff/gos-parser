@@ -120,6 +120,14 @@ class KyodoParserTests(unittest.TestCase):
                 return_value={},
             ), mock.patch.object(
                 kyodo,
+                "_fetch_news_payload_http",
+                return_value={},
+            ), mock.patch.object(
+                kyodo,
+                "_fetch_news_payload_with_curl",
+                return_value={},
+            ), mock.patch.object(
+                kyodo,
                 "fetch_soup_js",
                 return_value=soup,
             ) as browser:
@@ -130,6 +138,21 @@ class KyodoParserTests(unittest.TestCase):
             browser.assert_called_once()
         finally:
             kyodo._next_build_id = old_build_id
+
+    def test_http_news_page_refreshes_build_without_browser(self):
+        soup = _page_soup({"data": {"categoryNewsList": [KYODO_ITEM]}})
+        script = soup.find("script", id="__NEXT_DATA__")
+        payload = json.loads(script.string)
+        payload["buildId"] = "current-build"
+        script.string = json.dumps(payload, ensure_ascii=False)
+
+        response = mock.Mock(content=str(soup).encode("utf-8"))
+        response.raise_for_status.return_value = None
+        with mock.patch.object(kyodo.requests, "get", return_value=response):
+            payload = kyodo._fetch_news_payload_http()
+
+        self.assertEqual(payload["buildId"], "current-build")
+        self.assertIn("categoryNewsList", payload["props"]["pageProps"]["data"])
 
     def test_curl_fallback_reads_compact_feed(self):
         payload = json.dumps(
