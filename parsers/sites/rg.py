@@ -1,6 +1,7 @@
 """Парсер свежего номера «Российской газеты»."""
 
 import re
+import html
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlsplit
@@ -233,6 +234,11 @@ def _clean_feed_text(node):
         return ""
     raw = node.decode_contents() if hasattr(node, "decode_contents") else str(node)
     text = BeautifulSoup(raw, "html.parser").get_text(" ", strip=True)
+    # Часть записей хранит HTML дважды экранированным внутри CDATA.
+    text = BeautifulSoup(html.unescape(text), "html.parser").get_text(
+        " ",
+        strip=True,
+    )
     return " ".join(text.split())[:1200]
 
 

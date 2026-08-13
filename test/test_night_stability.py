@@ -1,5 +1,6 @@
 import time
 import unittest
+from unittest import mock
 
 import main
 from utils.parser_runner import (
@@ -45,6 +46,16 @@ class NightStabilityTests(unittest.TestCase):
         self.assertEqual(main._schedule_delay(600, 2, True, 3600), 2400)
         self.assertEqual(main._schedule_delay(600, 3, True, 3600), 3600)
         self.assertEqual(main._schedule_delay(600, 8, True, 3600), 3600)
+
+    def test_manual_newspaper_update_writes_results_immediately(self):
+        with mock.patch.object(main, "run_once") as run_once:
+            main.run_manual_group("newspapers")
+
+        run_once.assert_called_once_with(
+            main.NEWSPAPER_SITES,
+            group_name="Газеты · ручное обновление",
+            merge_status=True,
+        )
 
 
 if __name__ == "__main__":

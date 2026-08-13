@@ -1,5 +1,6 @@
 import time
 import multiprocessing
+import argparse
 from datetime import datetime, timedelta
 from threading import Event, Thread
 
@@ -325,7 +326,19 @@ def run_daily_schedule(sites, group_name, hour, stop_event):
             )
 
 
-def main():
+def _parse_arguments(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Монитор новостей",
+    )
+    parser.add_argument(
+        "--once",
+        choices=("government", "agencies", "kyodo", "newspapers", "all"),
+        help="однократно обновить выбранную группу и завершить работу",
+    )
+    return parser.parse_args(argv)
+
+
+def _prepare_storage():
     database = prepare_database(retention=DATABASE_BACKUP_RETENTION)
     size_mb = database["size_bytes"] / 1024 / 1024
     backup_state = (
@@ -339,6 +352,32 @@ def main():
         f"{size_mb:.1f} МБ"
     )
     print(f"💾 Резервная копия: {backup_state}")
+    return database
+
+
+def run_manual_group(group_name):
+    """Обновляет выбранную группу сразу, независимо от расписания."""
+    groups = {
+        "government": (GOVERNMENT_SITES, "Госструктуры"),
+        "agencies": (AGENCY_SITES, "Информагентства"),
+        "kyodo": (KYODO_SITES, "Киодо"),
+        "newspapers": (NEWSPAPER_SITES, "Газеты"),
+    }
+    selected = groups.items() if group_name == "all" else ((group_name, groups[group_name]),)
+    for _key, (sites, title) in selected:
+        run_once(
+            sites,
+            group_name=f"{title} · ручное обновление",
+            merge_status=True,
+        )
+
+
+def main(argv=None):
+    arguments = _parse_arguments(argv)
+    _prepare_storage()
+    if arguments.once:
+        run_manual_group(arguments.once)
+        return
 
     stop_event = Event()
     agency_thread = Thread(

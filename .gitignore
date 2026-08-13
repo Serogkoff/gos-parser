@@ -10,6 +10,7 @@ backups/
 .venv/
 .idea/
 parser_errors.log
+kyodo_build_id.txt
 .env
 .monitor_secret
 .DS_Store

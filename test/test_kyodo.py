@@ -1,6 +1,8 @@
 import json
+import tempfile
 import unittest
 from datetime import datetime
+from pathlib import Path
 from unittest import mock
 
 import requests
@@ -97,11 +99,44 @@ class KyodoParserTests(unittest.TestCase):
             kyodo,
             "_fetch_page_props",
             return_value=page_props,
-        ) as fetch:
+        ) as fetch, mock.patch.object(
+            kyodo,
+            "_fetch_additional_page_props",
+            return_value={},
+        ):
             result = kyodo.parse()
 
         self.assertEqual(len(result), 1)
         fetch.assert_called_once_with()
+
+    def test_parse_collects_three_distinct_pages(self):
+        def page(number):
+            return {
+                "data": {
+                    "categoryNewsList": [{
+                        **KYODO_ITEM,
+                        "id": str(number),
+                        "url": f"/{number}.html",
+                        "title": f"共同通信のニュース記事 {number}",
+                    }],
+                    "categoryNewsListCount": 220,
+                }
+            }
+
+        with mock.patch.object(
+            kyodo,
+            "_fetch_page_props",
+            return_value=page(1),
+        ), mock.patch.object(
+            kyodo,
+            "_fetch_additional_page_props",
+            side_effect=[page(2), page(3)],
+        ) as additional:
+            result = kyodo.parse()
+
+        self.assertEqual(len(result), 3)
+        self.assertEqual([item["source_id"] for item in result], ["1", "2", "3"])
+        self.assertEqual(additional.call_args_list, [mock.call(2), mock.call(3)])
 
     def test_browser_fallback_refreshes_next_build_id(self):
         soup = _page_soup({"worldNews": [KYODO_ITEM]})
@@ -153,6 +188,15 @@ class KyodoParserTests(unittest.TestCase):
 
         self.assertEqual(payload["buildId"], "current-build")
         self.assertIn("categoryNewsList", payload["props"]["pageProps"]["data"])
+
+    def test_build_id_is_saved_between_isolated_runs(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            kyodo,
+            "BUILD_ID_FILE",
+            Path(directory) / "kyodo-build.txt",
+        ):
+            kyodo._save_build_id("fresh-build")
+            self.assertEqual(kyodo._load_build_id(), "fresh-build")
 
     def test_curl_fallback_reads_compact_feed(self):
         payload = json.dumps(

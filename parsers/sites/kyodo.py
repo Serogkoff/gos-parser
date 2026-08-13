@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 from datetime import datetime, timedelta
+from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
 import requests
@@ -21,10 +22,12 @@ HOME_URL = "https://www.47news.jp/"
 NEWS_URL = "https://www.47news.jp/news"
 PUBLISHER_NAME = "共同通信"
 MAX_AGE_DAYS = 30
-NEXT_BUILD_ID = "uFzqY36IiFlXsPPmSxzhK"
+MAX_PAGES = 3
+PAGE_SIZE = 20
+BUILD_ID_FILE = Path(__file__).resolve().parents[2] / "kyodo_build_id.txt"
 
 logger = get_logger("kyodo")
-_next_build_id = NEXT_BUILD_ID
+_next_build_id = ""
 
 # На главной странице 47NEWS каждая рубрика содержит шесть самых свежих
 # материалов. Поэтому один лёгкий запрос заменяет обход множества страниц.
@@ -45,12 +48,30 @@ SECTION_KEYS = (
 
 
 def parse():
-    page_props = _fetch_page_props()
-    if not page_props:
+    first_page = _fetch_page_props()
+    if not first_page:
         print("  ✅ 0")
         return []
 
-    news = _parse_47news_page(page_props)
+    news = _parse_47news_page(first_page)
+    known_urls = {item.get("url") for item in news}
+    total_count = _category_total(first_page)
+
+    for page_number in range(2, MAX_PAGES + 1):
+        if total_count and (page_number - 1) * PAGE_SIZE >= total_count:
+            break
+        page_props = _fetch_additional_page_props(page_number)
+        if not page_props:
+            break
+        page_news = _parse_47news_page(page_props)
+        fresh = [item for item in page_news if item.get("url") not in known_urls]
+        if not fresh:
+            # Сайт проигнорировал номер страницы или лента закончилась.
+            break
+        news.extend(fresh)
+        known_urls.update(item.get("url") for item in fresh)
+
+    news = deduplicate_news(news)
     print(f"  ✅ {len(news)}")
     return news
 
@@ -59,25 +80,30 @@ def _fetch_page_props():
     """Получает данные Next.js и обновляет изменившийся buildId."""
     global _next_build_id
 
-    data_url = f"{HOME_URL}_next/data/{_next_build_id}/news.json"
-    stale_build = False
-    try:
-        response = requests.get(
-            data_url,
-            headers={**HEADERS, "Accept": "application/json"},
-            timeout=(4, 8),
-        )
-        response.raise_for_status()
-        payload = response.json()
-        page_props = payload.get("pageProps", {})
-        if page_props:
-            return page_props
-    except (requests.RequestException, ValueError) as error:
-        stale_build = getattr(getattr(error, "response", None), "status_code", None) == 404
-        logger.warning(
-            f"[{SOURCE_NAME}] Компактная лента 47NEWS недоступна: "
-            f"{type(error).__name__}: {error}"
-        )
+    if not _next_build_id:
+        _next_build_id = _load_build_id()
+
+    data_url = ""
+    stale_build = not bool(_next_build_id)
+    if _next_build_id:
+        data_url = f"{HOME_URL}_next/data/{_next_build_id}/news.json"
+        try:
+            response = requests.get(
+                data_url,
+                headers={**HEADERS, "Accept": "application/json"},
+                timeout=(4, 8),
+            )
+            response.raise_for_status()
+            payload = response.json()
+            page_props = payload.get("pageProps", {})
+            if page_props:
+                return page_props
+        except (requests.RequestException, ValueError) as error:
+            stale_build = getattr(getattr(error, "response", None), "status_code", None) == 404
+            logger.warning(
+                f"[{SOURCE_NAME}] Компактная лента 47NEWS недоступна: "
+                f"{type(error).__name__}: {error}"
+            )
 
     # При сетевом сбое curl иногда проходит по HTTP/2. При 404 повторять
     # заведомо устаревший JSON бессмысленно — сразу узнаём новый buildId.
@@ -105,7 +131,22 @@ def _fetch_page_props():
     build_id = str(payload.get("buildId", "")).strip()
     if build_id:
         _next_build_id = build_id
+        _save_build_id(build_id)
     return payload.get("props", {}).get("pageProps", {})
+
+
+def _load_build_id():
+    try:
+        return BUILD_ID_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _save_build_id(build_id):
+    try:
+        BUILD_ID_FILE.write_text(str(build_id).strip(), encoding="utf-8")
+    except OSError as error:
+        logger.warning(f"[{SOURCE_NAME}] Не удалось сохранить buildId: {error}")
 
 
 def _fetch_page_props_with_curl(data_url):
@@ -186,6 +227,48 @@ def _fetch_news_payload_with_curl():
         return _next_payload(soup)
     except subprocess.SubprocessError:
         return {}
+
+
+def _fetch_additional_page_props(page_number):
+    """Читает следующую страницу общей ленты без запуска браузера."""
+    page_number = max(2, int(page_number))
+
+    if _next_build_id:
+        data_url = f"{HOME_URL}_next/data/{_next_build_id}/news.json"
+        try:
+            response = requests.get(
+                data_url,
+                params={"page": page_number},
+                headers={**HEADERS, "Accept": "application/json"},
+                timeout=(4, 8),
+            )
+            response.raise_for_status()
+            page_props = response.json().get("pageProps", {})
+            if page_props:
+                return page_props
+        except (requests.RequestException, ValueError):
+            pass
+
+    try:
+        response = requests.get(
+            NEWS_URL,
+            params={"page": page_number},
+            headers={**HEADERS, "Accept": "text/html,*/*;q=0.8"},
+            timeout=(4, 8),
+        )
+        response.raise_for_status()
+        payload = _next_payload(BeautifulSoup(response.content, "html.parser"))
+        return payload.get("props", {}).get("pageProps", {})
+    except requests.RequestException:
+        return {}
+
+
+def _category_total(page_props):
+    data = page_props.get("data", {}) if isinstance(page_props, dict) else {}
+    try:
+        return max(0, int(data.get("categoryNewsListCount", 0)))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _parse_47news_page(page, now=None):

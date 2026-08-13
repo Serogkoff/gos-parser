@@ -53,7 +53,10 @@ class RussianGazetteTests(unittest.TestCase):
                 <title>Новая редакционная статья Российской газеты</title>
                 <link>https://rg.ru/2026/08/13/novyi-material.html</link>
                 <pubDate>Thu, 13 Aug 2026 08:00:00 +0300</pubDate>
-                <description><![CDATA[<p>Краткий анонс свежего материала.</p>]]></description>
+                <description><![CDATA[
+                  &lt;p&gt;Краткий анонс свежего материала с
+                  &lt;a href=&quot;https://example.test&quot;&gt;лишней ссылкой&lt;/a&gt;.&lt;/p&gt;
+                ]]></description>
               </item>
               <item>
                 <title>Вчерашняя редакционная статья Российской газеты</title>
@@ -76,6 +79,7 @@ class RussianGazetteTests(unittest.TestCase):
         self.assertEqual(result[0]["date"], "2026-08-13")
         self.assertEqual(result[0]["section"], "XML · резерв")
         self.assertIn("Краткий анонс", result[0]["summary"])
+        self.assertNotIn("<a", result[0]["summary"])
 
     def test_parse_uses_xml_after_page_and_browser_fail(self):
         feed = BeautifulSoup(
