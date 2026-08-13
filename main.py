@@ -28,6 +28,7 @@ from utils.storage import (
     prepare_database,
     save_results,
     source_is_enabled,
+    sync_source_incidents,
 )
 from utils.keywords import search_keywords
 
@@ -230,11 +231,29 @@ def run_once(
 
     all_news = deduplicate_news(all_news)
     found_news = deduplicate_news(found_news)
-    save_parser_status(
+    status_document = save_parser_status(
         parser_statuses,
         PROJECT_VERSION,
         merge=merge_status,
     )
+    checked_sources = {item.get("source") for item in parser_statuses}
+    checked_statuses = [
+        item for item in status_document.get("sources", [])
+        if item.get("source") in checked_sources
+    ]
+    try:
+        incident_changes = sync_source_incidents(checked_statuses)
+        if incident_changes["opened"] or incident_changes["resolved"]:
+            print(
+                "🩺 Инциденты: "
+                f"открыто {incident_changes['opened']}, "
+                f"закрыто {incident_changes['resolved']}"
+            )
+    except Exception as error:
+        print(
+            "⚠️ Не удалось обновить журнал инцидентов: "
+            f"{type(error).__name__}: {error}"
+        )
     print_status_table(parser_statuses)
     new_found = save_results(all_news, found_news, existing_urls)
     try:

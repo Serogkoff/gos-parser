@@ -165,6 +165,7 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(self.client.get("/admin/users").status_code, 403)
         self.assertEqual(self.client.get("/admin/sources").status_code, 403)
         self.assertEqual(self.client.get("/admin/system").status_code, 403)
+        self.assertEqual(self.client.get("/admin/incidents").status_code, 403)
 
     def test_admin_creates_manages_and_reactivates_user(self):
         self._create_first_admin()
@@ -305,6 +306,24 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         create_backup.assert_called_once_with(retention=10)
         self.assertIn("news-manual-test.db", response.headers["Location"])
+
+    def test_admin_can_open_incident_history(self):
+        self._create_first_admin()
+        storage.sync_source_incidents([{
+            "source": "МЧС",
+            "status": "error",
+            "failure_streak": 3,
+            "error": "HTTP 503",
+        }])
+
+        page = self.client.get("/admin/incidents?state=active")
+
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn("История сбоев", html)
+        self.assertIn("МЧС", html)
+        self.assertIn("Критично", html)
+        self.assertIn("HTTP 503", html)
 
     def test_user_can_change_own_password(self):
         self._create_first_admin()

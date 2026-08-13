@@ -184,6 +184,21 @@ def _create_schema(connection):
             FOREIGN KEY(requested_by) REFERENCES users(id) ON DELETE SET NULL
         );
 
+        CREATE TABLE IF NOT EXISTS source_incidents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_key TEXT NOT NULL,
+            source TEXT NOT NULL,
+            code TEXT NOT NULL CHECK(code IN ('error', 'empty')),
+            level TEXT NOT NULL CHECK(level IN ('warning', 'critical')),
+            title TEXT NOT NULL,
+            message TEXT NOT NULL DEFAULT '',
+            started_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            resolved_at TEXT NOT NULL DEFAULT '',
+            resolution TEXT NOT NULL DEFAULT '',
+            checks_count INTEGER NOT NULL DEFAULT 1
+        );
+
         CREATE INDEX IF NOT EXISTS idx_news_source
             ON news_items(source);
         CREATE INDEX IF NOT EXISTS idx_news_publication_date
@@ -204,6 +219,12 @@ def _create_schema(connection):
             ON parser_jobs(status, requested_at);
         CREATE INDEX IF NOT EXISTS idx_parser_jobs_source
             ON parser_jobs(source, id DESC);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_source_incidents_active
+            ON source_incidents(incident_key) WHERE resolved_at = '';
+        CREATE INDEX IF NOT EXISTS idx_source_incidents_history
+            ON source_incidents(started_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_source_incidents_source
+            ON source_incidents(source, started_at DESC);
         """
     )
 
@@ -640,6 +661,180 @@ def source_news_statistics():
         }
         for row in rows
     }
+
+
+def sync_source_incidents(statuses, now=None):
+    """Открывает и закрывает инциденты по результатам реальных проверок."""
+    moment = now or datetime.now()
+    checked_at = moment.isoformat(timespec="seconds")
+    changes = {"opened": 0, "updated": 0, "resolved": 0}
+    initialize_database()
+
+    with STORAGE_LOCK, _connect() as connection:
+        for raw_item in statuses:
+            if not isinstance(raw_item, dict):
+                continue
+            source = " ".join(str(raw_item.get("source", "")).split())
+            if not source:
+                continue
+            status = str(raw_item.get("status", "")).strip().casefold()
+            active_rows = connection.execute(
+                """
+                SELECT * FROM source_incidents
+                WHERE source = ? AND resolved_at = ''
+                ORDER BY id
+                """,
+                (source,),
+            ).fetchall()
+
+            active_code = status if status in {"error", "empty"} else ""
+            incident_key = f"{source}:{active_code}" if active_code else ""
+            current = next(
+                (row for row in active_rows if row["incident_key"] == incident_key),
+                None,
+            )
+
+            for row in active_rows:
+                if current is not None and row["id"] == current["id"]:
+                    continue
+                resolution = "Источник отключён" if status == "disabled" else "Работа восстановлена"
+                connection.execute(
+                    """
+                    UPDATE source_incidents
+                    SET resolved_at = ?, resolution = ?
+                    WHERE id = ?
+                    """,
+                    (checked_at, resolution, row["id"]),
+                )
+                changes["resolved"] += 1
+
+            if not active_code:
+                continue
+
+            failure_streak = _non_negative_int(raw_item.get("failure_streak"))
+            level = "critical" if failure_streak >= 3 else "warning"
+            title = (
+                f"{source}: ошибка парсинга"
+                if active_code == "error"
+                else f"{source}: пустая выдача"
+            )
+            message = str(raw_item.get("error", "")).strip()
+            if not message and active_code == "empty":
+                message = "Парсер вернул 0 материалов"
+
+            if current is None:
+                connection.execute(
+                    """
+                    INSERT INTO source_incidents(
+                        incident_key, source, code, level, title, message,
+                        started_at, last_seen_at, checks_count
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    """,
+                    (
+                        incident_key,
+                        source,
+                        active_code,
+                        level,
+                        title,
+                        message,
+                        checked_at,
+                        checked_at,
+                    ),
+                )
+                changes["opened"] += 1
+            else:
+                connection.execute(
+                    """
+                    UPDATE source_incidents
+                    SET level = ?, title = ?, message = ?, last_seen_at = ?,
+                        checks_count = checks_count + 1
+                    WHERE id = ?
+                    """,
+                    (level, title, message, checked_at, current["id"]),
+                )
+                changes["updated"] += 1
+
+    return changes
+
+
+def list_source_incidents(state="all", limit=200):
+    """Возвращает последние инциденты для администраторского журнала."""
+    state = str(state or "all").strip().casefold()
+    if state not in {"all", "active", "resolved"}:
+        raise ValueError("Неизвестный фильтр инцидентов")
+    try:
+        limit = min(500, max(1, int(limit)))
+    except (TypeError, ValueError):
+        limit = 200
+    where = {
+        "all": "",
+        "active": "WHERE resolved_at = ''",
+        "resolved": "WHERE resolved_at != ''",
+    }[state]
+    initialize_database()
+    with _connect() as connection:
+        rows = connection.execute(
+            f"""
+            SELECT * FROM source_incidents
+            {where}
+            ORDER BY CASE WHEN resolved_at = '' THEN 0 ELSE 1 END,
+                     started_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [_incident_from_row(row) for row in rows]
+
+
+def source_incident_statistics(now=None):
+    """Считает активные, критические и недавно закрытые инциденты."""
+    moment = now or datetime.now()
+    since = (moment - timedelta(hours=24)).isoformat(timespec="seconds")
+    initialize_database()
+    with _connect() as connection:
+        row = connection.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN resolved_at = '' THEN 1 ELSE 0 END) AS active,
+                SUM(CASE WHEN resolved_at = '' AND level = 'critical' THEN 1 ELSE 0 END) AS critical,
+                SUM(CASE WHEN resolved_at >= ? THEN 1 ELSE 0 END) AS resolved_24h
+            FROM source_incidents
+            """,
+            (since,),
+        ).fetchone()
+    return {
+        "total": int(row["total"] or 0),
+        "active": int(row["active"] or 0),
+        "critical": int(row["critical"] or 0),
+        "resolved_24h": int(row["resolved_24h"] or 0),
+    }
+
+
+def _incident_from_row(row, now=None):
+    item = dict(row)
+    moment = now or datetime.now()
+    started = _storage_datetime(item.get("started_at"))
+    finished = _storage_datetime(item.get("resolved_at")) or moment
+    seconds = max(0, int((finished - started).total_seconds())) if started else 0
+    item["is_active"] = not bool(item.get("resolved_at"))
+    item["duration_seconds"] = seconds
+    return item
+
+
+def _storage_datetime(value):
+    try:
+        parsed = datetime.fromisoformat(str(value or ""))
+        return parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+    except ValueError:
+        return None
+
+
+def _non_negative_int(value):
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
 
 
 def list_bookmark_folders(user_id):

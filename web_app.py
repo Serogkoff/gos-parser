@@ -52,6 +52,7 @@ from utils.storage import (
     find_news_by_url,
     list_users,
     list_database_backups,
+    list_source_incidents,
     list_parser_jobs,
     list_bookmark_folders,
     list_bookmarks,
@@ -71,6 +72,7 @@ from utils.storage import (
     set_user_password,
     set_user_role,
     source_news_statistics,
+    source_incident_statistics,
     database_stats,
     update_bookmark,
 )
@@ -243,7 +245,7 @@ ADMIN_SOURCES_HTML = """
 <body><main class="shell">
     <div class="top">
         <a class="back" href="/">← Вернуться к Монитору</a>
-        <div class="top-actions"><a class="button" href="/admin/system">Система</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div>
+        <div class="top-actions"><a class="button" href="/admin/incidents">Инциденты</a><a class="button" href="/admin/system">Система</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div>
     </div>
     <header><h1>Источники</h1><p class="subtitle">Состояние парсеров, ручные проверки и управление расписанием</p></header>
     {% if message %}<p class="message">{{message}}</p>{% endif %}
@@ -298,7 +300,7 @@ ADMIN_SYSTEM_HTML = """
     </style>
 </head>
 <body><main class="shell">
-    <div class="top"><a class="back" href="/">← Вернуться к Монитору</a><div class="top-actions"><a class="button" href="/admin/sources">Источники</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div></div>
+    <div class="top"><a class="back" href="/">← Вернуться к Монитору</a><div class="top-actions"><a class="button" href="/admin/sources">Источники</a><a class="button" href="/admin/incidents">Инциденты</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div></div>
     <header><h1>Система</h1><p class="subtitle">SQLite, резервные копии и журнал ошибок · версия {{version}}</p></header>
     {% if message %}<p class="message">{{message}}</p>{% endif %}{% if error %}<p class="error">{{error}}</p>{% endif %}
     <section class="summary">
@@ -331,6 +333,43 @@ ADMIN_SYSTEM_HTML = """
             <div class="log">{% for line in errors %}<div class="log-line {{'severity-error' if ' ERROR ' in line else ('severity-warning' if ' WARNING ' in line else '')}}">{{line}}</div>{% else %}<div class="log-empty">Журнал пуст — ошибок пока нет.</div>{% endfor %}</div>
         </section>
     </div>
+</main></body></html>
+"""
+
+
+ADMIN_INCIDENTS_HTML = """
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Инциденты — Монитор</title>
+    <style>
+        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655;--amber:#a86e16}
+        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}.shell{width:min(1380px,calc(100% - 34px));margin:auto;padding:30px 0 80px}a{color:inherit;text-decoration:none}.top{display:flex;align-items:center;justify-content:space-between;gap:18px}.back{color:var(--muted)}.back:hover{color:var(--coral)}.top-actions{display:flex;gap:8px;flex-wrap:wrap}.button{min-height:40px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:6px;color:#5b554c;background:var(--surface);font-size:12px;font-weight:650}.button:hover,.button.active{color:var(--coral);border-color:var(--coral)}header{margin:36px 0 24px}h1{margin:0;font-size:clamp(40px,5vw,66px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}
+        .summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}.metric{padding:20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.metric span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.metric strong{display:block;margin-top:7px;font-size:30px;letter-spacing:-.04em}.metric.bad strong{color:var(--coral)}.metric.warn strong{color:var(--amber)}.metric.good strong{color:var(--green)}
+        .toolbar{margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px}.filters{display:flex;gap:8px;flex-wrap:wrap}.hint{color:var(--muted);font-size:11px}.panel{overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.table{width:100%;border-collapse:collapse}.table th{padding:12px 14px;color:var(--muted);background:#faf6ef;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em}.table td{padding:15px 14px;border-top:1px solid #e6dfd4;vertical-align:top;font-size:12px}.table tbody tr.active{background:#fff9ef}.table tbody tr.critical{background:#fff3f0}.status{width:max-content;padding:5px 8px;border-radius:999px;color:var(--green);background:#edf6ef;font-size:9px;font-weight:800;text-transform:uppercase}.status.warning{color:#8a5b12;background:#fae8c7}.status.critical{color:#a63a32;background:#ffdcd7}.source strong{display:block;font-size:13px}.source small,.muted{display:block;margin-top:4px;color:var(--muted);font-size:10px}.message{max-width:420px;color:var(--muted);line-height:1.45}.duration{white-space:nowrap;font-weight:700}.empty{padding:70px 25px;color:var(--muted);text-align:center}.empty strong{display:block;margin-bottom:7px;color:var(--ink);font-size:20px}
+        @media(max-width:980px){.summary{grid-template-columns:repeat(2,1fr)}.table-wrap{overflow:auto}.table{min-width:1000px}}@media(max-width:620px){.shell{width:min(100% - 22px,1380px)}.top{align-items:flex-start;flex-direction:column}.summary{grid-template-columns:1fr 1fr}.metric{padding:15px}.toolbar{align-items:flex-start;flex-direction:column}}
+    </style>
+</head>
+<body><main class="shell">
+    <div class="top"><a class="back" href="/">← Вернуться к Монитору</a><div class="top-actions"><a class="button" href="/admin/sources">Источники</a><a class="button" href="/admin/system">Система</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div></div>
+    <header><h1>Инциденты</h1><p class="subtitle">История сбоев, восстановлений и продолжительности проблем источников</p></header>
+    <section class="summary">
+        <article class="metric"><span>Всего записано</span><strong>{{summary.total}}</strong></article>
+        <article class="metric warn"><span>Активных</span><strong>{{summary.active}}</strong></article>
+        <article class="metric bad"><span>Критических</span><strong>{{summary.critical}}</strong></article>
+        <article class="metric good"><span>Закрыто за 24 часа</span><strong>{{summary.resolved_24h}}</strong></article>
+    </section>
+    <div class="toolbar"><nav class="filters"><a class="button {{'active' if state == 'all' else ''}}" href="/admin/incidents">Все</a><a class="button {{'active' if state == 'active' else ''}}" href="/admin/incidents?state=active">Активные</a><a class="button {{'active' if state == 'resolved' else ''}}" href="/admin/incidents?state=resolved">Завершённые</a></nav><span class="hint">Записи создаёт работающий main.py после каждой проверки.</span></div>
+    <section class="panel"><div class="table-wrap">
+        {% if incidents %}<table class="table"><thead><tr><th>Состояние</th><th>Источник</th><th>Начало</th><th>Последняя проверка</th><th>Длительность</th><th>Проверок</th><th>Причина / результат</th></tr></thead><tbody>
+        {% for item in incidents %}<tr class="{{item.level if item.is_active else ''}} {{'active' if item.is_active else ''}}">
+            <td><span class="status {{item.level if item.is_active else ''}}">{{item.status_label}}</span></td>
+            <td class="source"><strong>{{item.source}}</strong><small>{{'Ошибка' if item.code == 'error' else 'Пустая выдача'}}</small></td>
+            <td>{{item.started_at.replace('T',' ')}}</td><td>{{item.last_seen_at.replace('T',' ')}}</td><td class="duration">{{item.duration}}</td><td>{{item.checks_count}}</td>
+            <td><div class="message">{{item.message or 'Причина не указана'}}{% if not item.is_active %}<small class="muted">{{item.resolution}} · {{item.resolved_at.replace('T',' ')}}</small>{% endif %}</div></td>
+        </tr>{% endfor %}</tbody></table>{% else %}<div class="empty"><strong>Инцидентов нет</strong><span>Это хороший знак: источники пока не фиксировали ошибок и пустых ответов.</span></div>{% endif %}
+    </div></section>
 </main></body></html>
 """
 
@@ -1549,6 +1588,22 @@ def _format_file_size(value):
     return f"{size} Б"
 
 
+def _format_duration(value):
+    """Показывает длительность инцидента компактно и без секундного шума."""
+    try:
+        seconds = max(0, int(value))
+    except (TypeError, ValueError):
+        seconds = 0
+    days, remainder = divmod(seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes = remainder // 60
+    if days:
+        return f"{days} д. {hours} ч."
+    if hours:
+        return f"{hours} ч. {minutes} мин."
+    return f"{max(1, minutes)} мин."
+
+
 @app.route("/admin/sources", methods=["GET", "POST"])
 def admin_sources():
     """Показывает состояние парсеров и ставит ручные проверки в очередь."""
@@ -1732,6 +1787,34 @@ def admin_system():
         csrf_token=csrf_token(),
         message=str(request.args.get("message", "")).strip(),
         error=str(request.args.get("error", "")).strip(),
+    )
+
+
+@app.route("/admin/incidents")
+def admin_incidents():
+    """Показывает администраторам историю сбоев и восстановлений."""
+    administrator = current_user()
+    if not administrator or administrator.get("role") != "admin":
+        abort(403)
+    state = str(request.args.get("state", "all")).strip().casefold()
+    if state not in {"all", "active", "resolved"}:
+        state = "all"
+    prepared = []
+    for incident in list_source_incidents(state=state, limit=250):
+        item = dict(incident)
+        item["duration"] = _format_duration(item.get("duration_seconds", 0))
+        item["status_label"] = (
+            "Критично"
+            if item["is_active"] and item["level"] == "critical"
+            else ("Внимание" if item["is_active"] else "Восстановлен")
+        )
+        prepared.append(item)
+    return render_template_string(
+        ADMIN_INCIDENTS_HTML,
+        incidents=prepared,
+        summary=source_incident_statistics(),
+        state=state,
+        current_user=administrator,
     )
 
 
