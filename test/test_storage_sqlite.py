@@ -373,6 +373,59 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual(len(rebuilt), 1)
         self.assertEqual(storage.load_found_news()[0]["keywords"], ["Курил"])
 
+    def test_source_settings_default_to_enabled_and_can_be_paused(self):
+        self._write_json(self.all_json, [])
+        self._write_json(self.found_json, [])
+
+        self.assertTrue(storage.source_is_enabled("МЧС"))
+        paused = storage.set_source_enabled("МЧС", False)
+
+        self.assertFalse(paused["enabled"])
+        self.assertFalse(storage.source_is_enabled("МЧС"))
+        self.assertFalse(storage.load_source_settings()["МЧС"]["enabled"])
+        storage.set_source_enabled("МЧС", True)
+        self.assertTrue(storage.source_is_enabled("МЧС"))
+
+    def test_parser_job_queue_prevents_duplicates_and_records_result(self):
+        self._write_json(self.all_json, [])
+        self._write_json(self.found_json, [])
+        administrator = storage.create_user(
+            "owner",
+            "super-secret-2026",
+            role="admin",
+        )
+
+        queued = storage.enqueue_parser_job("МЧС", administrator["id"])
+        repeated = storage.enqueue_parser_job("МЧС", administrator["id"])
+        claimed = storage.claim_next_parser_job()
+
+        self.assertEqual(queued["id"], repeated["id"])
+        self.assertEqual(claimed["status"], "running")
+        storage.finish_parser_job(claimed["id"], True)
+        jobs = storage.list_parser_jobs()
+        self.assertEqual(jobs[0]["status"], "success")
+        self.assertEqual(jobs[0]["requested_by_name"], "owner")
+
+        next_job = storage.enqueue_parser_job("МЧС", administrator["id"])
+        self.assertNotEqual(next_job["id"], queued["id"])
+
+    def test_source_news_statistics_reports_last_received_item(self):
+        item = {
+            "source": "МЧС",
+            "title": "Новая публикация",
+            "url": "https://mchs.gov.ru/news/admin-panel-test",
+            "date": "2026-08-13",
+            "parsed_date": "2026-08-13 10:15:00",
+        }
+        self._write_json(self.all_json, [item])
+        self._write_json(self.found_json, [])
+
+        result = storage.source_news_statistics()["МЧС"]
+
+        self.assertEqual(result["news_count"], 1)
+        self.assertEqual(result["newest_publication"], "2026-08-13")
+        self.assertEqual(result["last_received"], "2026-08-13 10:15:00")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,7 +5,7 @@ import os
 import re
 import sqlite3
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from threading import RLock
 
@@ -164,6 +164,26 @@ def _create_schema(connection):
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS source_settings (
+            source TEXT PRIMARY KEY COLLATE NOCASE,
+            enabled INTEGER NOT NULL DEFAULT 1
+                CHECK(enabled IN (0, 1)),
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS parser_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending', 'running', 'success', 'error')),
+            requested_by INTEGER,
+            requested_at TEXT NOT NULL,
+            started_at TEXT NOT NULL DEFAULT '',
+            finished_at TEXT NOT NULL DEFAULT '',
+            error TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY(requested_by) REFERENCES users(id) ON DELETE SET NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_news_source
             ON news_items(source);
         CREATE INDEX IF NOT EXISTS idx_news_publication_date
@@ -180,6 +200,10 @@ def _create_schema(connection):
             ON bookmarks(user_id, folder_id, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_user_source_orders_user
             ON user_source_orders(user_id, source_group);
+        CREATE INDEX IF NOT EXISTS idx_parser_jobs_status
+            ON parser_jobs(status, requested_at);
+        CREATE INDEX IF NOT EXISTS idx_parser_jobs_source
+            ON parser_jobs(source, id DESC);
         """
     )
 
@@ -429,6 +453,193 @@ def save_source_order(user_id, source_group, sources):
             ),
         )
     return order
+
+
+def source_is_enabled(source):
+    """По умолчанию источник включён; администратор может поставить его на паузу."""
+    source = _validated_source_name(source)
+    initialize_database()
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT enabled FROM source_settings WHERE source = ? COLLATE NOCASE",
+            (source,),
+        ).fetchone()
+    return True if row is None else bool(row["enabled"])
+
+
+def load_source_settings():
+    """Возвращает сохранённые администратором состояния источников."""
+    initialize_database()
+    with _connect() as connection:
+        rows = connection.execute(
+            "SELECT source, enabled, updated_at FROM source_settings"
+        ).fetchall()
+    return {
+        row["source"]: {
+            "enabled": bool(row["enabled"]),
+            "updated_at": row["updated_at"],
+        }
+        for row in rows
+    }
+
+
+def set_source_enabled(source, enabled):
+    """Включает источник или временно исключает его из расписания."""
+    source = _validated_source_name(source)
+    enabled = bool(enabled)
+    updated_at = datetime.now().isoformat(timespec="seconds")
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO source_settings(source, enabled, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(source) DO UPDATE SET
+                enabled = excluded.enabled,
+                updated_at = excluded.updated_at
+            """,
+            (source, int(enabled), updated_at),
+        )
+    return {"source": source, "enabled": enabled, "updated_at": updated_at}
+
+
+def enqueue_parser_job(source, requested_by=None):
+    """Ставит одиночную проверку в очередь, не создавая повторных заданий."""
+    source = _validated_source_name(source)
+    requested_by = _validated_optional_user_id(requested_by)
+    requested_at = datetime.now().isoformat(timespec="seconds")
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            """
+            SELECT * FROM parser_jobs
+            WHERE source = ? COLLATE NOCASE
+              AND status IN ('pending', 'running')
+            ORDER BY id DESC LIMIT 1
+            """,
+            (source,),
+        ).fetchone()
+        if existing is not None:
+            return _parser_job_from_row(existing)
+        cursor = connection.execute(
+            """
+            INSERT INTO parser_jobs(source, status, requested_by, requested_at)
+            VALUES (?, 'pending', ?, ?)
+            """,
+            (source, requested_by, requested_at),
+        )
+        row = connection.execute(
+            "SELECT * FROM parser_jobs WHERE id = ?",
+            (cursor.lastrowid,),
+        ).fetchone()
+    return _parser_job_from_row(row)
+
+
+def claim_next_parser_job():
+    """Атомарно забирает одно ожидающее задание для процесса main.py."""
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        now = datetime.now()
+        stale_before = (now - timedelta(hours=2)).isoformat(timespec="seconds")
+        finished_at = now.isoformat(timespec="seconds")
+        connection.execute(
+            """
+            UPDATE parser_jobs
+            SET status = 'error', finished_at = ?,
+                error = 'Задание прервано: основной процесс был перезапущен'
+            WHERE status = 'running'
+              AND started_at != ''
+              AND started_at < ?
+            """,
+            (finished_at, stale_before),
+        )
+        row = connection.execute(
+            """
+            SELECT * FROM parser_jobs
+            WHERE status = 'pending'
+            ORDER BY id LIMIT 1
+            """
+        ).fetchone()
+        if row is None:
+            return None
+        started_at = now.isoformat(timespec="seconds")
+        connection.execute(
+            "UPDATE parser_jobs SET status = 'running', started_at = ? WHERE id = ?",
+            (started_at, row["id"]),
+        )
+        row = connection.execute(
+            "SELECT * FROM parser_jobs WHERE id = ?",
+            (row["id"],),
+        ).fetchone()
+    return _parser_job_from_row(row)
+
+
+def finish_parser_job(job_id, success, error=""):
+    """Фиксирует результат ручной проверки источника."""
+    try:
+        job_id = int(job_id)
+    except (TypeError, ValueError) as validation_error:
+        raise ValueError("Задание не найдено") from validation_error
+    status = "success" if success else "error"
+    finished_at = datetime.now().isoformat(timespec="seconds")
+    error = " ".join(str(error or "").split())[:1000]
+    initialize_database()
+    with STORAGE_LOCK, _connect() as connection:
+        cursor = connection.execute(
+            """
+            UPDATE parser_jobs
+            SET status = ?, finished_at = ?, error = ?
+            WHERE id = ? AND status = 'running'
+            """,
+            (status, finished_at, error, job_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("Задание не найдено или уже завершено")
+
+
+def list_parser_jobs(limit=50):
+    """Возвращает последние ручные проверки для администраторской панели."""
+    try:
+        limit = min(200, max(1, int(limit)))
+    except (TypeError, ValueError):
+        limit = 50
+    initialize_database()
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT j.*, u.username AS requested_by_name
+            FROM parser_jobs AS j
+            LEFT JOIN users AS u ON u.id = j.requested_by
+            ORDER BY j.id DESC LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [_parser_job_from_row(row) for row in rows]
+
+
+def source_news_statistics():
+    """Считает накопленные новости и дату последнего нового материала."""
+    initialize_database()
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT source, COUNT(*) AS news_count,
+                   MAX(publication_date) AS newest_publication,
+                   MAX(parsed_date) AS last_received
+            FROM news_items
+            GROUP BY source
+            """
+        ).fetchall()
+    return {
+        row["source"]: {
+            "news_count": int(row["news_count"]),
+            "newest_publication": row["newest_publication"] or "",
+            "last_received": row["last_received"] or "",
+        }
+        for row in rows
+    }
 
 
 def list_bookmark_folders(user_id):
@@ -749,6 +960,44 @@ def _validate_password(value):
     if not 10 <= len(password) <= 256:
         raise ValueError("Пароль должен содержать не менее 10 символов")
     return password
+
+
+def _validated_source_name(value):
+    source = " ".join(str(value or "").split())
+    if not 1 <= len(source) <= 300:
+        raise ValueError("Источник не найден")
+    return source
+
+
+def _validated_optional_user_id(value):
+    if value in {None, ""}:
+        return None
+    try:
+        user_id = int(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Пользователь не найден") from error
+    return user_id if user_id > 0 else None
+
+
+def _parser_job_from_row(row):
+    if row is None:
+        return None
+    keys = set(row.keys())
+    return {
+        "id": int(row["id"]),
+        "source": row["source"],
+        "status": row["status"],
+        "requested_by": (
+            int(row["requested_by"]) if row["requested_by"] is not None else None
+        ),
+        "requested_by_name": (
+            row["requested_by_name"] if "requested_by_name" in keys else ""
+        ) or "",
+        "requested_at": row["requested_at"],
+        "started_at": row["started_at"],
+        "finished_at": row["finished_at"],
+        "error": row["error"],
+    }
 
 
 def _user_from_row(row):

@@ -28,8 +28,11 @@ from utils.keywords import (
 from utils.news import sort_news_by_publication
 from utils.source_groups import (
     AGENCIES_GROUP,
+    AGENCY_SOURCES,
     GOVERNMENT_GROUP,
+    GOVERNMENT_SOURCES,
     NEWSPAPERS_GROUP,
+    NEWSPAPER_SOURCES,
     filter_news_by_group,
     source_group as get_source_group,
 )
@@ -41,11 +44,14 @@ from utils.storage import (
     create_bookmark_folder,
     create_user,
     delete_bookmark_folder,
+    enqueue_parser_job,
     find_news_by_url,
     list_users,
+    list_parser_jobs,
     list_bookmark_folders,
     list_bookmarks,
     load_source_order,
+    load_source_settings,
     load_all_news,
     load_cached_article,
     load_found_news,
@@ -55,9 +61,11 @@ from utils.storage import (
     save_cached_article,
     save_bookmark,
     save_source_order,
+    set_source_enabled,
     set_user_active,
     set_user_password,
     set_user_role,
+    source_news_statistics,
     update_bookmark,
 )
 
@@ -148,6 +156,7 @@ SETTINGS_HTML = """
     <header>
         <div><h1>{{title}}</h1><p class="subtitle">{{subtitle}}</p></div>
         <div class="top-actions">
+            {% if current_user.role == 'admin' %}<a class="button" href="/admin/sources">Источники</a>{% endif %}
             {% if mode == 'account' and current_user.role == 'admin' %}<a class="button" href="/admin/users">Пользователи</a>{% endif %}
             {% if mode == 'users' %}<a class="button" href="/account">Мой аккаунт</a>{% endif %}
         </div>
@@ -204,6 +213,59 @@ SETTINGS_HTML = """
         {% endfor %}
     </section>
     {% endif %}
+</main></body></html>
+"""
+
+
+ADMIN_SOURCES_HTML = """
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% if auto_refresh %}<meta http-equiv="refresh" content="8">{% endif %}
+    <title>Управление источниками — Монитор</title>
+    <style>
+        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655;--amber:#a86e16}
+        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}.shell{width:min(1450px,calc(100% - 34px));margin:auto;padding:30px 0 80px}a{color:inherit}.top{display:flex;align-items:center;justify-content:space-between;gap:18px}.back{color:var(--muted);text-decoration:none}.back:hover{color:var(--coral)}.top-actions{display:flex;gap:8px}.button,button{min-height:40px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:6px;color:#5b554c;background:var(--surface);font:650 12px inherit;text-decoration:none;cursor:pointer}.button:hover,button:hover{color:var(--coral);border-color:var(--coral)}header{margin:36px 0 24px}h1{margin:0;font-size:clamp(38px,5vw,64px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}
+        .message,.error{margin:0 0 18px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:20px}.metric{padding:20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.metric span{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}.metric strong{display:block;margin-top:7px;font-size:31px;letter-spacing:-.04em}.metric.good strong{color:var(--green)}.metric.warn strong{color:var(--amber)}.metric.bad strong{color:var(--coral)}
+        .panel{overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.panel-head{min-height:64px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line)}.panel-head h2{margin:0;font-size:18px}.panel-head p{margin:4px 0 0;color:var(--muted);font-size:11px}.source-table{width:100%;border-collapse:collapse}.source-table th{padding:11px 13px;color:var(--muted);background:#faf6ef;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em}.source-table td{padding:13px;border-top:1px solid #e6dfd4;vertical-align:middle;font-size:12px}.source-table tbody tr:hover{background:#fff9f2}.source strong{display:block;font-size:13px}.source small,.muted{display:block;margin-top:3px;color:var(--muted);font-size:10px}.badge{width:max-content;padding:5px 8px;border-radius:999px;background:#edf6ef;color:var(--green);font-size:10px;font-weight:750}.badge.empty,.badge.pending,.badge.running{color:var(--amber);background:#fff4de}.badge.error{color:#a63a32;background:#fff0ed}.badge.disabled{color:#777267;background:#eee9e1}.result b{display:block;font-size:13px}.error-copy{max-width:260px;margin-top:4px;overflow:hidden;color:#a63a32;font-size:10px;text-overflow:ellipsis;white-space:nowrap}.actions{display:flex;justify-content:flex-end;gap:7px}.actions form{margin:0}.actions .run{color:var(--coral);border-color:rgba(228,79,69,.5)}.actions button:disabled{cursor:not-allowed;opacity:.4}.pause{min-width:86px}.jobs{margin-top:18px;padding:18px 20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.jobs h2{margin:0 0 12px;font-size:16px}.job{min-height:34px;display:grid;grid-template-columns:minmax(180px,1fr) 100px 155px minmax(0,2fr);align-items:center;gap:12px;border-top:1px solid #ece5da;font-size:11px}.job:first-of-type{border-top:0}.job-error{overflow:hidden;color:#a63a32;text-overflow:ellipsis;white-space:nowrap}.empty-jobs{color:var(--muted);font-size:12px}
+        @media(max-width:1050px){.summary{grid-template-columns:repeat(2,1fr)}.table-wrap{overflow-x:auto}.source-table{min-width:980px}}@media(max-width:620px){.shell{width:min(100% - 22px,1450px)}.top{align-items:flex-start;flex-direction:column}.summary{grid-template-columns:1fr 1fr}.metric{padding:15px}.metric strong{font-size:25px}.job{grid-template-columns:1fr 90px}.job span:nth-child(n+3){display:none}}
+    </style>
+</head>
+<body><main class="shell">
+    <div class="top">
+        <a class="back" href="/">← Вернуться к Монитору</a>
+        <div class="top-actions"><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div>
+    </div>
+    <header><h1>Источники</h1><p class="subtitle">Состояние парсеров, ручные проверки и управление расписанием</p></header>
+    {% if message %}<p class="message">{{message}}</p>{% endif %}
+    {% if error %}<p class="error">{{error}}</p>{% endif %}
+    <section class="summary">
+        <article class="metric"><span>Всего источников</span><strong>{{summary.total}}</strong></article>
+        <article class="metric good"><span>Работают</span><strong>{{summary.ok}}</strong></article>
+        <article class="metric warn"><span>Ждут внимания</span><strong>{{summary.problem}}</strong></article>
+        <article class="metric bad"><span>На паузе</span><strong>{{summary.disabled}}</strong></article>
+    </section>
+    <section class="panel">
+        <div class="panel-head"><div><h2>Центр управления</h2><p>Задания выполняет запущенный main.py; страница обновляется сама, пока есть активная проверка.</p></div><a class="button" href="/admin/sources">Обновить страницу</a></div>
+        <div class="table-wrap"><table class="source-table">
+            <thead><tr><th>Источник</th><th>Состояние</th><th>Последняя проверка</th><th>Последняя новость</th><th>Результат</th><th></th></tr></thead>
+            <tbody>{% for item in sources %}
+            <tr>
+                <td class="source"><strong>{{item.source}}</strong><small>{{item.group_label}} · {{item.total_news}} в базе</small></td>
+                <td><span class="badge {{item.status_class}}">{{item.status_label}}</span>{% if item.job_label %}<small class="muted">{{item.job_label}}</small>{% endif %}</td>
+                <td>{{item.checked_at or 'ещё не проверялся'}}<small class="muted">успешно: {{item.last_success or '—'}}</small></td>
+                <td>{{item.last_received or '—'}}<small class="muted">публикация: {{item.newest_publication or '—'}}</small></td>
+                <td class="result"><b>{{item.news_count}} материалов · {{item.duration}} с</b>{% if item.error %}<div class="error-copy" title="{{item.error}}">{{item.error}}</div>{% endif %}</td>
+                <td><div class="actions">
+                    <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="refresh"><input type="hidden" name="source" value="{{item.source}}"><button class="run" type="submit" {{'disabled' if not item.enabled or item.job_active else ''}}>Обновить</button></form>
+                    <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="toggle"><input type="hidden" name="source" value="{{item.source}}"><button class="pause" type="submit">{{'Пауза' if item.enabled else 'Включить'}}</button></form>
+                </div></td>
+            </tr>{% endfor %}</tbody>
+        </table></div>
+    </section>
+    <section class="jobs"><h2>Последние ручные проверки</h2>{% for job in jobs %}<div class="job"><strong>{{job.source}}</strong><span class="badge {{job.status}}">{{job.status_label}}</span><span>{{job.requested_at.replace('T',' ')}}</span><span class="job-error">{{job.error}}</span></div>{% else %}<p class="empty-jobs">Ручных проверок пока не было.</p>{% endfor %}</section>
 </main></body></html>
 """
 
@@ -345,7 +407,7 @@ HTML = """
         .health{
             min-height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;
             color:var(--green);border:1px solid rgba(62,118,85,.38);
-            border-radius:5px;background:rgba(255,252,246,.55);font-size:10px;font-weight:650
+            border-radius:5px;background:rgba(255,252,246,.55);font-size:10px;font-weight:650;text-decoration:none
         }
         .health.warning{color:#9b691e;border-color:rgba(227,153,42,.55)}
         .health-dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px rgba(62,118,85,.09)}
@@ -555,10 +617,10 @@ HTML = """
                         <button class="logout" type="submit" aria-label="Выйти">↪</button>
                     </form>
                 </div>
-                <div class="health {{'warning' if health_ok < health_total else ''}}">
+                {% if current_user.role == 'admin' %}<a class="health {{'warning' if health_ok < health_total else ''}}" href="/admin/sources" title="Открыть управление источниками">
                     <span class="health-dot"></span>
                     {{health_ok}} из {{health_total}} источников работают
-                </div>
+                </a>{% else %}<div class="health {{'warning' if health_ok < health_total else ''}}"><span class="health-dot"></span>{{health_ok}} из {{health_total}} источников работают</div>{% endif %}
             </div>
         </div>
     </header>
@@ -1387,6 +1449,144 @@ def admin_users():
         subtitle="Аккаунты, роли и доступ к Монитору",
         current_user=administrator,
         users=list_users(),
+        csrf_token=csrf_token(),
+        message=str(request.args.get("message", "")).strip(),
+        error=str(request.args.get("error", "")).strip(),
+    )
+
+
+def _registered_admin_sources():
+    """Возвращает источники интерфейса без старых совместимых псевдонимов."""
+    groups = (
+        ("Госструктуры", GOVERNMENT_SOURCES - {"Сахалинская обл."}),
+        ("Информагентства", AGENCY_SOURCES),
+        ("Газеты", NEWSPAPER_SOURCES),
+    )
+    return [
+        (source, group_label)
+        for group_label, names in groups
+        for source in sorted(names, key=str.casefold)
+    ]
+
+
+@app.route("/admin/sources", methods=["GET", "POST"])
+def admin_sources():
+    """Показывает состояние парсеров и ставит ручные проверки в очередь."""
+    administrator = current_user()
+    if not administrator or administrator.get("role") != "admin":
+        abort(403)
+
+    registered = _registered_admin_sources()
+    registered_names = {source for source, _group in registered}
+    settings = load_source_settings()
+
+    if request.method == "POST":
+        if not csrf_is_valid():
+            abort(400)
+        source = " ".join(str(request.form.get("source", "")).split())
+        if source not in registered_names:
+            return redirect(url_for("admin_sources", error="Источник не найден"))
+        action = str(request.form.get("action", "")).strip()
+        try:
+            if action == "toggle":
+                enabled = settings.get(source, {}).get("enabled", True)
+                changed = set_source_enabled(source, not enabled)
+                state = "возвращён в расписание" if changed["enabled"] else "поставлен на паузу"
+                message = f"{source}: {state}"
+            elif action == "refresh":
+                if not settings.get(source, {}).get("enabled", True):
+                    raise ValueError("Сначала включите источник")
+                job = enqueue_parser_job(source, administrator.get("id"))
+                state = "уже выполняется" if job["status"] == "running" else "поставлен в очередь"
+                message = f"{source}: {state}"
+            else:
+                raise ValueError("Неизвестное действие")
+        except ValueError as operation_error:
+            return redirect(url_for("admin_sources", error=str(operation_error)))
+        return redirect(url_for("admin_sources", message=message))
+
+    status_document = load_json("parser_status.json", {})
+    status_by_source = {
+        item.get("source"): item
+        for item in status_document.get("sources", [])
+        if item.get("source")
+    }
+    database_by_source = source_news_statistics()
+    jobs = list_parser_jobs(30)
+    latest_job_by_source = {}
+    for job in jobs:
+        latest_job_by_source.setdefault(job["source"], job)
+
+    status_labels = {
+        "ok": "Работает",
+        "empty": "Пустая выдача",
+        "error": "Ошибка",
+        "disabled": "На паузе",
+        "unknown": "Нет данных",
+        "pending": "В очереди",
+        "running": "Обновляется",
+    }
+    job_labels = {
+        "pending": "В очереди",
+        "running": "Выполняется",
+        "success": "Выполнено",
+        "error": "Ошибка",
+    }
+    prepared_sources = []
+    for source, group_label in registered:
+        parser_status = status_by_source.get(source, {})
+        database_status = database_by_source.get(source, {})
+        enabled = settings.get(source, {}).get("enabled", True)
+        job = latest_job_by_source.get(source, {})
+        job_active = job.get("status") in {"pending", "running"}
+        raw_status = parser_status.get("status", "unknown") if enabled else "disabled"
+        display_status = job.get("status") if enabled and job_active else raw_status
+        error = (
+            job.get("error", "")
+            if job.get("status") == "error"
+            else parser_status.get("error", "")
+        )
+        prepared_sources.append({
+            "source": source,
+            "group_label": group_label,
+            "enabled": enabled,
+            "status_class": display_status,
+            "status_label": status_labels.get(display_status, display_status),
+            "job_active": job_active,
+            "job_label": job_labels.get(job.get("status"), "") if job else "",
+            "checked_at": parser_status.get("checked_at", ""),
+            "last_success": parser_status.get("last_success", ""),
+            "last_received": database_status.get("last_received", ""),
+            "newest_publication": database_status.get("newest_publication", ""),
+            "total_news": database_status.get("news_count", 0),
+            "news_count": parser_status.get("news_count", 0),
+            "duration": parser_status.get("duration_seconds", 0),
+            "error": error,
+        })
+
+    enabled_sources = [item for item in prepared_sources if item["enabled"]]
+    summary = {
+        "total": len(prepared_sources),
+        "ok": sum(item["status_class"] == "ok" for item in enabled_sources),
+        "problem": sum(
+            item["status_class"] in {"empty", "error", "unknown"}
+            for item in enabled_sources
+        ),
+        "disabled": len(prepared_sources) - len(enabled_sources),
+    }
+    prepared_jobs = []
+    for job in jobs:
+        prepared = dict(job)
+        prepared["status_label"] = job_labels.get(job["status"], job["status"])
+        prepared_jobs.append(prepared)
+
+    return render_template_string(
+        ADMIN_SOURCES_HTML,
+        sources=prepared_sources,
+        jobs=prepared_jobs,
+        summary=summary,
+        auto_refresh=any(job["status"] in {"pending", "running"} for job in jobs),
+        current_user=administrator,
         csrf_token=csrf_token(),
         message=str(request.args.get("message", "")).strip(),
         error=str(request.args.get("error", "")).strip(),

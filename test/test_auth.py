@@ -163,6 +163,7 @@ class AuthenticationTests(unittest.TestCase):
             )
         self.assertEqual(allowed.status_code, 200)
         self.assertEqual(self.client.get("/admin/users").status_code, 403)
+        self.assertEqual(self.client.get("/admin/sources").status_code, 403)
 
     def test_admin_creates_manages_and_reactivates_user(self):
         self._create_first_admin()
@@ -229,6 +230,44 @@ class AuthenticationTests(unittest.TestCase):
         self.assertIsNotNone(
             storage.authenticate_user("journalist", "replacement-2026")
         )
+
+    def test_admin_can_open_source_panel_queue_refresh_and_pause_source(self):
+        self._create_first_admin()
+        with patch.object(
+            web_app,
+            "load_json",
+            side_effect=self._empty_app_data,
+        ):
+            page = self.client.get("/admin/sources")
+
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn("Центр управления", html)
+        self.assertIn("МЧС", html)
+        token = self._csrf(page)
+
+        queued = self.client.post(
+            "/admin/sources",
+            data={
+                "csrf_token": token,
+                "action": "refresh",
+                "source": "МЧС",
+            },
+        )
+        self.assertEqual(queued.status_code, 302)
+        self.assertEqual(storage.list_parser_jobs()[0]["source"], "МЧС")
+        self.assertEqual(storage.list_parser_jobs()[0]["status"], "pending")
+
+        paused = self.client.post(
+            "/admin/sources",
+            data={
+                "csrf_token": token,
+                "action": "toggle",
+                "source": "МЧС",
+            },
+        )
+        self.assertEqual(paused.status_code, 302)
+        self.assertFalse(storage.source_is_enabled("МЧС"))
 
     def test_user_can_change_own_password(self):
         self._create_first_admin()

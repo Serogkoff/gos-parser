@@ -110,6 +110,27 @@ class ParserStatusTests(unittest.TestCase):
             {"Правительство РФ", "РИА Новости"},
         )
 
+    def test_disabled_source_keeps_last_success_without_counting_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "parser_status.json"
+            with patch.object(status, "STATUS_FILE", path):
+                status.save_parser_status(
+                    [{"source": "МЧС", "status": "ok"}],
+                    "test",
+                    now=datetime(2026, 8, 13, 8, 0),
+                )
+                paused = status.save_parser_status(
+                    [{"source": "МЧС", "status": "disabled"}],
+                    "test",
+                    now=datetime(2026, 8, 13, 9, 0),
+                )
+
+        item = paused["sources"][0]
+        self.assertEqual(item["availability"], "disabled")
+        self.assertEqual(item["last_success"], "2026-08-13 08:00:00")
+        self.assertEqual(item["failure_streak"], 0)
+        self.assertEqual(paused["summary"]["disabled"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

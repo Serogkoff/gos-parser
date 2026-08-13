@@ -2,7 +2,7 @@ import time
 import multiprocessing
 import argparse
 from datetime import datetime, timedelta
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 
 from config import (
     AGENCY_UPDATE_INTERVAL,
@@ -21,10 +21,13 @@ from utils.parser_runner import ParserTimeoutError, run_parser_with_timeout
 from utils.news import deduplicate_news
 from utils.status import print_status_table, save_parser_status
 from utils.storage import (
+    claim_next_parser_job,
     ensure_daily_backup,
+    finish_parser_job,
     load_existing_urls,
     prepare_database,
     save_results,
+    source_is_enabled,
 )
 from utils.keywords import search_keywords
 
@@ -129,6 +132,8 @@ SITES = [
     *NEWSPAPER_SITES,
 ]
 
+SOURCE_RUN_LOCKS = {name: Lock() for name, _parser in SITES}
+
 
 def safe_parse(parser_func, max_retries=2, timeout_seconds=SOURCE_TIMEOUT_SECONDS):
     last_error = ""
@@ -151,7 +156,12 @@ def safe_parse(parser_func, max_retries=2, timeout_seconds=SOURCE_TIMEOUT_SECOND
     return [], last_error
 
 
-def run_once(sites=None, group_name="Все источники", merge_status=False):
+def run_once(
+    sites=None,
+    group_name="Все источники",
+    merge_status=False,
+    wait_for_busy=False,
+):
     sites = SITES if sites is None else sites
     existing_urls = load_existing_urls()
 
@@ -168,15 +178,35 @@ def run_once(sites=None, group_name="Все источники", merge_status=Fa
 
     for name, parser_func in sites:
         print(f"\n{name}:")
+        if not source_is_enabled(name):
+            print("  ⏸ Источник временно отключён администратором")
+            parser_statuses.append({
+                "source": name,
+                "status": "disabled",
+                "news_count": 0,
+                "with_date": 0,
+                "matches_count": 0,
+                "duration_seconds": 0,
+                "error": "",
+            })
+            continue
+
+        source_lock = SOURCE_RUN_LOCKS.setdefault(name, Lock())
+        if not source_lock.acquire(blocking=wait_for_busy):
+            print("  ℹ️ Источник уже обновляется — повторный запуск пропущен")
+            continue
         started = time.perf_counter()
-        news, error = safe_parse(
-            parser_func,
-            max_retries=MAX_RETRIES,
-            timeout_seconds=SOURCE_TIMEOUT_OVERRIDES.get(
-                name,
-                SOURCE_TIMEOUT_SECONDS,
-            ),
-        )
+        try:
+            news, error = safe_parse(
+                parser_func,
+                max_retries=MAX_RETRIES,
+                timeout_seconds=SOURCE_TIMEOUT_OVERRIDES.get(
+                    name,
+                    SOURCE_TIMEOUT_SECONDS,
+                ),
+            )
+        finally:
+            source_lock.release()
         duration = time.perf_counter() - started
         all_news.extend(news)
         matches = search_keywords(news)
@@ -231,6 +261,50 @@ def run_once(sites=None, group_name="Все источники", merge_status=Fa
                 print(f"     🔗 {url}")
 
     return parser_statuses
+
+
+def run_admin_job_queue(stop_event):
+    """Выполняет задания из админ-панели внутри основного процесса."""
+    site_by_name = {name: (name, parser) for name, parser in SITES}
+    while not stop_event.is_set():
+        job = claim_next_parser_job()
+        if job is None:
+            stop_event.wait(2)
+            continue
+
+        source = job["source"]
+        site = site_by_name.get(source)
+        if site is None:
+            finish_parser_job(job["id"], False, "Источник отсутствует в конфигурации")
+            continue
+        if not source_is_enabled(source):
+            finish_parser_job(job["id"], False, "Источник поставлен на паузу")
+            continue
+
+        try:
+            statuses = run_once(
+                [site],
+                group_name=f"{source} · запуск из админ-панели",
+                merge_status=True,
+                wait_for_busy=True,
+            )
+            failed_status = next(
+                (item for item in statuses if item.get("status") == "error"),
+                None,
+            )
+            success = bool(statuses) and failed_status is None
+            error = ""
+            if failed_status is not None:
+                error = failed_status.get("error") or "Парсер завершился с ошибкой"
+            elif not statuses:
+                error = "Парсер не вернул состояние"
+            finish_parser_job(job["id"], success, error)
+        except Exception as error:
+            finish_parser_job(
+                job["id"],
+                False,
+                f"{type(error).__name__}: {error}",
+            )
 
 
 def run_schedule(
@@ -380,6 +454,13 @@ def main(argv=None):
         return
 
     stop_event = Event()
+    admin_jobs_thread = Thread(
+        target=run_admin_job_queue,
+        args=(stop_event,),
+        name="admin-parser-jobs",
+        daemon=True,
+    )
+    admin_jobs_thread.start()
     agency_thread = Thread(
         target=run_schedule,
         args=(

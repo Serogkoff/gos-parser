@@ -39,7 +39,11 @@ def _save_parser_status(statuses, project_version, now=None, merge=False):
         item["checked_at"] = checked_at
 
         old = previous_by_source.get(item.get("source"), {})
-        if item.get("status") == "ok":
+        if item.get("status") == "disabled":
+            item["last_success"] = old.get("last_success", "")
+            item["failure_streak"] = int(old.get("failure_streak", 0))
+            item["availability"] = "disabled"
+        elif item.get("status") == "ok":
             item["last_success"] = checked_at
             item["failure_streak"] = 0
             item["availability"] = "ok"
@@ -72,6 +76,7 @@ def _save_parser_status(statuses, project_version, now=None, merge=False):
             "ok": sum(item["status"] == "ok" for item in prepared),
             "empty": sum(item["status"] == "empty" for item in prepared),
             "errors": sum(item["status"] == "error" for item in prepared),
+            "disabled": sum(item["status"] == "disabled" for item in prepared),
             "total_news": sum(item.get("news_count", 0) for item in prepared),
             "total_matches": sum(
                 item.get("matches_count", 0) for item in prepared
@@ -105,7 +110,12 @@ def print_status_table(statuses):
     )
     print("-" * 94)
 
-    labels = {"ok": "✅ OK", "empty": "⚠️ Пусто", "error": "❌ Ошибка"}
+    labels = {
+        "ok": "✅ OK",
+        "empty": "⚠️ Пусто",
+        "error": "❌ Ошибка",
+        "disabled": "⏸ Пауза",
+    }
     for item in statuses:
         source = item.get("source", "")[:24]
         label = labels.get(item.get("status"), item.get("status", ""))[:9]

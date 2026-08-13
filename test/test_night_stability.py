@@ -57,6 +57,41 @@ class NightStabilityTests(unittest.TestCase):
             merge_status=True,
         )
 
+    def test_admin_queue_runs_source_once_and_finishes_job(self):
+        class StopAfterIdle:
+            stopped = False
+
+            def is_set(self):
+                return self.stopped
+
+            def wait(self, _seconds):
+                self.stopped = True
+
+        job = {"id": 17, "source": "МЧС"}
+        with (
+            mock.patch.object(
+                main,
+                "claim_next_parser_job",
+                side_effect=[job, None],
+            ),
+            mock.patch.object(main, "source_is_enabled", return_value=True),
+            mock.patch.object(
+                main,
+                "run_once",
+                return_value=[{"source": "МЧС", "status": "ok"}],
+            ) as run_once,
+            mock.patch.object(main, "finish_parser_job") as finish,
+        ):
+            main.run_admin_job_queue(StopAfterIdle())
+
+        run_once.assert_called_once_with(
+            [("МЧС", dict(main.SITES)["МЧС"])],
+            group_name="МЧС · запуск из админ-панели",
+            merge_status=True,
+            wait_for_busy=True,
+        )
+        finish.assert_called_once_with(17, True, "")
+
 
 if __name__ == "__main__":
     unittest.main()
