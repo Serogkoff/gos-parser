@@ -101,7 +101,7 @@ class KyodoParserTests(unittest.TestCase):
             return_value=page_props,
         ) as fetch, mock.patch.object(
             kyodo,
-            "_fetch_additional_page_props",
+            "_fetch_category_page_props",
             return_value={},
         ):
             result = kyodo.parse()
@@ -109,7 +109,7 @@ class KyodoParserTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
         fetch.assert_called_once_with()
 
-    def test_parse_collects_three_distinct_pages(self):
+    def test_parse_collects_distinct_category_feeds(self):
         def page(number):
             return {
                 "data": {
@@ -129,14 +129,23 @@ class KyodoParserTests(unittest.TestCase):
             return_value=page(1),
         ), mock.patch.object(
             kyodo,
-            "_fetch_additional_page_props",
+            "CATEGORY_ROUTES",
+            (("Политика", "/news/politics/"), ("Экономика", "/news/economics/")),
+        ), mock.patch.object(
+            kyodo,
+            "_fetch_category_page_props",
             side_effect=[page(2), page(3)],
-        ) as additional:
+        ) as categories:
             result = kyodo.parse()
 
         self.assertEqual(len(result), 3)
         self.assertEqual([item["source_id"] for item in result], ["1", "2", "3"])
-        self.assertEqual(additional.call_args_list, [mock.call(2), mock.call(3)])
+        self.assertEqual(result[1]["section"], "Политика")
+        self.assertEqual(result[2]["section"], "Экономика")
+        self.assertEqual(
+            categories.call_args_list,
+            [mock.call("/news/politics/"), mock.call("/news/economics/")],
+        )
 
     def test_browser_fallback_refreshes_next_build_id(self):
         soup = _page_soup({"worldNews": [KYODO_ITEM]})

@@ -22,8 +22,6 @@ HOME_URL = "https://www.47news.jp/"
 NEWS_URL = "https://www.47news.jp/news"
 PUBLISHER_NAME = "共同通信"
 MAX_AGE_DAYS = 30
-MAX_PAGES = 3
-PAGE_SIZE = 20
 BUILD_ID_FILE = Path(__file__).resolve().parents[2] / "kyodo_build_id.txt"
 
 logger = get_logger("kyodo")
@@ -46,6 +44,17 @@ SECTION_KEYS = (
     ("obituary", "Некрологи"),
 )
 
+# Официальные тематические разделы共同通信 на 47NEWS. Общая страница
+# возвращает только двадцать материалов и игнорирует обычный ?page=N,
+# поэтому собираем первые двадцать публикаций каждой рубрики отдельно.
+CATEGORY_ROUTES = (
+    ("Общество", "/news/national/"),
+    ("Политика", "/news/politics/"),
+    ("Экономика", "/news/economics/"),
+    ("Спорт", "/news/sports/"),
+    ("Культура", "/news/culture/"),
+)
+
 
 def parse():
     first_page = _fetch_page_props()
@@ -55,19 +64,13 @@ def parse():
 
     news = _parse_47news_page(first_page)
     known_urls = {item.get("url") for item in news}
-    total_count = _category_total(first_page)
 
-    for page_number in range(2, MAX_PAGES + 1):
-        if total_count and (page_number - 1) * PAGE_SIZE >= total_count:
-            break
-        page_props = _fetch_additional_page_props(page_number)
+    for section, route in CATEGORY_ROUTES:
+        page_props = _fetch_category_page_props(route)
         if not page_props:
-            break
-        page_news = _parse_47news_page(page_props)
+            continue
+        page_news = _parse_47news_page(page_props, direct_section=section)
         fresh = [item for item in page_news if item.get("url") not in known_urls]
-        if not fresh:
-            # Сайт проигнорировал номер страницы или лента закончилась.
-            break
         news.extend(fresh)
         known_urls.update(item.get("url") for item in fresh)
 
@@ -229,16 +232,15 @@ def _fetch_news_payload_with_curl():
         return {}
 
 
-def _fetch_additional_page_props(page_number):
-    """Читает следующую страницу общей ленты без запуска браузера."""
-    page_number = max(2, int(page_number))
-
+def _fetch_category_page_props(route):
+    """Читает отдельную рубрику共同通信 без запуска браузера."""
+    route = "/" + str(route).strip("/") + "/"
+    route_json = route.strip("/") + ".json"
     if _next_build_id:
-        data_url = f"{HOME_URL}_next/data/{_next_build_id}/news.json"
+        data_url = f"{HOME_URL}_next/data/{_next_build_id}/{route_json}"
         try:
             response = requests.get(
                 data_url,
-                params={"page": page_number},
                 headers={**HEADERS, "Accept": "application/json"},
                 timeout=(4, 8),
             )
@@ -251,8 +253,7 @@ def _fetch_additional_page_props(page_number):
 
     try:
         response = requests.get(
-            NEWS_URL,
-            params={"page": page_number},
+            urljoin(HOME_URL, route),
             headers={**HEADERS, "Accept": "text/html,*/*;q=0.8"},
             timeout=(4, 8),
         )
@@ -260,18 +261,39 @@ def _fetch_additional_page_props(page_number):
         payload = _next_payload(BeautifulSoup(response.content, "html.parser"))
         return payload.get("props", {}).get("pageProps", {})
     except requests.RequestException:
+        payload = _fetch_url_payload_with_curl(urljoin(HOME_URL, route))
+        return payload.get("props", {}).get("pageProps", {})
+
+
+def _fetch_url_payload_with_curl(url):
+    curl = shutil.which("curl.exe") or shutil.which("curl")
+    if not curl:
+        return {}
+    try:
+        completed = subprocess.run(
+            [
+                curl,
+                "--location",
+                "--silent",
+                "--show-error",
+                "--connect-timeout",
+                "4",
+                "--max-time",
+                "10",
+                "--header",
+                f"User-Agent: {HEADERS['User-Agent']}",
+                url,
+            ],
+            capture_output=True,
+            check=True,
+            timeout=12,
+        )
+        return _next_payload(BeautifulSoup(completed.stdout, "html.parser"))
+    except subprocess.SubprocessError:
         return {}
 
 
-def _category_total(page_props):
-    data = page_props.get("data", {}) if isinstance(page_props, dict) else {}
-    try:
-        return max(0, int(data.get("categoryNewsListCount", 0)))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _parse_47news_page(page, now=None):
+def _parse_47news_page(page, now=None, direct_section="Все новости"):
     """Читает JSON страницы и оставляет только публикации 共同通信."""
     now = now or datetime.now()
     cutoff = now - timedelta(days=MAX_AGE_DAYS)
@@ -285,7 +307,7 @@ def _parse_47news_page(page, now=None):
         else []
     )
     sections = (
-        (("categoryNewsList", "Все новости", direct_entries),)
+        (("categoryNewsList", direct_section, direct_entries),)
         if direct_entries
         else tuple((key, section, _section_entries(page_props.get(key))) for key, section in SECTION_KEYS)
     )
