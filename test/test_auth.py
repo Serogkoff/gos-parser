@@ -164,6 +164,7 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(allowed.status_code, 200)
         self.assertEqual(self.client.get("/admin/users").status_code, 403)
         self.assertEqual(self.client.get("/admin/sources").status_code, 403)
+        self.assertEqual(self.client.get("/admin/system").status_code, 403)
 
     def test_admin_creates_manages_and_reactivates_user(self):
         self._create_first_admin()
@@ -268,6 +269,40 @@ class AuthenticationTests(unittest.TestCase):
         )
         self.assertEqual(paused.status_code, 302)
         self.assertFalse(storage.source_is_enabled("МЧС"))
+
+    def test_admin_can_inspect_system_and_create_backup(self):
+        self._create_first_admin()
+        with (
+            patch.object(web_app, "read_recent_errors", return_value=[
+                "2026-08-13 10:00:00 | WARNING | test | Сайт не ответил"
+            ]),
+            patch.object(web_app, "error_log_stats", return_value={
+                "path": "parser_errors.log",
+                "size_bytes": 128,
+                "modified_at": "2026-08-13T10:00:00",
+            }),
+        ):
+            page = self.client.get("/admin/system")
+
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn("Целостность SQLite", html)
+        self.assertIn("Сайт не ответил", html)
+        token = self._csrf(page)
+
+        with patch.object(
+            web_app,
+            "create_manual_backup",
+            return_value={"name": "news-manual-test.db", "removed": []},
+        ) as create_backup:
+            response = self.client.post(
+                "/admin/system",
+                data={"csrf_token": token, "action": "backup"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        create_backup.assert_called_once_with(retention=10)
+        self.assertIn("news-manual-test.db", response.headers["Location"])
 
     def test_user_can_change_own_password(self):
         self._create_first_admin()

@@ -235,6 +235,31 @@ class SQLiteStorageTests(unittest.TestCase):
         )
         self.assertEqual(len(latest["removed"]), 1)
 
+    def test_manual_backups_are_listed_and_limited(self):
+        self._write_json(self.all_json, [])
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+
+        first = storage.create_manual_backup(
+            retention=2,
+            now=datetime(2026, 8, 13, 10, 0, 1),
+        )
+        storage.create_manual_backup(
+            retention=2,
+            now=datetime(2026, 8, 13, 10, 0, 2),
+        )
+        latest = storage.create_manual_backup(
+            retention=2,
+            now=datetime(2026, 8, 13, 10, 0, 3),
+        )
+
+        backups = storage.list_database_backups()
+        self.assertEqual(len(backups), 2)
+        self.assertTrue(all(item["kind"] == "manual" for item in backups))
+        self.assertFalse(Path(first["path"]).exists())
+        self.assertTrue(Path(latest["path"]).exists())
+        self.assertEqual(len(latest["removed"]), 1)
+
     def test_prepare_database_reports_operational_status(self):
         self._write_json(self.all_json, [])
         self._write_json(self.found_json, [])

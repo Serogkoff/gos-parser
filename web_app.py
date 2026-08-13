@@ -17,6 +17,7 @@ from flask import (
     session,
     url_for,
 )
+from config import PROJECT_VERSION
 from utils.auth import load_secret_key
 from utils.article_reader import extract_article
 from utils.keywords import (
@@ -25,6 +26,7 @@ from utils.keywords import (
     rebuild_found_news,
     remove_keyword,
 )
+from utils.logger import error_log_stats, read_recent_errors
 from utils.news import sort_news_by_publication
 from utils.source_groups import (
     AGENCIES_GROUP,
@@ -38,6 +40,7 @@ from utils.source_groups import (
 )
 from utils.storage import (
     authenticate_user,
+    create_manual_backup,
     bookmarked_urls,
     count_users,
     count_bookmarks,
@@ -47,6 +50,7 @@ from utils.storage import (
     enqueue_parser_job,
     find_news_by_url,
     list_users,
+    list_database_backups,
     list_parser_jobs,
     list_bookmark_folders,
     list_bookmarks,
@@ -66,6 +70,7 @@ from utils.storage import (
     set_user_password,
     set_user_role,
     source_news_statistics,
+    database_stats,
     update_bookmark,
 )
 
@@ -156,7 +161,7 @@ SETTINGS_HTML = """
     <header>
         <div><h1>{{title}}</h1><p class="subtitle">{{subtitle}}</p></div>
         <div class="top-actions">
-            {% if current_user.role == 'admin' %}<a class="button" href="/admin/sources">Источники</a>{% endif %}
+            {% if current_user.role == 'admin' %}<a class="button" href="/admin/sources">Источники</a><a class="button" href="/admin/system">Система</a>{% endif %}
             {% if mode == 'account' and current_user.role == 'admin' %}<a class="button" href="/admin/users">Пользователи</a>{% endif %}
             {% if mode == 'users' %}<a class="button" href="/account">Мой аккаунт</a>{% endif %}
         </div>
@@ -236,7 +241,7 @@ ADMIN_SOURCES_HTML = """
 <body><main class="shell">
     <div class="top">
         <a class="back" href="/">← Вернуться к Монитору</a>
-        <div class="top-actions"><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div>
+        <div class="top-actions"><a class="button" href="/admin/system">Система</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div>
     </div>
     <header><h1>Источники</h1><p class="subtitle">Состояние парсеров, ручные проверки и управление расписанием</p></header>
     {% if message %}<p class="message">{{message}}</p>{% endif %}
@@ -266,6 +271,55 @@ ADMIN_SOURCES_HTML = """
         </table></div>
     </section>
     <section class="jobs"><h2>Последние ручные проверки</h2>{% for job in jobs %}<div class="job"><strong>{{job.source}}</strong><span class="badge {{job.status}}">{{job.status_label}}</span><span>{{job.requested_at.replace('T',' ')}}</span><span class="job-error">{{job.error}}</span></div>{% else %}<p class="empty-jobs">Ручных проверок пока не было.</p>{% endfor %}</section>
+</main></body></html>
+"""
+
+
+ADMIN_SYSTEM_HTML = """
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Система — Монитор</title>
+    <style>
+        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655;--amber:#a86e16}
+        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}.shell{width:min(1320px,calc(100% - 34px));margin:auto;padding:30px 0 80px}a{color:inherit;text-decoration:none}.top{display:flex;align-items:center;justify-content:space-between;gap:18px}.back{color:var(--muted)}.back:hover{color:var(--coral)}.top-actions{display:flex;gap:8px;flex-wrap:wrap}.button,button{min-height:40px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:6px;color:#5b554c;background:var(--surface);font:650 12px inherit;cursor:pointer}.button:hover,button:hover{color:var(--coral);border-color:var(--coral)}header{margin:36px 0 24px}h1{margin:0;font-size:clamp(38px,5vw,64px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}
+        .message,.error{margin:0 0 18px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}.metric{padding:20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.metric span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.metric strong{display:block;margin-top:7px;font-size:28px;letter-spacing:-.04em}.metric.good strong{color:var(--green)}.metric.warn strong{color:var(--amber)}
+        .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.75fr);gap:18px;align-items:start}.panel{overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.panel+.panel{margin-top:18px}.panel-head{min-height:64px;padding:13px 20px;display:flex;align-items:center;justify-content:space-between;gap:15px;border-bottom:1px solid var(--line)}.panel-head h2{margin:0;font-size:18px}.panel-head p{margin:4px 0 0;color:var(--muted);font-size:11px}.primary{color:var(--coral);border-color:rgba(228,79,69,.55)}.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.fact{padding:16px 20px;border-bottom:1px solid #e8e1d6}.fact:nth-child(odd){border-right:1px solid #e8e1d6}.fact span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em}.fact b{display:block;margin-top:5px;font-size:14px}.path{overflow-wrap:anywhere;color:var(--muted);font-size:10px}.backup{min-height:54px;padding:10px 16px;display:grid;grid-template-columns:minmax(0,1fr) 90px 150px;align-items:center;gap:12px;border-top:1px solid #e8e1d6;font-size:11px}.backup:first-child{border-top:0}.backup strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kind{margin-top:3px;color:var(--muted);font-size:9px;text-transform:uppercase}.empty{padding:35px 20px;color:var(--muted);text-align:center;font-size:12px}
+        .log{max-height:700px;overflow:auto;background:#201f1c;color:#eee8df}.log-line{padding:9px 13px;border-top:1px solid #37342f;font:11px/1.45 Consolas,"Cascadia Mono",monospace;overflow-wrap:anywhere}.log-line:first-child{border-top:0}.log-line.severity-warning{color:#ffd18a}.log-line.severity-error{color:#ff9d96}.log-meta{color:var(--muted);font-size:10px}.log-empty{padding:50px 20px;color:#aaa39a;text-align:center;font-size:12px}
+        @media(max-width:960px){.summary{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}}@media(max-width:580px){.shell{width:min(100% - 22px,1320px)}.top{align-items:flex-start;flex-direction:column}.summary{grid-template-columns:1fr 1fr}.metric{padding:15px}.metric strong{font-size:23px}.backup{grid-template-columns:1fr 72px}.backup time{display:none}.facts{grid-template-columns:1fr}.fact:nth-child(odd){border-right:0}}
+    </style>
+</head>
+<body><main class="shell">
+    <div class="top"><a class="back" href="/">← Вернуться к Монитору</a><div class="top-actions"><a class="button" href="/admin/sources">Источники</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div></div>
+    <header><h1>Система</h1><p class="subtitle">SQLite, резервные копии и журнал ошибок · версия {{version}}</p></header>
+    {% if message %}<p class="message">{{message}}</p>{% endif %}{% if error %}<p class="error">{{error}}</p>{% endif %}
+    <section class="summary">
+        <article class="metric good"><span>Целостность SQLite</span><strong>{{database.integrity}}</strong></article>
+        <article class="metric"><span>Размер базы</span><strong>{{database.size}}</strong></article>
+        <article class="metric"><span>Новостей</span><strong>{{database.news_count}}</strong></article>
+        <article class="metric"><span>Текстов сохранено</span><strong>{{database.cached_articles}}</strong></article>
+    </section>
+    <div class="grid">
+        <div>
+            <section class="panel">
+                <div class="panel-head"><div><h2>Рабочая база</h2><p>Проверка выполняется средствами самой SQLite.</p></div><a class="button" href="/admin/system">Проверить снова</a></div>
+                <div class="facts">
+                    <div class="fact"><span>Совпадений</span><b>{{database.found_count}}</b></div><div class="fact"><span>Режим журнала</span><b>{{database.journal_mode|upper}}</b></div>
+                    <div class="fact"><span>Миграция JSON</span><b>{{'завершена' if database.json_migrated else 'не завершена'}}</b></div><div class="fact"><span>Резервных копий</span><b>{{backups|length}}</b></div>
+                    <div class="fact" style="grid-column:1/-1"><span>Файл базы</span><b class="path">{{database.path}}</b></div>
+                </div>
+            </section>
+            <section class="panel">
+                <div class="panel-head"><div><h2>Резервные копии</h2><p>Ручных копий хранится не больше десяти.</p></div><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="backup"><button class="primary" type="submit">Создать копию</button></form></div>
+                <div>{% for backup in backups %}<div class="backup"><div><strong title="{{backup.name}}">{{backup.name}}</strong><div class="kind">{{'ручная' if backup.kind == 'manual' else 'ежедневная'}}</div></div><span>{{backup.size}}</span><time>{{backup.modified_at.replace('T',' ')}}</time></div>{% else %}<div class="empty">Резервных копий пока нет.</div>{% endfor %}</div>
+            </section>
+        </div>
+        <section class="panel">
+            <div class="panel-head"><div><h2>Последние ошибки</h2><p class="log-meta">{{log.size}} · обновлён {{log.modified_at.replace('T',' ') if log.modified_at else '—'}}</p></div></div>
+            <div class="log">{% for line in errors %}<div class="log-line {{'severity-error' if ' ERROR ' in line else ('severity-warning' if ' WARNING ' in line else '')}}">{{line}}</div>{% else %}<div class="log-empty">Журнал пуст — ошибок пока нет.</div>{% endfor %}</div>
+        </section>
+    </div>
 </main></body></html>
 """
 
@@ -1469,6 +1523,21 @@ def _registered_admin_sources():
     ]
 
 
+def _format_file_size(value):
+    """Показывает размер файла без технических байтовых чисел."""
+    try:
+        size = max(0, int(value))
+    except (TypeError, ValueError):
+        size = 0
+    units = ("Б", "КБ", "МБ", "ГБ")
+    amount = float(size)
+    for unit in units:
+        if amount < 1024 or unit == units[-1]:
+            return f"{amount:.0f} {unit}" if unit == "Б" else f"{amount:.1f} {unit}"
+        amount /= 1024
+    return f"{size} Б"
+
+
 @app.route("/admin/sources", methods=["GET", "POST"])
 def admin_sources():
     """Показывает состояние парсеров и ставит ручные проверки в очередь."""
@@ -1586,6 +1655,60 @@ def admin_sources():
         jobs=prepared_jobs,
         summary=summary,
         auto_refresh=any(job["status"] in {"pending", "running"} for job in jobs),
+        current_user=administrator,
+        csrf_token=csrf_token(),
+        message=str(request.args.get("message", "")).strip(),
+        error=str(request.args.get("error", "")).strip(),
+    )
+
+
+@app.route("/admin/system", methods=["GET", "POST"])
+def admin_system():
+    """Показывает состояние SQLite, копии базы и хвост журнала ошибок."""
+    administrator = current_user()
+    if not administrator or administrator.get("role") != "admin":
+        abort(403)
+
+    if request.method == "POST":
+        if not csrf_is_valid():
+            abort(400)
+        action = str(request.form.get("action", "")).strip()
+        if action != "backup":
+            return redirect(url_for("admin_system", error="Неизвестное действие"))
+        try:
+            created = create_manual_backup(retention=10)
+        except Exception as backup_error:
+            return redirect(url_for(
+                "admin_system",
+                error=(
+                    "Не удалось создать резервную копию: "
+                    f"{type(backup_error).__name__}: {backup_error}"
+                ),
+            ))
+        return redirect(url_for(
+            "admin_system",
+            message=f"Создана резервная копия {created['name']}",
+        ))
+
+    database = database_stats()
+    prepared_database = dict(database)
+    prepared_database["size"] = _format_file_size(database.get("size_bytes", 0))
+    backups = list_database_backups()
+    prepared_backups = []
+    for item in backups:
+        prepared = dict(item)
+        prepared["size"] = _format_file_size(item.get("size_bytes", 0))
+        prepared_backups.append(prepared)
+    log = error_log_stats()
+    log["size"] = _format_file_size(log.get("size_bytes", 0))
+
+    return render_template_string(
+        ADMIN_SYSTEM_HTML,
+        database=prepared_database,
+        backups=prepared_backups,
+        errors=list(reversed(read_recent_errors(limit=120))),
+        log=log,
+        version=PROJECT_VERSION,
         current_user=administrator,
         csrf_token=csrf_token(),
         message=str(request.args.get("message", "")).strip(),

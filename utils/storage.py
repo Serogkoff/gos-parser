@@ -1379,6 +1379,46 @@ def ensure_daily_backup(retention=7, now=None):
     }
 
 
+def create_manual_backup(retention=10, now=None):
+    """Создаёт подписанную ручную копию и оставляет последние снимки."""
+    moment = now or datetime.now()
+    destination = BACKUP_DIR / (
+        f"{DATABASE_FILE.stem}-manual-{moment:%Y-%m-%d_%H-%M-%S-%f}.db"
+    )
+    backup_database(destination)
+    removed = _remove_old_manual_backups(retention)
+    logger.info(f"Создана ручная резервная копия SQLite: {destination.name}")
+    return {
+        "path": str(destination),
+        "name": destination.name,
+        "removed": [str(path) for path in removed],
+    }
+
+
+def list_database_backups():
+    """Перечисляет автоматические и ручные резервные копии базы."""
+    if not BACKUP_DIR.exists():
+        return []
+    result = []
+    for path in BACKUP_DIR.iterdir():
+        if not path.is_file() or path.suffix.casefold() != ".db":
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        result.append({
+            "name": path.name,
+            "path": str(path),
+            "size_bytes": stat.st_size,
+            "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(
+                timespec="seconds"
+            ),
+            "kind": "manual" if "-manual-" in path.name else "automatic",
+        })
+    return sorted(result, key=lambda item: item["modified_at"], reverse=True)
+
+
 def prepare_database(retention=7):
     """Проверяет рабочую базу и создаёт ежедневную резервную копию."""
     stats = database_stats()
@@ -1420,6 +1460,30 @@ def _remove_old_backups(retention):
         path.unlink()
         removed.append(path)
         logger.info(f"Удалена старая резервная копия SQLite: {path.name}")
+    return removed
+
+
+def _remove_old_manual_backups(retention):
+    try:
+        retention = max(1, int(retention))
+    except (TypeError, ValueError):
+        retention = 10
+    if not BACKUP_DIR.exists():
+        return []
+    backups = sorted(
+        (
+            path for path in BACKUP_DIR.iterdir()
+            if path.is_file()
+            and path.suffix.casefold() == ".db"
+            and "-manual-" in path.name
+        ),
+        key=lambda path: path.name,
+    )
+    removed = []
+    for path in backups[:-retention]:
+        path.unlink()
+        removed.append(path)
+        logger.info(f"Удалена старая ручная копия SQLite: {path.name}")
     return removed
 
 
