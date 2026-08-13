@@ -73,6 +73,7 @@ from utils.storage import (
     set_user_role,
     source_news_statistics,
     source_incident_statistics,
+    source_reliability_statistics,
     database_stats,
     update_bookmark,
 )
@@ -245,7 +246,7 @@ ADMIN_SOURCES_HTML = """
 <body><main class="shell">
     <div class="top">
         <a class="back" href="/">← Вернуться к Монитору</a>
-        <div class="top-actions"><a class="button" href="/admin/incidents">Инциденты</a><a class="button" href="/admin/system">Система</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div>
+        <div class="top-actions"><a class="button" href="/admin/incidents">Инциденты</a><a class="button" href="/admin/reliability">Надёжность</a><a class="button" href="/admin/system">Система</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div>
     </div>
     <header><h1>Источники</h1><p class="subtitle">Состояние парсеров, ручные проверки и управление расписанием</p></header>
     {% if message %}<p class="message">{{message}}</p>{% endif %}
@@ -300,7 +301,7 @@ ADMIN_SYSTEM_HTML = """
     </style>
 </head>
 <body><main class="shell">
-    <div class="top"><a class="back" href="/">← Вернуться к Монитору</a><div class="top-actions"><a class="button" href="/admin/sources">Источники</a><a class="button" href="/admin/incidents">Инциденты</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div></div>
+    <div class="top"><a class="back" href="/">← Вернуться к Монитору</a><div class="top-actions"><a class="button" href="/admin/sources">Источники</a><a class="button" href="/admin/incidents">Инциденты</a><a class="button" href="/admin/reliability">Надёжность</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div></div>
     <header><h1>Система</h1><p class="subtitle">SQLite, резервные копии и журнал ошибок · версия {{version}}</p></header>
     {% if message %}<p class="message">{{message}}</p>{% endif %}{% if error %}<p class="error">{{error}}</p>{% endif %}
     <section class="summary">
@@ -352,7 +353,7 @@ ADMIN_INCIDENTS_HTML = """
     </style>
 </head>
 <body><main class="shell">
-    <div class="top"><a class="back" href="/">← Вернуться к Монитору</a><div class="top-actions"><a class="button" href="/admin/sources">Источники</a><a class="button" href="/admin/system">Система</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div></div>
+    <div class="top"><a class="back" href="/">← Вернуться к Монитору</a><div class="top-actions"><a class="button" href="/admin/sources">Источники</a><a class="button" href="/admin/reliability">Надёжность</a><a class="button" href="/admin/system">Система</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div></div>
     <header><h1>Инциденты</h1><p class="subtitle">История сбоев, восстановлений и продолжительности проблем источников</p></header>
     <section class="summary">
         <article class="metric"><span>Всего записано</span><strong>{{summary.total}}</strong></article>
@@ -370,6 +371,37 @@ ADMIN_INCIDENTS_HTML = """
             <td><div class="message">{{item.message or 'Причина не указана'}}{% if not item.is_active %}<small class="muted">{{item.resolution}} · {{item.resolved_at.replace('T',' ')}}</small>{% endif %}</div></td>
         </tr>{% endfor %}</tbody></table>{% else %}<div class="empty"><strong>Инцидентов нет</strong><span>Это хороший знак: источники пока не фиксировали ошибок и пустых ответов.</span></div>{% endif %}
     </div></section>
+</main></body></html>
+"""
+
+
+ADMIN_RELIABILITY_HTML = """
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Надёжность источников — Монитор</title>
+    <style>
+        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655;--amber:#a86e16}
+        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}.shell{width:min(1380px,calc(100% - 34px));margin:auto;padding:30px 0 80px}a{color:inherit;text-decoration:none}.top{display:flex;align-items:center;justify-content:space-between;gap:18px}.back{color:var(--muted)}.back:hover{color:var(--coral)}.top-actions,.periods{display:flex;gap:8px;flex-wrap:wrap}.button{min-height:40px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:6px;color:#5b554c;background:var(--surface);font-size:12px;font-weight:650}.button:hover,.button.active{color:var(--coral);border-color:var(--coral)}header{margin:36px 0 24px}h1{margin:0;font-size:clamp(40px,5vw,66px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted);line-height:1.5}
+        .summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}.metric{padding:20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.metric span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.metric strong{display:block;margin-top:7px;font-size:30px;letter-spacing:-.04em}.metric.bad strong{color:var(--coral)}.metric.warn strong{color:var(--amber)}.metric.good strong{color:var(--green)}.toolbar{margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:12px}.hint{color:var(--muted);font-size:11px;text-align:right}
+        .panel{overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.table{width:100%;border-collapse:collapse}.table th{padding:12px 14px;color:var(--muted);background:#faf6ef;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em}.table td{padding:15px 14px;border-top:1px solid #e6dfd4;vertical-align:middle;font-size:12px}.table tbody tr:hover{background:#fff9f2}.source strong{display:block;font-size:13px}.source small{display:block;margin-top:4px;color:var(--muted);font-size:10px}.uptime{min-width:180px}.uptime-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:800}.uptime-head.good{color:var(--green)}.uptime-head.warn{color:var(--amber)}.uptime-head.bad{color:var(--coral)}.track{height:5px;margin-top:7px;overflow:hidden;border-radius:999px;background:#e9e2d8}.track span{height:100%;display:block;border-radius:inherit;background:var(--green)}.track span.warn{background:var(--amber)}.track span.bad{background:var(--coral)}.active{width:max-content;padding:5px 8px;border-radius:999px;color:#a63a32;background:#ffdcd7;font-size:9px;font-weight:800;text-transform:uppercase}.muted{color:var(--muted)}
+        @media(max-width:980px){.summary{grid-template-columns:repeat(2,1fr)}.table-wrap{overflow:auto}.table{min-width:930px}}@media(max-width:620px){.shell{width:min(100% - 22px,1380px)}.top,.toolbar{align-items:flex-start;flex-direction:column}.summary{grid-template-columns:1fr 1fr}.metric{padding:15px}.hint{text-align:left}}
+    </style>
+</head>
+<body><main class="shell">
+    <div class="top"><a class="back" href="/">← Вернуться к Монитору</a><div class="top-actions"><a class="button" href="/admin/sources">Источники</a><a class="button" href="/admin/incidents">Инциденты</a><a class="button" href="/admin/system">Система</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div></div>
+    <header><h1>Надёжность</h1><p class="subtitle">Доступность источников по времени записанных сбоев. Чем меньше источник провёл в активном инциденте, тем выше процент.</p></header>
+    <section class="summary">
+        <article class="metric good"><span>Средняя доступность</span><strong>{{summary.average_uptime}}%</strong></article>
+        <article class="metric warn"><span>Инцидентов</span><strong>{{summary.incidents}}</strong></article>
+        <article class="metric bad"><span>Суммарный простой</span><strong>{{summary.downtime}}</strong></article>
+        <article class="metric"><span>Источников со сбоями</span><strong>{{summary.affected}} / {{summary.total}}</strong></article>
+    </section>
+    <div class="toolbar"><nav class="periods"><a class="button {{'active' if days == 7 else ''}}" href="/admin/reliability?days=7">7 дней</a><a class="button {{'active' if days == 30 else ''}}" href="/admin/reliability?days=30">30 дней</a></nav><span class="hint">История считается с момента установки журнала инцидентов; источники на паузе помечены отдельно.</span></div>
+    <section class="panel"><div class="table-wrap"><table class="table"><thead><tr><th>Источник</th><th>Доступность</th><th>Простой</th><th>Инцидентов</th><th>Средняя длительность</th><th>Проверок с ошибкой</th><th>Сейчас</th></tr></thead><tbody>
+        {% for item in sources %}<tr><td class="source"><strong>{{item.source}}</strong><small>{{item.group_label}}</small></td><td class="uptime"><div class="uptime-head {{item.uptime_class}}"><span>{{item.uptime_display}}%</span></div><div class="track"><span class="{{item.uptime_class}}" style="width:{{item.uptime_percent}}%"></span></div></td><td>{{item.downtime}}</td><td>{{item.incident_count}}{% if item.critical_count %}<span class="muted"> · критичных {{item.critical_count}}</span>{% endif %}</td><td>{{item.average_duration}}</td><td>{{item.checks_count}}</td><td>{% if not item.enabled %}<span class="muted">На паузе</span>{% elif item.active_count %}<span class="active">Инцидент</span>{% else %}<span class="muted">Работает</span>{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div></section>
 </main></body></html>
 """
 
@@ -1814,6 +1846,72 @@ def admin_incidents():
         incidents=prepared,
         summary=source_incident_statistics(),
         state=state,
+        current_user=administrator,
+    )
+
+
+@app.route("/admin/reliability")
+def admin_reliability():
+    """Показывает администраторам доступность источников за выбранный период."""
+    administrator = current_user()
+    if not administrator or administrator.get("role") != "admin":
+        abort(403)
+    try:
+        days = int(request.args.get("days", 7))
+    except (TypeError, ValueError):
+        days = 7
+    if days not in {7, 30}:
+        days = 7
+
+    registered = _registered_admin_sources()
+    group_by_source = dict(registered)
+    settings = load_source_settings()
+    statistics = source_reliability_statistics(
+        days=days,
+        sources=[source for source, _group in registered],
+    )
+    prepared = []
+    for raw_item in statistics:
+        item = dict(raw_item)
+        uptime = item["uptime_percent"]
+        item["group_label"] = group_by_source.get(item["source"], "Другие")
+        item["enabled"] = settings.get(item["source"], {}).get("enabled", True)
+        item["uptime_display"] = f"{uptime:.3f}".rstrip("0").rstrip(".")
+        item["uptime_class"] = (
+            "bad" if uptime < 95 else ("warn" if uptime < 99.5 else "good")
+        )
+        item["downtime"] = (
+            _format_duration(item["downtime_seconds"])
+            if item["downtime_seconds"]
+            else "—"
+        )
+        item["average_duration"] = (
+            _format_duration(item["average_incident_seconds"])
+            if item["average_incident_seconds"]
+            else "—"
+        )
+        prepared.append(item)
+
+    total = len(prepared)
+    average_uptime = (
+        sum(item["uptime_percent"] for item in prepared) / total
+        if total
+        else 100
+    )
+    total_downtime = sum(item["downtime_seconds"] for item in prepared)
+    return render_template_string(
+        ADMIN_RELIABILITY_HTML,
+        sources=prepared,
+        days=days,
+        summary={
+            "average_uptime": f"{average_uptime:.3f}".rstrip("0").rstrip("."),
+            "incidents": sum(item["incident_count"] for item in prepared),
+            "downtime": (
+                _format_duration(total_downtime) if total_downtime else "0 мин."
+            ),
+            "affected": sum(item["incident_count"] > 0 for item in prepared),
+            "total": total,
+        },
         current_user=administrator,
     )
 

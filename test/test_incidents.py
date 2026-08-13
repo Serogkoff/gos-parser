@@ -104,6 +104,44 @@ class SourceIncidentTests(unittest.TestCase):
         self.assertEqual(stats["critical"], 1)
         self.assertEqual(stats["resolved_24h"], 0)
 
+    def test_reliability_uses_incident_duration_and_includes_clean_sources(self):
+        storage.sync_source_incidents(
+            self.status("error", 1),
+            now=datetime(2026, 8, 10, 10, 0),
+        )
+        storage.sync_source_incidents(
+            self.status("ok"),
+            now=datetime(2026, 8, 10, 22, 0),
+        )
+
+        rows = storage.source_reliability_statistics(
+            days=1,
+            now=datetime(2026, 8, 11, 10, 0),
+            sources=["МЧС", "МИД РФ"],
+        )
+        by_source = {item["source"]: item for item in rows}
+
+        self.assertEqual(by_source["МЧС"]["downtime_seconds"], 12 * 3600)
+        self.assertEqual(by_source["МЧС"]["uptime_percent"], 50.0)
+        self.assertEqual(by_source["МЧС"]["incident_count"], 1)
+        self.assertEqual(by_source["МИД РФ"]["uptime_percent"], 100.0)
+
+    def test_reliability_clips_active_incident_to_selected_period(self):
+        storage.sync_source_incidents(
+            self.status("empty", 3),
+            now=datetime(2026, 8, 1, 10, 0),
+        )
+
+        row = storage.source_reliability_statistics(
+            days=7,
+            now=datetime(2026, 8, 13, 10, 0),
+            sources=["МЧС"],
+        )[0]
+
+        self.assertEqual(row["downtime_seconds"], 7 * 86400)
+        self.assertEqual(row["uptime_percent"], 0.0)
+        self.assertEqual(row["active_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -811,6 +811,94 @@ def source_incident_statistics(now=None):
     }
 
 
+def source_reliability_statistics(days=7, now=None, sources=None):
+    """Считает доступность источников по времени записанных инцидентов."""
+    try:
+        days = min(365, max(1, int(days)))
+    except (TypeError, ValueError):
+        days = 7
+    moment = now or datetime.now()
+    period_start = moment - timedelta(days=days)
+    period_seconds = max(1, int((moment - period_start).total_seconds()))
+    start_text = period_start.isoformat(timespec="seconds")
+    end_text = moment.isoformat(timespec="seconds")
+    initialize_database()
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT * FROM source_incidents
+            WHERE started_at < ?
+              AND (resolved_at = '' OR resolved_at > ?)
+            ORDER BY source COLLATE NOCASE, started_at
+            """,
+            (end_text, start_text),
+        ).fetchall()
+
+    by_source = {}
+    for row in rows:
+        by_source.setdefault(row["source"], []).append(dict(row))
+    names = {
+        " ".join(str(source or "").split())
+        for source in (sources or ())
+        if " ".join(str(source or "").split())
+    }
+    names.update(by_source)
+
+    result = []
+    for source in names:
+        incidents = by_source.get(source, [])
+        intervals = []
+        critical_count = 0
+        active_count = 0
+        checks_count = 0
+        for incident in incidents:
+            started = _storage_datetime(incident.get("started_at"))
+            resolved = _storage_datetime(incident.get("resolved_at"))
+            if started is None:
+                continue
+            interval_start = max(period_start, started)
+            interval_end = min(moment, resolved or moment)
+            if interval_end <= interval_start:
+                continue
+            intervals.append((interval_start, interval_end))
+            critical_count += incident.get("level") == "critical"
+            active_count += not bool(incident.get("resolved_at"))
+            checks_count += _non_negative_int(incident.get("checks_count"))
+
+        merged = []
+        for interval_start, interval_end in sorted(intervals):
+            if not merged or interval_start > merged[-1][1]:
+                merged.append([interval_start, interval_end])
+            elif interval_end > merged[-1][1]:
+                merged[-1][1] = interval_end
+        downtime = sum(
+            max(0, int((interval_end - interval_start).total_seconds()))
+            for interval_start, interval_end in merged
+        )
+        uptime = max(0.0, 100.0 * (period_seconds - downtime) / period_seconds)
+        result.append({
+            "source": source,
+            "uptime_percent": round(uptime, 3),
+            "downtime_seconds": downtime,
+            "incident_count": len(intervals),
+            "critical_count": critical_count,
+            "active_count": active_count,
+            "checks_count": checks_count,
+            "average_incident_seconds": (
+                int(downtime / len(intervals)) if intervals else 0
+            ),
+        })
+
+    return sorted(
+        result,
+        key=lambda item: (
+            item["uptime_percent"],
+            -item["downtime_seconds"],
+            item["source"].casefold(),
+        ),
+    )
+
+
 def _incident_from_row(row, now=None):
     item = dict(row)
     moment = now or datetime.now()
