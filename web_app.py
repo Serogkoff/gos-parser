@@ -20,6 +20,7 @@ from flask import (
 from config import PROJECT_VERSION
 from utils.auth import load_secret_key
 from utils.article_reader import extract_article
+from utils.diagnostics import alert_summary, source_alerts, system_alerts
 from utils.keywords import (
     add_keyword,
     load_keywords,
@@ -234,6 +235,7 @@ ADMIN_SOURCES_HTML = """
         :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655;--amber:#a86e16}
         *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}.shell{width:min(1450px,calc(100% - 34px));margin:auto;padding:30px 0 80px}a{color:inherit}.top{display:flex;align-items:center;justify-content:space-between;gap:18px}.back{color:var(--muted);text-decoration:none}.back:hover{color:var(--coral)}.top-actions{display:flex;gap:8px}.button,button{min-height:40px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:6px;color:#5b554c;background:var(--surface);font:650 12px inherit;text-decoration:none;cursor:pointer}.button:hover,button:hover{color:var(--coral);border-color:var(--coral)}header{margin:36px 0 24px}h1{margin:0;font-size:clamp(38px,5vw,64px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}
         .message,.error{margin:0 0 18px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:20px}.metric{padding:20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.metric span{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}.metric strong{display:block;margin-top:7px;font-size:31px;letter-spacing:-.04em}.metric.good strong{color:var(--green)}.metric.warn strong{color:var(--amber)}.metric.bad strong{color:var(--coral)}
+        .alerts{margin:0 0 20px;overflow:hidden;border:1px solid #e3b870;border-radius:8px;background:#fff9ed}.alerts.critical{border-color:#e7a39c;background:#fff4f1}.alerts-head{min-height:55px;padding:12px 17px;display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid rgba(168,110,22,.22)}.alerts-head h2{margin:0;font-size:16px}.alerts-head span{color:var(--muted);font-size:11px}.alert-row{padding:13px 17px;display:grid;grid-template-columns:78px minmax(180px,.7fr) minmax(0,1.5fr);align-items:center;gap:13px;border-top:1px solid rgba(168,110,22,.15);font-size:12px}.alert-row:first-of-type{border-top:0}.alert-level{width:max-content;padding:4px 7px;border-radius:999px;color:#8a5b12;background:#f8e4bc;font-size:9px;font-weight:800;text-transform:uppercase}.alert-row.critical .alert-level{color:#9d302a;background:#ffdcd7}.alert-row strong{font-size:12px}.alert-row p{margin:0;color:var(--muted);line-height:1.45}
         .panel{overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.panel-head{min-height:64px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line)}.panel-head h2{margin:0;font-size:18px}.panel-head p{margin:4px 0 0;color:var(--muted);font-size:11px}.source-table{width:100%;border-collapse:collapse}.source-table th{padding:11px 13px;color:var(--muted);background:#faf6ef;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em}.source-table td{padding:13px;border-top:1px solid #e6dfd4;vertical-align:middle;font-size:12px}.source-table tbody tr:hover{background:#fff9f2}.source strong{display:block;font-size:13px}.source small,.muted{display:block;margin-top:3px;color:var(--muted);font-size:10px}.badge{width:max-content;padding:5px 8px;border-radius:999px;background:#edf6ef;color:var(--green);font-size:10px;font-weight:750}.badge.empty,.badge.pending,.badge.running{color:var(--amber);background:#fff4de}.badge.error{color:#a63a32;background:#fff0ed}.badge.disabled{color:#777267;background:#eee9e1}.result b{display:block;font-size:13px}.error-copy{max-width:260px;margin-top:4px;overflow:hidden;color:#a63a32;font-size:10px;text-overflow:ellipsis;white-space:nowrap}.actions{display:flex;justify-content:flex-end;gap:7px}.actions form{margin:0}.actions .run{color:var(--coral);border-color:rgba(228,79,69,.5)}.actions button:disabled{cursor:not-allowed;opacity:.4}.pause{min-width:86px}.jobs{margin-top:18px;padding:18px 20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.jobs h2{margin:0 0 12px;font-size:16px}.job{min-height:34px;display:grid;grid-template-columns:minmax(180px,1fr) 100px 155px minmax(0,2fr);align-items:center;gap:12px;border-top:1px solid #ece5da;font-size:11px}.job:first-of-type{border-top:0}.job-error{overflow:hidden;color:#a63a32;text-overflow:ellipsis;white-space:nowrap}.empty-jobs{color:var(--muted);font-size:12px}
         @media(max-width:1050px){.summary{grid-template-columns:repeat(2,1fr)}.table-wrap{overflow-x:auto}.source-table{min-width:980px}}@media(max-width:620px){.shell{width:min(100% - 22px,1450px)}.top{align-items:flex-start;flex-direction:column}.summary{grid-template-columns:1fr 1fr}.metric{padding:15px}.metric strong{font-size:25px}.job{grid-template-columns:1fr 90px}.job span:nth-child(n+3){display:none}}
     </style>
@@ -252,6 +254,10 @@ ADMIN_SOURCES_HTML = """
         <article class="metric warn"><span>Ждут внимания</span><strong>{{summary.problem}}</strong></article>
         <article class="metric bad"><span>На паузе</span><strong>{{summary.disabled}}</strong></article>
     </section>
+    {% if alerts %}<section class="alerts {{'critical' if alert_counts.critical else ''}}">
+        <div class="alerts-head"><h2>Автоматическая диагностика</h2><span>{{alert_counts.total}} предупреждений · критичных: {{alert_counts.critical}}</span></div>
+        {% for alert in alerts %}<article class="alert-row {{alert.level}}"><span class="alert-level">{{alert.level_label}}</span><strong>{{alert.title}}</strong><p>{{alert.message}}</p></article>{% endfor %}
+    </section>{% endif %}
     <section class="panel">
         <div class="panel-head"><div><h2>Центр управления</h2><p>Задания выполняет запущенный main.py; страница обновляется сама, пока есть активная проверка.</p></div><a class="button" href="/admin/sources">Обновить страницу</a></div>
         <div class="table-wrap"><table class="source-table">
@@ -285,6 +291,7 @@ ADMIN_SYSTEM_HTML = """
         :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655;--amber:#a86e16}
         *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}.shell{width:min(1320px,calc(100% - 34px));margin:auto;padding:30px 0 80px}a{color:inherit;text-decoration:none}.top{display:flex;align-items:center;justify-content:space-between;gap:18px}.back{color:var(--muted)}.back:hover{color:var(--coral)}.top-actions{display:flex;gap:8px;flex-wrap:wrap}.button,button{min-height:40px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:6px;color:#5b554c;background:var(--surface);font:650 12px inherit;cursor:pointer}.button:hover,button:hover{color:var(--coral);border-color:var(--coral)}header{margin:36px 0 24px}h1{margin:0;font-size:clamp(38px,5vw,64px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}
         .message,.error{margin:0 0 18px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}.metric{padding:20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.metric span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}.metric strong{display:block;margin-top:7px;font-size:28px;letter-spacing:-.04em}.metric.good strong{color:var(--green)}.metric.warn strong{color:var(--amber)}
+        .alerts{margin:0 0 18px;overflow:hidden;border:1px solid #e3b870;border-radius:8px;background:#fff9ed}.alerts.critical{border-color:#e7a39c;background:#fff4f1}.alerts-head{min-height:55px;padding:12px 17px;display:flex;align-items:center;justify-content:space-between;gap:15px;border-bottom:1px solid rgba(168,110,22,.22)}.alerts-head h2{margin:0;font-size:16px}.alerts-head span{color:var(--muted);font-size:11px}.alert-row{padding:13px 17px;display:grid;grid-template-columns:78px minmax(180px,.7fr) minmax(0,1.5fr);align-items:center;gap:13px;border-top:1px solid rgba(168,110,22,.15);font-size:12px}.alert-row:first-of-type{border-top:0}.alert-level{width:max-content;padding:4px 7px;border-radius:999px;color:#8a5b12;background:#f8e4bc;font-size:9px;font-weight:800;text-transform:uppercase}.alert-row.critical .alert-level{color:#9d302a;background:#ffdcd7}.alert-row strong{font-size:12px}.alert-row p{margin:0;color:var(--muted);line-height:1.45}
         .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.75fr);gap:18px;align-items:start}.panel{overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.panel+.panel{margin-top:18px}.panel-head{min-height:64px;padding:13px 20px;display:flex;align-items:center;justify-content:space-between;gap:15px;border-bottom:1px solid var(--line)}.panel-head h2{margin:0;font-size:18px}.panel-head p{margin:4px 0 0;color:var(--muted);font-size:11px}.primary{color:var(--coral);border-color:rgba(228,79,69,.55)}.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.fact{padding:16px 20px;border-bottom:1px solid #e8e1d6}.fact:nth-child(odd){border-right:1px solid #e8e1d6}.fact span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em}.fact b{display:block;margin-top:5px;font-size:14px}.path{overflow-wrap:anywhere;color:var(--muted);font-size:10px}.backup{min-height:54px;padding:10px 16px;display:grid;grid-template-columns:minmax(0,1fr) 90px 150px;align-items:center;gap:12px;border-top:1px solid #e8e1d6;font-size:11px}.backup:first-child{border-top:0}.backup strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kind{margin-top:3px;color:var(--muted);font-size:9px;text-transform:uppercase}.empty{padding:35px 20px;color:var(--muted);text-align:center;font-size:12px}
         .log{max-height:700px;overflow:auto;background:#201f1c;color:#eee8df}.log-line{padding:9px 13px;border-top:1px solid #37342f;font:11px/1.45 Consolas,"Cascadia Mono",monospace;overflow-wrap:anywhere}.log-line:first-child{border-top:0}.log-line.severity-warning{color:#ffd18a}.log-line.severity-error{color:#ff9d96}.log-meta{color:var(--muted);font-size:10px}.log-empty{padding:50px 20px;color:#aaa39a;text-align:center;font-size:12px}
         @media(max-width:960px){.summary{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}}@media(max-width:580px){.shell{width:min(100% - 22px,1320px)}.top{align-items:flex-start;flex-direction:column}.summary{grid-template-columns:1fr 1fr}.metric{padding:15px}.metric strong{font-size:23px}.backup{grid-template-columns:1fr 72px}.backup time{display:none}.facts{grid-template-columns:1fr}.fact:nth-child(odd){border-right:0}}
@@ -300,6 +307,10 @@ ADMIN_SYSTEM_HTML = """
         <article class="metric"><span>Новостей</span><strong>{{database.news_count}}</strong></article>
         <article class="metric"><span>Текстов сохранено</span><strong>{{database.cached_articles}}</strong></article>
     </section>
+    {% if alerts %}<section class="alerts {{'critical' if alert_counts.critical else ''}}">
+        <div class="alerts-head"><h2>Автоматическая диагностика</h2><span>{{alert_counts.total}} предупреждений · критичных: {{alert_counts.critical}}</span></div>
+        {% for alert in alerts %}<article class="alert-row {{alert.level}}"><span class="alert-level">{{alert.level_label}}</span><strong>{{alert.title}}</strong><p>{{alert.message}}</p></article>{% endfor %}
+    </section>{% endif %}
     <div class="grid">
         <div>
             <section class="panel">
@@ -1630,6 +1641,7 @@ def admin_sources():
             "total_news": database_status.get("news_count", 0),
             "news_count": parser_status.get("news_count", 0),
             "duration": parser_status.get("duration_seconds", 0),
+            "failure_streak": parser_status.get("failure_streak", 0),
             "error": error,
         })
 
@@ -1649,11 +1661,15 @@ def admin_sources():
         prepared["status_label"] = job_labels.get(job["status"], job["status"])
         prepared_jobs.append(prepared)
 
+    alerts = source_alerts(prepared_sources)
+
     return render_template_string(
         ADMIN_SOURCES_HTML,
         sources=prepared_sources,
         jobs=prepared_jobs,
         summary=summary,
+        alerts=alerts,
+        alert_counts=alert_summary(alerts),
         auto_refresh=any(job["status"] in {"pending", "running"} for job in jobs),
         current_user=administrator,
         csrf_token=csrf_token(),
@@ -1701,6 +1717,7 @@ def admin_system():
         prepared_backups.append(prepared)
     log = error_log_stats()
     log["size"] = _format_file_size(log.get("size_bytes", 0))
+    alerts = system_alerts(database, backups)
 
     return render_template_string(
         ADMIN_SYSTEM_HTML,
@@ -1708,6 +1725,8 @@ def admin_system():
         backups=prepared_backups,
         errors=list(reversed(read_recent_errors(limit=120))),
         log=log,
+        alerts=alerts,
+        alert_counts=alert_summary(alerts),
         version=PROJECT_VERSION,
         current_user=administrator,
         csrf_token=csrf_token(),

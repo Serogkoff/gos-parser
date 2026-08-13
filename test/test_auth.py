@@ -244,6 +244,7 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn("Центр управления", html)
+        self.assertIn("Автоматическая диагностика", html)
         self.assertIn("МЧС", html)
         token = self._csrf(page)
 
@@ -287,6 +288,7 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn("Целостность SQLite", html)
+        self.assertIn("Автоматическая диагностика", html)
         self.assertIn("Сайт не ответил", html)
         token = self._csrf(page)
 
