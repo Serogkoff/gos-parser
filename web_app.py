@@ -1398,7 +1398,7 @@ def load_current_user():
         g.current_user = None
 
     endpoint = request.endpoint or ""
-    if endpoint == "static":
+    if endpoint in {"static", "healthz"}:
         return None
 
     users_exist = count_users() > 0
@@ -1418,6 +1418,12 @@ def load_current_user():
             url_for("login", next=safe_next_url(request.full_path or request.path))
         )
     return None
+
+
+@app.get("/healthz")
+def healthz():
+    """Лёгкая проверка для Nginx и systemd без раскрытия данных проекта."""
+    return jsonify(status="ok", version=PROJECT_VERSION)
 
 
 @app.route("/setup", methods=["GET", "POST"])

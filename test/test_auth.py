@@ -81,6 +81,13 @@ class AuthenticationTests(unittest.TestCase):
         self.assertNotEqual(password_hash, "super-secret-2026")
         self.assertNotIn("super-secret-2026", password_hash)
 
+    def test_health_check_is_available_without_login(self):
+        response = self.client.get("/healthz")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["status"], "ok")
+        self.assertIn("version", response.get_json())
+
     def test_login_logout_and_protected_pages(self):
         self._create_first_admin()
         with patch.object(
