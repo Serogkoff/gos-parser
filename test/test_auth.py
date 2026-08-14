@@ -1,3 +1,4 @@
+import gc
 import re
 import sqlite3
 import tempfile
@@ -30,8 +31,13 @@ class AuthenticationTests(unittest.TestCase):
     def tearDown(self):
         web_app.app.config["AUTH_DISABLED"] = self.previous_auth_disabled
         web_app.app.config["TESTING"] = False
+        self.client = None
         for patcher in reversed(self.patchers):
             patcher.stop()
+        # sqlite3.Connection as a context manager commits/rolls back, but does
+        # not close the handle. CPython 3.13 keeps those unreachable handles
+        # long enough for Windows to reject deletion of the temporary DB.
+        gc.collect()
         self.temporary.cleanup()
 
     @staticmethod
