@@ -171,8 +171,11 @@ class KyodoParserTests(unittest.TestCase):
         payload["buildId"] = "new-build-id"
         script.string = json.dumps(payload, ensure_ascii=False)
 
-        response = mock.Mock()
-        response.raise_for_status.side_effect = requests.HTTPError("old build")
+        response = mock.Mock(status_code=404)
+        response.raise_for_status.side_effect = requests.HTTPError(
+            "old build",
+            response=response,
+        )
         old_build_id = kyodo._next_build_id
         try:
             with tempfile.TemporaryDirectory() as directory, mock.patch.object(
@@ -195,12 +198,13 @@ class KyodoParserTests(unittest.TestCase):
                 kyodo,
                 "fetch_soup_js",
                 return_value=soup,
-            ) as browser:
+            ) as browser, mock.patch.object(kyodo.logger, "warning") as warning:
                 page_props = kyodo._fetch_page_props()
 
             self.assertIn("worldNews", page_props)
             self.assertEqual(kyodo._next_build_id, "new-build-id")
             browser.assert_called_once()
+            warning.assert_not_called()
         finally:
             kyodo._next_build_id = old_build_id
 

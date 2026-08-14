@@ -117,10 +117,13 @@ def _fetch_page_props():
                 return page_props
         except (requests.RequestException, ValueError) as error:
             stale_build = getattr(getattr(error, "response", None), "status_code", None) == 404
-            logger.warning(
-                f"[{SOURCE_NAME}] Компактная лента 47NEWS недоступна: "
-                f"{type(error).__name__}: {error}"
-            )
+            # 47NEWS регулярно меняет buildId. Его 404 — штатная ротация,
+            # а не сбой источника: ниже незаметно узнаём новый идентификатор.
+            if not stale_build:
+                logger.warning(
+                    f"[{SOURCE_NAME}] Компактная лента 47NEWS недоступна: "
+                    f"{type(error).__name__}: {error}"
+                )
 
     # При сетевом сбое curl иногда проходит по HTTP/2. При 404 повторять
     # заведомо устаревший JSON бессмысленно — сразу узнаём новый buildId.

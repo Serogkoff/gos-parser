@@ -240,6 +240,14 @@ class AuthenticationTests(unittest.TestCase):
             web_app,
             "load_json",
             side_effect=self._empty_app_data,
+        ), patch.object(
+            web_app,
+            "kyodo_proxy_status",
+            return_value={
+                "ok": True,
+                "label": "VPN работает",
+                "detail": "47NEWS доступен через отдельный канал",
+            },
         ):
             page = self.client.get("/admin/sources")
 
@@ -247,6 +255,7 @@ class AuthenticationTests(unittest.TestCase):
         html = page.get_data(as_text=True)
         self.assertIn("Центр управления", html)
         self.assertIn("Автоматическая диагностика", html)
+        self.assertIn("VPN работает", html)
         self.assertIn("МЧС", html)
         token = self._csrf(page)
 

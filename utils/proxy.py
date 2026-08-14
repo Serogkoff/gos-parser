@@ -1,13 +1,18 @@
 """Изолированные настройки прокси для источников с региональным доступом."""
 
 import os
+import time
 from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
+
+import requests
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 ENV_FILE = PROJECT_DIR / ".env"
 SUPPORTED_PROXY_SCHEMES = {"http", "https", "socks5", "socks5h"}
+KYODO_CHECK_URL = "https://www.47news.jp/news"
+_kyodo_status_cache = {"checked_monotonic": 0.0, "value": None}
 
 
 def kyodo_proxy_url():
@@ -16,6 +21,60 @@ def kyodo_proxy_url():
     if not value:
         value = _proxy_url_from_separate_settings()
     return _validate_proxy_url(value)
+
+
+def kyodo_proxy_status(force=False):
+    """Проверяет реальный доступ к 47NEWS через выделенный маршрут Киодо."""
+    now = time.monotonic()
+    cached = _kyodo_status_cache["value"]
+    if not force and cached and now - _kyodo_status_cache["checked_monotonic"] < 60:
+        return dict(cached)
+
+    try:
+        proxy_url = kyodo_proxy_url()
+    except ValueError:
+        result = {
+            "ok": False,
+            "state": "invalid",
+            "label": "VPN недоступен",
+            "detail": "Проверьте настройки канала Киодо",
+        }
+    else:
+        if not proxy_url:
+            result = {
+                "ok": False,
+                "state": "missing",
+                "label": "VPN недоступен",
+                "detail": "Канал Киодо не настроен",
+            }
+        else:
+            try:
+                response = requests.get(
+                    KYODO_CHECK_URL,
+                    headers={"User-Agent": "Mozilla/5.0"},
+                    timeout=(3, 6),
+                    proxies=requests_proxies(proxy_url),
+                    stream=True,
+                )
+                response.raise_for_status()
+                response.close()
+                result = {
+                    "ok": True,
+                    "state": "ok",
+                    "label": "VPN работает",
+                    "detail": "47NEWS доступен через отдельный канал",
+                }
+            except requests.RequestException:
+                result = {
+                    "ok": False,
+                    "state": "unavailable",
+                    "label": "VPN недоступен",
+                    "detail": "47NEWS не отвечает через отдельный канал",
+                }
+
+    _kyodo_status_cache["checked_monotonic"] = now
+    _kyodo_status_cache["value"] = dict(result)
+    return result
 
 
 def requests_proxies(proxy_url):
