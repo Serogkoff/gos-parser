@@ -175,7 +175,11 @@ class KyodoParserTests(unittest.TestCase):
         response.raise_for_status.side_effect = requests.HTTPError("old build")
         old_build_id = kyodo._next_build_id
         try:
-            with mock.patch.object(kyodo.requests, "get", return_value=response), mock.patch.object(
+            with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+                kyodo,
+                "BUILD_ID_FILE",
+                Path(directory) / "kyodo-build.txt",
+            ), mock.patch.object(kyodo.requests, "get", return_value=response), mock.patch.object(
                 kyodo,
                 "_fetch_page_props_with_curl",
                 return_value={},
