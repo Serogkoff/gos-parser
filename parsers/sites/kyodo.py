@@ -19,6 +19,9 @@ from utils.proxy import kyodo_proxy_url, proxy_environment, requests_proxies
 
 
 SOURCE_NAME = "Киодо (共同通信)"
+KYODO_BOILERPLATE_PARTS = (
+    "国内外約100の拠点を軸に",
+)
 HOME_URL = "https://www.47news.jp/"
 NEWS_URL = "https://www.47news.jp/news"
 PUBLISHER_NAME = "共同通信"
@@ -420,5 +423,14 @@ def _is_47news_article_url(url):
 
 
 def _clean_summary(value):
-    text = BeautifulSoup(str(value or ""), "html.parser").get_text(" ")
-    return " ".join(text.replace("...", "").split())
+    raw = str(value or "")
+    # Plain Japanese text can resemble a path to BeautifulSoup and trigger
+    # MarkupResemblesLocatorWarning. Parse only values that actually contain HTML.
+    if "<" in raw and ">" in raw:
+        text = BeautifulSoup(raw, "html.parser").get_text(" ")
+    else:
+        text = raw
+    text = " ".join(text.replace("...", "").split())
+    if any(part in text for part in KYODO_BOILERPLATE_PARTS):
+        return ""
+    return text

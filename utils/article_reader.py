@@ -36,6 +36,10 @@ GENERIC_TITLES = {
     "новости и пресс-релизы",
 }
 
+KYODO_BOILERPLATE_PARTS = (
+    "国内外約100の拠点を軸に",
+)
+
 VERIFIED_ARTICLE_SELECTORS = {
     "kremlin.ru": (
         "[itemprop='articleBody']",
@@ -701,6 +705,8 @@ def _extract_kyodo_article(soup, fallback_title):
     seen = set()
     for node in body.select("p"):
         text = " ".join(node.get_text(" ", strip=True).split())
+        if any(part in text for part in KYODO_BOILERPLATE_PARTS):
+            continue
         normalized = _title_key(text)
         if len(text) < 15 or not normalized or normalized in seen:
             continue
@@ -708,7 +714,14 @@ def _extract_kyodo_article(soup, fallback_title):
         paragraphs.append(text)
 
     if not paragraphs:
-        return None
+        # The page is a valid Kyodo article, but some very short dispatches
+        # expose only the publisher description. Do not let the generic HTML
+        # extractor mistake that boilerplate for the article body.
+        return {
+            "title": fallback_title or page_title,
+            "paragraphs": [],
+            "error": "Киодо сейчас не передало текст этой публикации.",
+        }
 
     return {
         "title": fallback_title or page_title,

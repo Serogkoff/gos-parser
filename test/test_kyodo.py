@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import warnings
 from datetime import datetime
 from pathlib import Path
 from unittest import mock
@@ -10,6 +11,7 @@ from bs4 import BeautifulSoup
 
 from parsers.sites import kyodo
 from parsers.sites.kyodo import (
+    _clean_summary,
     _is_47news_article_url,
     _parse_47news_page,
 )
@@ -91,6 +93,21 @@ class KyodoParserTests(unittest.TestCase):
         self.assertFalse(_is_47news_article_url("https://www.47news.jp/world"))
         self.assertFalse(
             _is_47news_article_url("https://example.com/14718157.html")
+        )
+
+    def test_plain_summary_does_not_trigger_markup_locator_warning(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            summary = _clean_summary("exchange-rate-14.html")
+        self.assertEqual(summary, "exchange-rate-14.html")
+
+    def test_publisher_description_is_not_used_as_summary(self):
+        self.assertEqual(
+            _clean_summary(
+                "国内外約100の拠点を軸に、世界情勢から地域の話題まで、"
+                "旬のニュースを的確に、いち早くお届けします。"
+            ),
+            "",
         )
 
     def test_parse_uses_compact_next_data(self):
@@ -274,6 +291,30 @@ class KyodoParserTests(unittest.TestCase):
 
         self.assertFalse(article["error"])
         self.assertEqual(fetch.call_args.kwargs["proxy_url"], proxy_url)
+
+    def test_internal_reader_rejects_publisher_description(self):
+        page_props = {
+            "data": {
+                "article": {
+                    **KYODO_ITEM,
+                    "body": (
+                        "<p>国内外約100の拠点を軸に、世界情勢から地域の話題まで、"
+                        "旬のニュースを的確に、いち早くお届けします。</p>"
+                    ),
+                }
+            }
+        }
+        with mock.patch(
+            "utils.article_reader.fetch_soup",
+            return_value=_page_soup(page_props),
+        ):
+            article = extract_article(
+                "https://www.47news.jp/14718157.html",
+                KYODO_ITEM["title"],
+            )
+
+        self.assertTrue(article["error"])
+        self.assertEqual(article["paragraphs"], [])
 
 
 if __name__ == "__main__":
