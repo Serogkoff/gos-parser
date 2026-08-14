@@ -250,6 +250,31 @@ class KyodoParserTests(unittest.TestCase):
         self.assertEqual(len(article["paragraphs"]), 2)
         self.assertIn("今後の協力", article["paragraphs"][1])
 
+    def test_internal_reader_routes_only_kyodo_through_proxy(self):
+        page_props = {
+            "data": {
+                "article": {
+                    **KYODO_ITEM,
+                    "body": "<p>ロシアと日本の代表団が重要な問題について協議した。</p>",
+                }
+            }
+        }
+        proxy_url = "socks5h://user:password@203.0.113.7:1080"
+        with mock.patch(
+            "utils.article_reader.kyodo_proxy_url",
+            return_value=proxy_url,
+        ), mock.patch(
+            "utils.article_reader.fetch_soup",
+            return_value=_page_soup(page_props),
+        ) as fetch:
+            article = extract_article(
+                "https://www.47news.jp/14718157.html",
+                KYODO_ITEM["title"],
+            )
+
+        self.assertFalse(article["error"])
+        self.assertEqual(fetch.call_args.kwargs["proxy_url"], proxy_url)
+
 
 if __name__ == "__main__":
     unittest.main()

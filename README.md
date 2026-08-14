@@ -258,3 +258,23 @@ python main.py --once government
 ```
 
 Команда `python main.py --once all` последовательно обновляет все группы.
+# Отдельный VPN-маршрут для Киодо
+
+Лента и статьи `47news.jp` могут работать через SOCKS5-сервис на личном
+сервере Amnezia. Остальные источники при этом продолжают использовать
+обычное подключение.
+
+1. Установите зависимости: `python -m pip install -r requirements.txt`.
+2. Скопируйте `.env.example` в `.env`.
+3. Запишите выданные Amnezia адрес, порт, имя пользователя и пароль:
+
+```env
+KYODO_PROXY_HOST=server_ip
+KYODO_PROXY_PORT=port
+KYODO_PROXY_USERNAME=username
+KYODO_PROXY_PASSWORD=password
+```
+
+Файл `.env` исключён из Git. Не публикуйте его и не вставляйте настоящий
+пароль в исходный код. После изменения `.env` перезапустите `main.py` и
+`web_app.py`.

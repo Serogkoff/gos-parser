@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 from utils.http_client import fetch_soup
 from utils.js_client import fetch_soup_js
+from utils.proxy import kyodo_proxy_url
 
 
 CONTAINER_SELECTORS = (
@@ -274,6 +275,28 @@ def extract_article(url, fallback_title=""):
                 verify=True,
                 attempts=1,
             )
+    elif _is_kyodo_url(url):
+        try:
+            proxy_url = kyodo_proxy_url()
+        except ValueError:
+            proxy_url = ""
+        soup = fetch_soup(
+            fetch_url,
+            "Просмотр Киодо",
+            timeout=30,
+            verify=True,
+            proxy_url=proxy_url,
+        )
+        if soup is None:
+            soup = fetch_soup_js(
+                fetch_url,
+                "Просмотр Киодо",
+                wait_ms=1500,
+                timeout_ms=40000,
+                wait_until="domcontentloaded",
+                use_partial_on_timeout=True,
+                proxy_url=proxy_url,
+            )
     else:
         soup = fetch_soup(fetch_url, "Просмотр новости", timeout=25, verify=False)
         if soup is None and verified_selectors:
@@ -288,7 +311,11 @@ def extract_article(url, fallback_title=""):
         return {
             "title": fallback_title,
             "paragraphs": [],
-            "error": "Сайт ведомства сейчас не отдал текст публикации.",
+            "error": (
+                "Канал Киодо через VPN сейчас недоступен."
+                if _is_kyodo_url(url)
+                else "Сайт ведомства сейчас не отдал текст публикации."
+            ),
         }
 
     if _is_minobrnauki_url(url):

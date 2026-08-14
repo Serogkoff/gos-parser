@@ -26,6 +26,7 @@ def fetch_soup(
     verify=False,
     parser="html.parser",
     attempts=DEFAULT_ATTEMPTS,
+    proxy_url="",
 ):
     """
     Скачивает страницу по url и возвращает объект BeautifulSoup.
@@ -45,6 +46,10 @@ def fetch_soup(
                 headers=HEADERS,
                 timeout=timeout,
                 verify=verify,
+                proxies=(
+                    {"http": proxy_url, "https": proxy_url}
+                    if proxy_url else None
+                ),
             )
             response.raise_for_status()
             if not response.content:

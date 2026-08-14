@@ -15,6 +15,7 @@ from utils.http_client import HEADERS
 from utils.js_client import fetch_soup_js
 from utils.logger import get_logger
 from utils.news import deduplicate_news
+from utils.proxy import kyodo_proxy_url, proxy_environment, requests_proxies
 
 
 SOURCE_NAME = "Киодо (共同通信)"
@@ -26,6 +27,15 @@ BUILD_ID_FILE = Path(__file__).resolve().parents[2] / "kyodo_build_id.txt"
 
 logger = get_logger("kyodo")
 _next_build_id = ""
+
+
+def _proxy_url():
+    """Отдельный голландский маршрут; остальные источники его не используют."""
+    try:
+        return kyodo_proxy_url()
+    except ValueError as error:
+        logger.warning(f"[{SOURCE_NAME}] Настройка прокси некорректна: {error}")
+        return ""
 
 # На главной странице 47NEWS каждая рубрика содержит шесть самых свежих
 # материалов. Поэтому один лёгкий запрос заменяет обход множества страниц.
@@ -95,6 +105,7 @@ def _fetch_page_props():
                 data_url,
                 headers={**HEADERS, "Accept": "application/json"},
                 timeout=(4, 8),
+                proxies=requests_proxies(_proxy_url()),
             )
             response.raise_for_status()
             payload = response.json()
@@ -128,6 +139,7 @@ def _fetch_page_props():
             timeout_ms=18000,
             wait_until="domcontentloaded",
             use_partial_on_timeout=True,
+            proxy_url=_proxy_url(),
         )
         payload = _next_payload(soup) if soup else {}
 
@@ -177,6 +189,7 @@ def _fetch_page_props_with_curl(data_url):
             capture_output=True,
             check=True,
             timeout=12,
+            env=proxy_environment(_proxy_url()),
         )
         payload = json.loads(completed.stdout.decode("utf-8"))
         return payload.get("pageProps", {})
@@ -195,6 +208,7 @@ def _fetch_news_payload_http():
             NEWS_URL,
             headers={**HEADERS, "Accept": "text/html,*/*;q=0.8"},
             timeout=(4, 8),
+            proxies=requests_proxies(_proxy_url()),
         )
         response.raise_for_status()
         return _next_payload(BeautifulSoup(response.content, "html.parser"))
@@ -225,6 +239,7 @@ def _fetch_news_payload_with_curl():
             capture_output=True,
             check=True,
             timeout=12,
+            env=proxy_environment(_proxy_url()),
         )
         soup = BeautifulSoup(completed.stdout, "html.parser")
         return _next_payload(soup)
@@ -243,6 +258,7 @@ def _fetch_category_page_props(route):
                 data_url,
                 headers={**HEADERS, "Accept": "application/json"},
                 timeout=(4, 8),
+                proxies=requests_proxies(_proxy_url()),
             )
             response.raise_for_status()
             page_props = response.json().get("pageProps", {})
@@ -256,6 +272,7 @@ def _fetch_category_page_props(route):
             urljoin(HOME_URL, route),
             headers={**HEADERS, "Accept": "text/html,*/*;q=0.8"},
             timeout=(4, 8),
+            proxies=requests_proxies(_proxy_url()),
         )
         response.raise_for_status()
         payload = _next_payload(BeautifulSoup(response.content, "html.parser"))
@@ -287,6 +304,7 @@ def _fetch_url_payload_with_curl(url):
             capture_output=True,
             check=True,
             timeout=12,
+            env=proxy_environment(_proxy_url()),
         )
         return _next_payload(BeautifulSoup(completed.stdout, "html.parser"))
     except subprocess.SubprocessError:

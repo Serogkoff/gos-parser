@@ -5,6 +5,7 @@ import requests
 
 from utils.http_client import fetch_soup
 from utils.js_client import _is_transient_browser_error
+from utils.proxy import kyodo_proxy_url, playwright_proxy
 
 
 class HttpClientRetryTests(unittest.TestCase):
@@ -65,6 +66,53 @@ class BrowserRetryTests(unittest.TestCase):
         self.assertFalse(_is_transient_browser_error(
             "Page.goto: net::ERR_CERT_AUTHORITY_INVALID"
         ))
+
+    def test_playwright_proxy_separates_credentials_from_server(self):
+        proxy = playwright_proxy(
+            "socks5h://kyodo-user:secret%20pass@203.0.113.7:1080"
+        )
+
+        self.assertEqual(proxy["server"], "socks5://203.0.113.7:1080")
+        self.assertEqual(proxy["username"], "kyodo-user")
+        self.assertEqual(proxy["password"], "secret pass")
+
+
+class HttpClientProxyTests(unittest.TestCase):
+    @patch("utils.http_client.requests.get")
+    def test_proxy_is_scoped_to_explicit_request(self, get):
+        response = Mock()
+        response.content = b"<html>Kyodo</html>"
+        response.raise_for_status.return_value = None
+        get.return_value = response
+
+        proxy_url = "socks5h://user:password@203.0.113.7:1080"
+        fetch_soup(
+            "https://www.47news.jp/123.html",
+            "Киодо",
+            proxy_url=proxy_url,
+        )
+
+        self.assertEqual(
+            get.call_args.kwargs["proxies"],
+            {"http": proxy_url, "https": proxy_url},
+        )
+
+    @patch.dict(
+        "os.environ",
+        {
+            "KYODO_PROXY_URL": "",
+            "KYODO_PROXY_HOST": "203.0.113.7",
+            "KYODO_PROXY_PORT": "1080",
+            "KYODO_PROXY_USERNAME": "kyodo user",
+            "KYODO_PROXY_PASSWORD": "p@ss:word",
+        },
+        clear=False,
+    )
+    def test_builds_safe_url_from_separate_settings(self):
+        self.assertEqual(
+            kyodo_proxy_url(),
+            "socks5h://kyodo%20user:p%40ss%3Aword@203.0.113.7:1080",
+        )
 
 
 if __name__ == "__main__":

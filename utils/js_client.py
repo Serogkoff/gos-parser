@@ -6,6 +6,7 @@ from playwright.sync_api import (
 from bs4 import BeautifulSoup
 
 from utils.logger import get_logger
+from utils.proxy import playwright_proxy
 
 logger = get_logger("js_client")
 TRANSIENT_BROWSER_ERRORS = (
@@ -23,6 +24,7 @@ def fetch_soup_js(
     timeout_ms=30000,
     wait_until="networkidle",
     use_partial_on_timeout=False,
+    proxy_url="",
 ):
     """
     Открывает страницу в headless-браузере (для сайтов, которые
@@ -33,7 +35,11 @@ def fetch_soup_js(
     """
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            launch_options = {"headless": True}
+            proxy = playwright_proxy(proxy_url)
+            if proxy:
+                launch_options["proxy"] = proxy
+            browser = p.chromium.launch(**launch_options)
             context = browser.new_context(ignore_https_errors=True)
             page = context.new_page()
 
