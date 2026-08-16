@@ -42,7 +42,8 @@ class NightMonitorTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "news.db"
-            with sqlite3.connect(database) as connection:
+            connection = sqlite3.connect(database)
+            try:
                 connection.execute("CREATE TABLE news_items (id INTEGER)")
                 connection.execute("CREATE TABLE found_items (id INTEGER)")
                 connection.executemany(
@@ -50,6 +51,9 @@ class NightMonitorTests(unittest.TestCase):
                     [(1,), (2,), (3,)],
                 )
                 connection.execute("INSERT INTO found_items VALUES (1)")
+                connection.commit()
+            finally:
+                connection.close()
 
             stats = night_monitor._database_stats(database)
 
