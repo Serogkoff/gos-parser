@@ -88,18 +88,22 @@ def _database_stats(path):
     }
     if not path.exists():
         return stats
+    connection = None
     try:
         uri = f"{path.resolve().as_uri()}?mode=ro"
-        with sqlite3.connect(uri, uri=True, timeout=1) as connection:
-            stats["news_count"] = int(
-                connection.execute("SELECT COUNT(*) FROM news_items").fetchone()[0]
-            )
-            stats["found_count"] = int(
-                connection.execute("SELECT COUNT(*) FROM found_items").fetchone()[0]
-            )
+        connection = sqlite3.connect(uri, uri=True, timeout=1)
+        stats["news_count"] = int(
+            connection.execute("SELECT COUNT(*) FROM news_items").fetchone()[0]
+        )
+        stats["found_count"] = int(
+            connection.execute("SELECT COUNT(*) FROM found_items").fetchone()[0]
+        )
     except (OSError, sqlite3.Error):
         # Замер ресурсов не должен мешать работающему парсеру из-за блокировки БД.
         pass
+    finally:
+        if connection is not None:
+            connection.close()
     return stats
 
 
