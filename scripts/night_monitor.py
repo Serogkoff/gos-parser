@@ -199,6 +199,14 @@ def _stop_process(process):
             process.kill()
 
 
+def _child_environment():
+    """Гарантирует UTF-8 для перенаправленного вывода Python на Windows."""
+    environment = os.environ.copy()
+    environment["PYTHONIOENCODING"] = "utf-8"
+    environment["PYTHONUTF8"] = "1"
+    return environment
+
+
 def run(interval=10, hours=0, output_dir=DEFAULT_OUTPUT_DIR):
     if interval <= 0:
         raise ValueError("Интервал должен быть больше нуля")
@@ -223,6 +231,7 @@ def run(interval=10, hours=0, output_dir=DEFAULT_OUTPUT_DIR):
             stdout=parser_log,
             stderr=subprocess.STDOUT,
             creationflags=creation_flags,
+            env=_child_environment(),
         )
         root = psutil.Process(process.pid)
         # Первый вызов инициализирует счётчики CPU psutil.

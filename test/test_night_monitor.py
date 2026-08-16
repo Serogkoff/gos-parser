@@ -32,6 +32,12 @@ night_monitor = _load_module()
 
 
 class NightMonitorTests(unittest.TestCase):
+    def test_child_parser_always_uses_utf8_for_redirected_log(self):
+        environment = night_monitor._child_environment()
+
+        self.assertEqual(environment["PYTHONIOENCODING"], "utf-8")
+        self.assertEqual(environment["PYTHONUTF8"], "1")
+
     def test_process_kind_separates_python_and_browser(self):
         self.assertEqual(night_monitor._kind("python.exe"), "python")
         self.assertEqual(night_monitor._kind("chrome.exe"), "browser")
