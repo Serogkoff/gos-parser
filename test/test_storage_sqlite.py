@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -153,7 +154,7 @@ class SQLiteStorageTests(unittest.TestCase):
             "url": "https://rg.ru/2026/08/12/fz331-dok.html",
             "date": "2026-08-12",
         }
-        with storage._connect() as connection:
+        with storage._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO news_items(
@@ -209,7 +210,7 @@ class SQLiteStorageTests(unittest.TestCase):
             Path(self.temporary.name) / "backups" / "news-copy.db"
         )
 
-        with sqlite3.connect(backup) as connection:
+        with closing(sqlite3.connect(backup)) as connection:
             count = connection.execute(
                 "SELECT COUNT(*) FROM news_items"
             ).fetchone()[0]

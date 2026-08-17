@@ -5,6 +5,7 @@ import os
 import re
 import sqlite3
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import RLock
@@ -90,6 +91,17 @@ def _connect():
     connection.execute("PRAGMA busy_timeout = 30000")
     connection.execute("PRAGMA foreign_keys = ON")
     return connection
+
+
+@contextmanager
+def _connection():
+    """Завершает транзакцию и обязательно закрывает SQLite-соединение."""
+    connection = _connect()
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
 
 
 def _create_schema(connection):
@@ -245,7 +257,7 @@ def _create_schema(connection):
 def count_users():
     """Возвращает число учётных записей, включая отключённые."""
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         return int(connection.execute("SELECT COUNT(*) FROM users").fetchone()[0])
 
 
@@ -260,7 +272,7 @@ def create_user(username, password, role="user"):
     initialize_database()
     created_at = datetime.now().isoformat(timespec="seconds")
     try:
-        with STORAGE_LOCK, _connect() as connection:
+        with STORAGE_LOCK, _connection() as connection:
             cursor = connection.execute(
                 """
                 INSERT INTO users(
@@ -287,7 +299,7 @@ def load_user(user_id):
     except (TypeError, ValueError):
         return None
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         row = connection.execute(
             """
             SELECT id, username, role, is_active, created_at, last_login_at
@@ -301,7 +313,7 @@ def load_user(user_id):
 def list_users():
     """Возвращает безопасный список пользователей без хешей паролей."""
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         rows = connection.execute(
             """
             SELECT id, username, role, is_active, created_at, last_login_at
@@ -319,7 +331,7 @@ def set_user_password(user_id, password):
     user = load_user(user_id)
     if user is None:
         raise ValueError("Пользователь не найден")
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         connection.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?",
             (generate_password_hash(password), user["id"]),
@@ -338,7 +350,7 @@ def set_user_role(user_id, role):
         raise ValueError("Пользователь не найден") from error
 
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
             "SELECT role, is_active FROM users WHERE id = ?",
@@ -368,7 +380,7 @@ def set_user_active(user_id, is_active):
     is_active = bool(is_active)
 
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
             "SELECT role, is_active FROM users WHERE id = ?",
@@ -396,7 +408,7 @@ def authenticate_user(username, password):
     if not username or not password:
         return None
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         row = connection.execute(
             """
             SELECT id, username, password_hash, role, is_active,
@@ -426,7 +438,7 @@ def load_source_order(user_id, source_group):
     user_id = _validated_user_id(user_id)
     source_group = _validated_source_group(source_group)
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         row = connection.execute(
             """
             SELECT source_order_json
@@ -469,7 +481,7 @@ def save_source_order(user_id, source_group, sources):
         seen.add(key)
         order.append(source)
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         connection.execute(
             """
             INSERT INTO user_source_orders(
@@ -493,7 +505,7 @@ def source_is_enabled(source):
     """По умолчанию источник включён; администратор может поставить его на паузу."""
     source = _validated_source_name(source)
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         row = connection.execute(
             "SELECT enabled FROM source_settings WHERE source = ? COLLATE NOCASE",
             (source,),
@@ -504,7 +516,7 @@ def source_is_enabled(source):
 def load_source_settings():
     """Возвращает сохранённые администратором состояния источников."""
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         rows = connection.execute(
             "SELECT source, enabled, updated_at FROM source_settings"
         ).fetchall()
@@ -523,7 +535,7 @@ def set_source_enabled(source, enabled):
     enabled = bool(enabled)
     updated_at = datetime.now().isoformat(timespec="seconds")
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         connection.execute(
             """
             INSERT INTO source_settings(source, enabled, updated_at)
@@ -543,7 +555,7 @@ def enqueue_parser_job(source, requested_by=None):
     requested_by = _validated_optional_user_id(requested_by)
     requested_at = datetime.now().isoformat(timespec="seconds")
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
         existing = connection.execute(
             """
@@ -573,7 +585,7 @@ def enqueue_parser_job(source, requested_by=None):
 def claim_next_parser_job():
     """Атомарно забирает одно ожидающее задание для процесса main.py."""
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
         now = datetime.now()
         stale_before = (now - timedelta(hours=2)).isoformat(timespec="seconds")
@@ -620,7 +632,7 @@ def finish_parser_job(job_id, success, error=""):
     finished_at = datetime.now().isoformat(timespec="seconds")
     error = " ".join(str(error or "").split())[:1000]
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         cursor = connection.execute(
             """
             UPDATE parser_jobs
@@ -640,7 +652,7 @@ def list_parser_jobs(limit=50):
     except (TypeError, ValueError):
         limit = 50
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         rows = connection.execute(
             """
             SELECT j.*, u.username AS requested_by_name
@@ -656,7 +668,7 @@ def list_parser_jobs(limit=50):
 def source_news_statistics():
     """Считает накопленные новости и дату последнего нового материала."""
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         rows = connection.execute(
             """
             SELECT source, COUNT(*) AS news_count,
@@ -683,7 +695,7 @@ def sync_source_incidents(statuses, now=None):
     changes = {"opened": 0, "updated": 0, "resolved": 0}
     initialize_database()
 
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         for raw_item in statuses:
             if not isinstance(raw_item, dict):
                 continue
@@ -785,7 +797,7 @@ def list_source_incidents(state="all", limit=200):
         "resolved": "WHERE resolved_at != ''",
     }[state]
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         rows = connection.execute(
             f"""
             SELECT * FROM source_incidents
@@ -804,7 +816,7 @@ def source_incident_statistics(now=None):
     moment = now or datetime.now()
     since = (moment - timedelta(hours=24)).isoformat(timespec="seconds")
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         row = connection.execute(
             """
             SELECT
@@ -836,7 +848,7 @@ def source_reliability_statistics(days=7, now=None, sources=None):
     start_text = period_start.isoformat(timespec="seconds")
     end_text = moment.isoformat(timespec="seconds")
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         rows = connection.execute(
             """
             SELECT * FROM source_incidents
@@ -942,7 +954,7 @@ def list_bookmark_folders(user_id):
     """Возвращает только папки указанного пользователя и число материалов."""
     user_id = _validated_user_id(user_id)
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         rows = connection.execute(
             """
             SELECT f.id, f.name, f.created_at, COUNT(b.id) AS bookmark_count
@@ -972,7 +984,7 @@ def create_bookmark_folder(user_id, name):
     name = _validated_folder_name(name)
     initialize_database()
     try:
-        with STORAGE_LOCK, _connect() as connection:
+        with STORAGE_LOCK, _connection() as connection:
             cursor = connection.execute(
                 "INSERT INTO bookmark_folders(user_id, name, created_at) VALUES (?, ?, ?)",
                 (user_id, name, datetime.now().isoformat(timespec="seconds")),
@@ -993,7 +1005,7 @@ def rename_bookmark_folder(user_id, folder_id, name):
     name = _validated_folder_name(name)
     initialize_database()
     try:
-        with STORAGE_LOCK, _connect() as connection:
+        with STORAGE_LOCK, _connection() as connection:
             cursor = connection.execute(
                 "UPDATE bookmark_folders SET name = ? WHERE id = ? AND user_id = ?",
                 (name, folder_id, user_id),
@@ -1013,7 +1025,7 @@ def delete_bookmark_folder(user_id, folder_id):
     user_id = _validated_user_id(user_id)
     folder_id = _validated_folder_id(folder_id)
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         cursor = connection.execute(
             "DELETE FROM bookmark_folders WHERE id = ? AND user_id = ?",
             (folder_id, user_id),
@@ -1035,7 +1047,7 @@ def save_bookmark(user_id, item, folder_id=None, note=""):
     note = _validated_bookmark_note(note)
     now = datetime.now().isoformat(timespec="seconds")
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         connection.execute(
             """
             INSERT INTO bookmarks(
@@ -1074,7 +1086,7 @@ def update_bookmark(user_id, url, folder_id=None, note=""):
     folder_id = _owned_folder_id(user_id, folder_id)
     note = _validated_bookmark_note(note)
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         cursor = connection.execute(
             """
             UPDATE bookmarks
@@ -1099,7 +1111,7 @@ def remove_bookmark(user_id, url):
     user_id = _validated_user_id(user_id)
     normalized = normalize_url(url)
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         cursor = connection.execute(
             "DELETE FROM bookmarks WHERE user_id = ? AND normalized_url = ?",
             (user_id, normalized),
@@ -1111,7 +1123,7 @@ def load_bookmark(user_id, url):
     user_id = _validated_user_id(user_id)
     normalized = normalize_url(url)
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         row = connection.execute(
             """
             SELECT b.*, f.name AS folder_name
@@ -1137,7 +1149,7 @@ def list_bookmarks(user_id, folder_id="all"):
         owned_id = _owned_folder_id(user_id, folder_id)
         condition = " AND b.folder_id = ?"
         parameters.append(owned_id)
-    with _connect() as connection:
+    with _connection() as connection:
         rows = connection.execute(
             """
             SELECT b.*, f.name AS folder_name
@@ -1159,7 +1171,7 @@ def bookmarked_urls(user_id):
 def count_bookmarks(user_id):
     user_id = _validated_user_id(user_id)
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         return int(
             connection.execute(
                 "SELECT COUNT(*) FROM bookmarks WHERE user_id = ?",
@@ -1200,7 +1212,7 @@ def _owned_folder_id(user_id, value):
         return None
     folder_id = _validated_folder_id(value)
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         exists = connection.execute(
             "SELECT 1 FROM bookmark_folders WHERE id = ? AND user_id = ?",
             (folder_id, user_id),
@@ -1321,7 +1333,7 @@ def initialize_database():
         if database_id in _INITIALIZED_DATABASES and DATABASE_FILE.exists():
             return dict(_INITIALIZATION_RESULTS[database_id])
 
-        with _connect() as connection:
+        with _connection() as connection:
             _create_schema(connection)
             completed = connection.execute(
                 "SELECT 1 FROM metadata WHERE key = ?",
@@ -1436,7 +1448,7 @@ def find_news_by_url(url):
     if not normalized:
         return None
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         row = connection.execute(
             """
             SELECT payload_json
@@ -1455,7 +1467,7 @@ def load_cached_article(url):
     if not normalized:
         return None
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         row = connection.execute(
             """
             SELECT source, title, paragraphs_json, fetched_at
@@ -1494,7 +1506,7 @@ def save_cached_article(url, article, source=""):
     title = " ".join(str(article.get("title", "")).split())[:500]
     fetched_at = datetime.now().isoformat(timespec="seconds")
     initialize_database()
-    with STORAGE_LOCK, _connect() as connection:
+    with STORAGE_LOCK, _connection() as connection:
         connection.execute(
             """
             INSERT INTO article_cache(
@@ -1519,7 +1531,7 @@ def save_cached_article(url, article, source=""):
 
 def load_existing_urls():
     initialize_database()
-    with _connect() as connection:
+    with _connection() as connection:
         rows = connection.execute(
             "SELECT normalized_url FROM news_items WHERE normalized_url != ''"
         ).fetchall()
@@ -1564,7 +1576,7 @@ def _save_results(all_news, found_news, existing_urls):
     merged_all = _sort_items(merged_all)
     merged_found = _sort_items(merged_found)
 
-    with _connect() as connection:
+    with _connection() as connection:
         _replace_collections(connection, merged_all, merged_found)
 
     print(f"✅ Новых: {len(new_all)} | Всего: {len(merged_all)}")
@@ -1585,7 +1597,7 @@ def replace_found_news(items):
         found_news = [
             item for item in found_news if _news_key(item) in available
         ]
-        with _connect() as connection:
+        with _connection() as connection:
             connection.execute("DELETE FROM found_items")
             _insert_found_items(connection, found_news)
         return _sort_items(found_news)
