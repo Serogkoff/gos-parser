@@ -10,6 +10,7 @@ from flask import (
     Flask,
     abort,
     g,
+    has_request_context,
     jsonify,
     redirect,
     render_template_string,
@@ -83,6 +84,7 @@ from utils.storage import (
 app = Flask(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent
 NEWS_PER_PAGE = 20
+UNREAD_INDEX_LIMIT = 2000
 app.config.update(
     SECRET_KEY=load_secret_key(),
     PERMANENT_SESSION_LIFETIME=timedelta(days=14),
@@ -1328,10 +1330,24 @@ ARTICLE_HTML = """
 def load_json(filename, default):
     # Новости теперь живут в SQLite. Имя функции оставлено прежним,
     # чтобы маршруты и тесты интерфейса не пришлось переписывать целиком.
-    if filename == "all_news.json":
-        return load_all_news()
-    if filename == "found_news.json":
-        return load_found_news()
+    collection_loaders = {
+        "all_news.json": load_all_news,
+        "found_news.json": load_found_news,
+    }
+    loader = collection_loaders.get(filename)
+    if loader is not None:
+        request_cache = None
+        if has_request_context():
+            request_cache = getattr(g, "_news_collection_cache", None)
+            if request_cache is None:
+                request_cache = {}
+                g._news_collection_cache = request_cache
+            if filename in request_cache:
+                return request_cache[filename]
+        result = loader()
+        if request_cache is not None:
+            request_cache[filename] = result
+        return result
 
     path = PROJECT_DIR / filename
     if not path.exists():
@@ -2051,7 +2067,12 @@ def render_news_page(
 
     group_news = filter_news_by_group(all_news, source_group)
     group_found_news = filter_news_by_group(found_news, source_group)
-    news = filter_news_by_group(news, source_group)
+    if news is all_news:
+        news = group_news
+    elif news is found_news:
+        news = group_found_news
+    else:
+        news = filter_news_by_group(news, source_group)
 
     counts = Counter(
         item.get("source", "Неизвестный источник")
@@ -2108,6 +2129,11 @@ def render_news_page(
         source_base = "/filter/"
 
     sorted_news = sort_news_by_publication(news)
+    unread_index_news = (
+        sorted_news
+        if news is group_news
+        else sort_news_by_publication(group_news)
+    )
     search_query = request.args.get("q", "").strip()
     if search_query:
         needle = search_query.casefold()
@@ -2183,7 +2209,7 @@ def render_news_page(
                 "url": item.get("url", ""),
                 "source": item.get("source", "Неизвестный источник"),
             }
-            for item in group_news
+            for item in unread_index_news[:UNREAD_INDEX_LIMIT]
             if item.get("url")
         ],
         source_filter=source_filter,

@@ -36,6 +36,55 @@ class SQLiteStorageTests(unittest.TestCase):
             patcher.stop()
         self.temporary.cleanup()
 
+    def test_collection_cache_reuses_decode_until_database_changes(self):
+        first = {
+            "source": "МЧС",
+            "title": "Первая публикация",
+            "url": "https://mchs.gov.ru/news/cache-1",
+            "date": "2026-08-17",
+        }
+        self._write_json(self.all_json, [first])
+        self._write_json(self.found_json, [])
+
+        with patch.object(
+            storage,
+            "_load_collection",
+            wraps=storage._load_collection,
+        ) as load_collection:
+            self.assertEqual(storage.load_all_news()[0]["title"], first["title"])
+            self.assertEqual(storage.load_all_news()[0]["title"], first["title"])
+            self.assertEqual(load_collection.call_count, 1)
+
+            second = {
+                "source": "МЧС",
+                "title": "Вторая публикация",
+                "url": "https://mchs.gov.ru/news/cache-2",
+                "date": "2026-08-17",
+            }
+            connection = storage._connect()
+            try:
+                storage._insert_news_items(connection, [second])
+                connection.commit()
+            finally:
+                connection.close()
+
+            titles = {item["title"] for item in storage.load_all_news()}
+
+        self.assertEqual(titles, {first["title"], second["title"]})
+        self.assertEqual(load_collection.call_count, 2)
+
+    def test_web_request_loads_each_news_collection_once(self):
+        items = [{"source": "МЧС", "title": "Новость"}]
+        with (
+            web_app.app.test_request_context("/"),
+            patch.object(web_app, "load_all_news", return_value=items) as loader,
+        ):
+            first = web_app.load_json("all_news.json", [])
+            second = web_app.load_json("all_news.json", [])
+
+        self.assertIs(first, second)
+        loader.assert_called_once_with()
+
     def _write_json(self, path, value):
         path.write_text(
             json.dumps(value, ensure_ascii=False),

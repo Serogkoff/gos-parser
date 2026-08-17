@@ -30,6 +30,19 @@ JSON_MIGRATION_KEY = "json_migration_v1"
 MAX_CACHED_ARTICLE_CHARS = 100_000
 _INITIALIZED_DATABASES = set()
 _INITIALIZATION_RESULTS = {}
+_COLLECTION_CACHE = {}
+
+
+def _database_change_signature():
+    """Отслеживает изменения основной SQLite-базы и её WAL-журнала."""
+    signature = [str(DATABASE_FILE.resolve())]
+    for path in (DATABASE_FILE, Path(f"{DATABASE_FILE}-wal")):
+        try:
+            stat = path.stat()
+            signature.extend((stat.st_size, stat.st_mtime_ns))
+        except OSError:
+            signature.extend((0, 0))
+    return tuple(signature)
 
 
 def _load_json(path):
@@ -1380,17 +1393,41 @@ def initialize_database():
 
 def load_all_news():
     initialize_database()
-    with _connect() as connection:
-        # Правила очистки развиваются вместе с парсерами. Применяем их и к
-        # уже накопленной SQLite-базе, чтобы старые служебные карточки не
-        # оставались в интерфейсе до следующего запуска своего источника.
-        return deduplicate_news(_load_collection(connection, "news_items"))
+    return _load_collection_cached("news_items")
 
 
 def load_found_news():
     initialize_database()
-    with _connect() as connection:
-        return deduplicate_news(_load_collection(connection, "found_items"))
+    return _load_collection_cached("found_items")
+
+
+def _load_collection_cached(table):
+    """Не разбирает десятки тысяч JSON-записей заново на каждой странице."""
+    if table not in {"news_items", "found_items"}:
+        raise ValueError("неизвестная таблица новостей")
+    signature = _database_change_signature()
+    cache_key = (signature[0], table)
+    with STORAGE_LOCK:
+        cached = _COLLECTION_CACHE.get(cache_key)
+        if cached and cached["signature"] == signature:
+            return list(cached["items"])
+
+    connection = _connect()
+    try:
+        items = deduplicate_news(_load_collection(connection, table))
+    finally:
+        connection.close()
+
+    final_signature = _database_change_signature()
+    # Если запись шла одновременно с чтением, не закрепляем снимок под новой
+    # сигнатурой: следующий запрос безопасно перечитает актуальную коллекцию.
+    if final_signature == signature:
+        with STORAGE_LOCK:
+            _COLLECTION_CACHE[cache_key] = {
+                "signature": signature,
+                "items": tuple(items),
+            }
+    return list(items)
 
 
 def find_news_by_url(url):
