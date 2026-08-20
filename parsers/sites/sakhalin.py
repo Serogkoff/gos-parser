@@ -1,79 +1,139 @@
-import re
-from urllib.parse import urljoin, urlsplit
-from datetime import datetime, timedelta
+"""Парсер официального JSON API новостей Сахалинской области."""
 
-from utils.dates import date_from_document, date_from_news_card
+from datetime import datetime, timedelta
+from urllib.parse import urljoin, urlsplit, urlunsplit
+
+from utils.dates import validate_publication_date
 from utils.filters import is_junk
-from utils.http_client import fetch_soup
-from utils.js_client import fetch_soup_js
+from utils.http_client import fetch_json
 
 SOURCE_NAME = "Сахалинская обл."
+SITE_URL = "https://sakhalin.gov.ru"
+API_URL = f"{SITE_URL}/api/news"
+API_HOST = "sakhalin.gov.ru"
+MAX_AGE_DAYS = 30
+MAX_PAGES = 25
 
-def parse():
-    news, seen = [], set()
-    cutoff = datetime.now() - timedelta(days=30)
-    detail_checks = 0
 
-    for pg in range(2):
-        u = f"https://sakhalin.gov.ru/news?page={pg + 1}" if pg else "https://sakhalin.gov.ru/news"
+def parse(now=None):
+    now = now or datetime.now()
+    cutoff = now.date() - timedelta(days=MAX_AGE_DAYS)
+    news = []
+    seen_articles = set()
+    seen_pages = set()
+    page_url = API_URL
 
-        soup = fetch_soup_js(
-            u,
+    for _ in range(MAX_PAGES):
+        if page_url in seen_pages:
+            break
+        seen_pages.add(page_url)
+
+        payload = fetch_json(
+            page_url,
             SOURCE_NAME,
-            wait_ms=1200,
-            timeout_ms=25000,
-            wait_until="domcontentloaded",
-            use_partial_on_timeout=True,
+            timeout=20,
+            verify=True,
         )
-        if soup is None:
-            continue
+        if not isinstance(payload, dict):
+            break
 
-        for a in soup.find_all('a'):
-            t = a.get_text(strip=True)
-            full_url = urljoin(u, a.get('href', ''))
-            path = urlsplit(full_url).path.rstrip("/")
-            if not path.startswith("/news/"):
-                continue
-            if len(t) < 20 or t in seen or is_junk(t):
-                continue
+        page_news, reached_old_news = _parse_api_page(
+            payload,
+            now=now,
+            cutoff=cutoff,
+            seen_articles=seen_articles,
+        )
+        news.extend(page_news)
+        if reached_old_news:
+            break
 
-            date_str = date_from_news_card(
-                a,
-                r"/news/",
-            )
-            if not date_str and detail_checks < 8:
-                detail_checks += 1
-                detail = fetch_soup(
-                    full_url,
-                    SOURCE_NAME,
-                    timeout=8,
-                    attempts=1,
-                )
-                date_str = date_from_document(detail)
-
-            if date_str:
-                news_date = datetime.strptime(date_str, "%Y-%m-%d")
-                if news_date < cutoff:
-                    continue
-
-            # Убираем только служебную дату в начале карточки. Даты внутри
-            # заголовка ("завершить к 1 сентября") должны сохраниться.
-            t = re.sub(
-                r'^\s*\d{1,2}\s+'
-                r'(января|февраля|марта|апреля|мая|июня|июля|августа|'
-                r'сентября|октября|ноября|декабря)\s*\d{0,4}\s*',
-                '',
-                t,
-                flags=re.IGNORECASE,
-            ).strip()
-
-            seen.add(t)
-            news.append({
-                'source': SOURCE_NAME,
-                'title': t,
-                'url': full_url,
-                'date': date_str
-            })
+        page_url = _safe_next_url(
+            (payload.get("links") or {}).get("next")
+        )
+        if not page_url:
+            break
 
     print(f"  ✅ {len(news)}")
     return news
+
+
+def _parse_api_page(payload, now, cutoff, seen_articles):
+    result = []
+
+    for item in payload.get("data") or []:
+        if not isinstance(item, dict):
+            continue
+
+        publication_date = validate_publication_date(
+            item.get("date", ""),
+            now=now,
+        )
+        if not publication_date:
+            continue
+        if datetime.strptime(publication_date, "%Y-%m-%d").date() < cutoff:
+            return result, True
+
+        title = " ".join(str(item.get("name", "")).split())
+        article_url = _article_url(item.get("slug", ""))
+        if (
+            len(title) < 5
+            or not article_url
+            or article_url in seen_articles
+            or is_junk(title)
+        ):
+            continue
+
+        seen_articles.add(article_url)
+        result.append(
+            {
+                "source": SOURCE_NAME,
+                "title": title,
+                "url": article_url,
+                "date": publication_date,
+            }
+        )
+
+    return result, False
+
+
+def _article_url(slug):
+    value = str(slug or "").strip()
+    if not value:
+        return ""
+
+    candidate = urljoin(f"{SITE_URL}/", value)
+    parts = urlsplit(candidate)
+    if not _is_allowed_host(parts):
+        return ""
+
+    return urlunsplit(("https", API_HOST, parts.path, parts.query, ""))
+
+
+def _safe_next_url(value):
+    value = str(value or "").strip()
+    if not value:
+        return ""
+
+    candidate = urljoin(API_URL, value)
+    parts = urlsplit(candidate)
+    if not _is_allowed_host(parts):
+        return ""
+    if parts.path.rstrip("/") != "/api/news":
+        return ""
+
+    return urlunsplit(("https", API_HOST, "/api/news", parts.query, ""))
+
+
+def _is_allowed_host(parts):
+    try:
+        port = parts.port
+    except ValueError:
+        return False
+
+    return (
+        parts.scheme.casefold() in {"http", "https"}
+        and (parts.hostname or "").casefold() == API_HOST
+        and not parts.username
+        and not parts.password
+        and port in {None, 80, 443}
+    )

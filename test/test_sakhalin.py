@@ -1,40 +1,111 @@
 import unittest
+from datetime import datetime
 from unittest import mock
-
-from bs4 import BeautifulSoup
 
 from parsers.sites import sakhalin
 
 
-class SakhalinStabilityTests(unittest.TestCase):
-    def test_uses_short_browser_load_and_limits_detail_requests(self):
-        links = "".join(
-            f'<a href="/news/{index}">Достаточно длинный заголовок новости номер {index}</a>'
-            for index in range(12)
+class SakhalinApiTests(unittest.TestCase):
+    NOW = datetime(2026, 8, 20, 12, 0)
+
+    def test_parses_json_api_and_builds_https_article_urls(self):
+        payload = {
+            "data": [
+                {
+                    "id": 101,
+                    "date": "2026-08-17 13:59:00",
+                    "name": "  На Сахалине открыли новый социальный объект  ",
+                    "slug": "/news/novyy-sotsialnyy-obekt",
+                },
+                {
+                    "id": 100,
+                    "date": "2026-08-16 09:10:00",
+                    "name": "Правительство области подвело итоги недели",
+                    "slug": "http://sakhalin.gov.ru/news/itogi-nedeli",
+                },
+            ],
+            "links": {"next": None},
+        }
+
+        with mock.patch.object(sakhalin, "fetch_json", return_value=payload):
+            result = sakhalin.parse(now=self.NOW)
+
+        self.assertEqual(
+            result,
+            [
+                {
+                    "source": sakhalin.SOURCE_NAME,
+                    "title": "На Сахалине открыли новый социальный объект",
+                    "url": "https://sakhalin.gov.ru/news/novyy-sotsialnyy-obekt",
+                    "date": "2026-08-17",
+                },
+                {
+                    "source": sakhalin.SOURCE_NAME,
+                    "title": "Правительство области подвело итоги недели",
+                    "url": "https://sakhalin.gov.ru/news/itogi-nedeli",
+                    "date": "2026-08-16",
+                },
+            ],
         )
-        soup = BeautifulSoup(f"<main>{links}</main>", "html.parser")
+
+    def test_follows_cursor_and_stops_when_old_news_is_reached(self):
+        first_page = {
+            "data": [self._item(3, "2026-08-19 08:00:00")],
+            "links": {
+                "next": "http://sakhalin.gov.ru/api/news?cursor=second"
+            },
+        }
+        second_page = {
+            "data": [
+                self._item(2, "2026-08-18 08:00:00"),
+                self._item(1, "2026-07-01 08:00:00"),
+                self._item(0, "2026-08-17 08:00:00"),
+            ],
+            "links": {
+                "next": "http://sakhalin.gov.ru/api/news?cursor=third"
+            },
+        }
 
         with mock.patch.object(
             sakhalin,
-            "fetch_soup_js",
-            return_value=soup,
-        ) as browser, mock.patch.object(
-            sakhalin,
-            "date_from_news_card",
-            return_value="",
-        ), mock.patch.object(
-            sakhalin,
-            "fetch_soup",
-            return_value=None,
-        ) as detail:
-            result = sakhalin.parse()
+            "fetch_json",
+            side_effect=[first_page, second_page],
+        ) as fetch:
+            result = sakhalin.parse(now=self.NOW)
 
-        self.assertEqual(len(result), 12)
-        self.assertEqual(browser.call_count, 2)
-        self.assertEqual(detail.call_count, 8)
-        self.assertEqual(browser.call_args.kwargs["timeout_ms"], 25000)
-        self.assertEqual(browser.call_args.kwargs["wait_until"], "domcontentloaded")
-        self.assertTrue(browser.call_args.kwargs["use_partial_on_timeout"])
+        self.assertEqual([item["date"] for item in result], ["2026-08-19", "2026-08-18"])
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(
+            fetch.call_args_list[1].args[0],
+            "https://sakhalin.gov.ru/api/news?cursor=second",
+        )
+
+    def test_rejects_next_url_from_another_domain(self):
+        payload = {
+            "data": [self._item(1, "2026-08-19 08:00:00")],
+            "links": {
+                "next": "https://example.com/api/news?cursor=stolen"
+            },
+        }
+
+        with mock.patch.object(
+            sakhalin,
+            "fetch_json",
+            return_value=payload,
+        ) as fetch:
+            result = sakhalin.parse(now=self.NOW)
+
+        self.assertEqual(len(result), 1)
+        fetch.assert_called_once()
+
+    @staticmethod
+    def _item(item_id, date):
+        return {
+            "id": item_id,
+            "date": date,
+            "name": f"Свежая новость Сахалинской области номер {item_id}",
+            "slug": f"/news/item-{item_id}",
+        }
 
 
 if __name__ == "__main__":

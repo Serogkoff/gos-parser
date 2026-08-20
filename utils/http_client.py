@@ -97,6 +97,79 @@ def fetch_soup(
     return None
 
 
+def fetch_json(
+    url,
+    source_name,
+    timeout=30,
+    verify=True,
+    attempts=DEFAULT_ATTEMPTS,
+    proxy_url="",
+):
+    """Скачивает JSON через общий HTTP-клиент проекта."""
+    attempts = max(1, int(attempts))
+    headers = {**HEADERS, "Accept": "application/json"}
+
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                timeout=timeout,
+                verify=verify,
+                proxies=(
+                    {"http": proxy_url, "https": proxy_url}
+                    if proxy_url else None
+                ),
+            )
+            response.raise_for_status()
+            if not response.content:
+                raise requests.exceptions.ConnectionError("получен пустой ответ")
+            return response.json()
+
+        except requests.exceptions.Timeout:
+            if attempt < attempts:
+                _wait_before_retry(source_name, url, attempt, "таймаут")
+                continue
+            logger.warning(f"[{source_name}] Таймаут при запросе {url}")
+
+        except requests.exceptions.ConnectionError as error:
+            if attempt < attempts:
+                _wait_before_retry(
+                    source_name,
+                    url,
+                    attempt,
+                    "сброс соединения",
+                )
+                continue
+            logger.warning(f"[{source_name}] Ошибка соединения с {url}: {error}")
+
+        except requests.exceptions.HTTPError:
+            status_code = response.status_code
+            if status_code in TRANSIENT_STATUS_CODES and attempt < attempts:
+                delay = _retry_after_seconds(response) or min(2 * attempt, 6)
+                logger.info(
+                    f"[{source_name}] HTTP {status_code}; "
+                    f"повтор через {delay} с: {url}"
+                )
+                time.sleep(delay)
+                continue
+            logger.warning(
+                f"[{source_name}] Сайт ответил ошибкой "
+                f"{status_code} на {url}"
+            )
+
+        except (ValueError, requests.exceptions.RequestException) as error:
+            if isinstance(error, ValueError) and attempt < attempts:
+                _wait_before_retry(source_name, url, attempt, "некорректный JSON")
+                continue
+            logger.warning(
+                f"[{source_name}] Не удалось прочитать JSON с {url}: {error}"
+            )
+        return None
+
+    return None
+
+
 def _wait_before_retry(source_name, url, attempt, reason):
     delay = min(2 * attempt, 6)
     logger.info(

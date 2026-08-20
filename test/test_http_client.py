@@ -3,12 +3,28 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from utils.http_client import fetch_soup
+from utils.http_client import fetch_json, fetch_soup
 from utils.js_client import _is_transient_browser_error
 from utils.proxy import kyodo_proxy_url, playwright_proxy
 
 
 class HttpClientRetryTests(unittest.TestCase):
+    @patch("utils.http_client.requests.get")
+    def test_fetch_json_uses_shared_http_client(self, get):
+        response = Mock()
+        response.content = b'{"data": []}'
+        response.json.return_value = {"data": []}
+        response.raise_for_status.return_value = None
+        get.return_value = response
+
+        payload = fetch_json("https://example.com/api/news", "Тест")
+
+        self.assertEqual(payload, {"data": []})
+        self.assertEqual(
+            get.call_args.kwargs["headers"]["Accept"],
+            "application/json",
+        )
+
     @patch("utils.http_client.time.sleep")
     @patch("utils.http_client.requests.get")
     def test_retries_one_transient_timeout(self, get, sleep):
