@@ -1,5 +1,6 @@
 """RSS-ленты Yahoo! JAPAN News для личного мониторинга."""
 
+import re
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit, urlunsplit
@@ -14,6 +15,8 @@ from utils.news import deduplicate_news
 MAX_ITEMS = 50
 MAX_AGE_DAYS = 30
 YAHOO_HOST = "news.yahoo.co.jp"
+JIJI_PAGE_URL = "https://news.yahoo.co.jp/media/jij"
+JIJI_MAX_PAGES = 2
 
 SOURCE_TOP = "Yahoo! JAPAN · トップ"
 SOURCE_DOMESTIC = "Yahoo! JAPAN · 国内"
@@ -32,7 +35,7 @@ YAHOO_FEEDS = (
     (
         SOURCE_JIJI,
         "時事通信",
-        "https://news.yahoo.co.jp/rss/media/jij/all.xml",
+        JIJI_PAGE_URL,
     ),
     (
         SOURCE_AP,
@@ -197,8 +200,110 @@ def _clean_summary(value):
     return " ".join(text.split())
 
 
-def parse_jiji():
-    return parse_feed(*YAHOO_FEEDS[0])
+def parse_jiji(now=None):
+    """Читает серверный список 時事通信 после закрытия его Yahoo RSS."""
+    now = now or datetime.now().astimezone()
+    cutoff = now.date() - timedelta(days=MAX_AGE_DAYS)
+    news = []
+
+    for page_number in range(1, JIJI_MAX_PAGES + 1):
+        page_url = (
+            JIJI_PAGE_URL
+            if page_number == 1
+            else f"{JIJI_PAGE_URL}?page={page_number}"
+        )
+        soup = fetch_soup(
+            page_url,
+            SOURCE_JIJI,
+            timeout=30,
+            verify=True,
+            parser="html.parser",
+        )
+        if soup is None:
+            break
+
+        page_items, reached_old = _parse_jiji_page(soup, now, cutoff)
+        news.extend(page_items)
+        if reached_old or not page_items or len(news) >= MAX_ITEMS:
+            break
+
+    result = deduplicate_news(news)[:MAX_ITEMS]
+    print(f"  ✅ {len(result)}")
+    return result
+
+
+def _parse_jiji_page(soup, now, cutoff):
+    """Извлекает карточки из публичной страницы поставщика Yahoo."""
+    news = []
+    reached_old = False
+
+    for entry in soup.select(".newsFeed_list > li"):
+        anchor = entry.find("a", href=True)
+        time_tag = entry.find("time")
+        if anchor is None or time_tag is None:
+            continue
+
+        url = _article_url(anchor.get("href"))
+        publication_date = _parse_media_date(
+            time_tag.get_text(" ", strip=True),
+            now,
+        )
+        title = _media_card_title(anchor, time_tag)
+        if not url or len(title) < 4 or is_junk(title):
+            continue
+        if publication_date:
+            parsed_date = datetime.strptime(
+                publication_date,
+                "%Y-%m-%d",
+            ).date()
+            if parsed_date < cutoff:
+                reached_old = True
+                break
+
+        news.append({
+            "source": SOURCE_JIJI,
+            "title": title,
+            "url": url,
+            "date": publication_date,
+            "section": "時事通信",
+        })
+
+    return news, reached_old
+
+
+def _media_card_title(anchor, time_tag):
+    """Находит листовой текст заголовка, не завися от CSS-хеша Yahoo."""
+    date_text = " ".join(time_tag.get_text(" ", strip=True).split())
+    candidates = []
+    block_names = ["h2", "h3", "p", "div"]
+    for node in anchor.find_all(block_names):
+        if node.find(block_names, recursive=False):
+            continue
+        text = " ".join(node.get_text(" ", strip=True).split())
+        if text and text != date_text and time_tag not in node.descendants:
+            candidates.append(text)
+    return max(candidates, key=len, default="")
+
+
+def _parse_media_date(value, now):
+    """Преобразует японскую дату карточки, включая переход года."""
+    match = re.search(
+        r"(\d{1,2})/(\d{1,2})\([^)]*\)\s+\d{1,2}:\d{2}",
+        value,
+    )
+    if not match:
+        return ""
+    try:
+        parsed = datetime(
+            now.year,
+            int(match.group(1)),
+            int(match.group(2)),
+        ).date()
+    except ValueError:
+        return ""
+    if parsed > now.date() + timedelta(days=31):
+        parsed = parsed.replace(year=parsed.year - 1)
+    return parsed.isoformat()
 
 
 def parse_ap():

@@ -83,6 +83,62 @@ class YahooJapanRssTests(unittest.TestCase):
             "https://news.yahoo.co.jp/articles/abc123",
         )
 
+    def test_jiji_uses_two_html_pages_after_rss_shutdown(self):
+        def page(title, article_id, date_text):
+            return BeautifulSoup(
+                "<html><body><ul class='newsFeed_list'><li>"
+                f"<a href='https://news.yahoo.co.jp/articles/{article_id}'>"
+                f"<div><div>{title}</div><div><time>{date_text}</time></div></div>"
+                "</a></li></ul></body></html>",
+                "html.parser",
+            )
+
+        with patch.object(
+            yahoo_japan,
+            "fetch_soup",
+            side_effect=[
+                page("時事通信の第一ページの記事", "jiji001", "8/20(木) 22:35"),
+                page("時事通信の第二ページの記事", "jiji002", "8/19(水) 18:10"),
+            ],
+        ) as fetch:
+            items = yahoo_japan.parse_jiji(
+                now=datetime(2026, 8, 20, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual(
+            [item["date"] for item in items],
+            ["2026-08-20", "2026-08-19"],
+        )
+        self.assertEqual(
+            [item["url"] for item in items],
+            [
+                "https://news.yahoo.co.jp/articles/jiji001",
+                "https://news.yahoo.co.jp/articles/jiji002",
+            ],
+        )
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(
+            fetch.call_args_list[1].args[0],
+            "https://news.yahoo.co.jp/media/jij?page=2",
+        )
+
+    def test_jiji_stops_before_second_page_when_news_is_old(self):
+        soup = BeautifulSoup(
+            "<html><body><ul class='newsFeed_list'><li>"
+            "<a href='https://news.yahoo.co.jp/articles/oldjiji'>"
+            "<div><div>保存期間より古い時事通信の記事</div>"
+            "<div><time>6/1(月) 09:00</time></div></div>"
+            "</a></li></ul></body></html>",
+            "html.parser",
+        )
+        with patch.object(yahoo_japan, "fetch_soup", return_value=soup) as fetch:
+            items = yahoo_japan.parse_jiji(
+                now=datetime(2026, 8, 20, tzinfo=timezone.utc),
+            )
+
+        self.assertEqual(items, [])
+        fetch.assert_called_once()
+
     def test_rejects_article_url_from_another_domain(self):
         soup = self._soup(
             "<item>"
@@ -244,7 +300,7 @@ class YahooJapanRssTests(unittest.TestCase):
             "https://news.yahoo.co.jp/rss/categories/life.xml",
             "https://news.yahoo.co.jp/rss/categories/local.xml",
             "https://news.yahoo.co.jp/rss/categories/entertainment.xml",
-            "https://news.yahoo.co.jp/rss/media/jij/all.xml",
+            "https://news.yahoo.co.jp/media/jij",
             "https://news.yahoo.co.jp/rss/media/aptsushinv/all.xml",
             "https://news.yahoo.co.jp/rss/media/cnn/all.xml",
             "https://news.yahoo.co.jp/rss/media/teikokudb/all.xml",
