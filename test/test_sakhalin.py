@@ -16,6 +16,11 @@ class SakhalinApiTests(unittest.TestCase):
                     "date": "2026-08-17 13:59:00",
                     "name": "  На Сахалине открыли новый социальный объект  ",
                     "slug": "/news/novyy-sotsialnyy-obekt",
+                    "caption": "Официальный анонс сахалинской публикации.",
+                    "text": (
+                        "<p>Первый полный абзац официальной публикации.</p>"
+                        "<p>Второй полный абзац официальной публикации.</p>"
+                    ),
                 },
                 {
                     "id": 100,
@@ -42,6 +47,11 @@ class SakhalinApiTests(unittest.TestCase):
                     "title": "На Сахалине открыли новый социальный объект",
                     "url": "https://sakhalin.gov.ru/news/novyy-sotsialnyy-obekt",
                     "date": "2026-08-17",
+                    "article_paragraphs": [
+                        "Официальный анонс сахалинской публикации.",
+                        "Первый полный абзац официальной публикации.",
+                        "Второй полный абзац официальной публикации.",
+                    ],
                 },
                 {
                     "source": sakhalin.SOURCE_NAME,

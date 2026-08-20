@@ -2350,16 +2350,21 @@ def article_page():
         abort(404)
     force_refresh = request.method == "POST"
     cached = load_cached_article(url)
-    if cached is not None and not force_refresh:
-        article = cached
-    elif item.get("article_paragraphs"):
-        # Atom Кремля содержит официальный текст публикации. Используем его
-        # сразу: повторно открывать защищённую страницу источника не нужно.
+    embedded_paragraphs = [
+        " ".join(str(paragraph).split())
+        for paragraph in item.get("article_paragraphs", [])
+        if " ".join(str(paragraph).split())
+    ]
+    if embedded_paragraphs:
+        # Некоторые официальные API/ленты сразу содержат полный текст.
+        # Он надёжнее повторного разбора декоративной HTML-страницы.
         article = {
             "title": item.get("title", ""),
-            "paragraphs": item["article_paragraphs"],
+            "paragraphs": embedded_paragraphs,
             "error": "",
         }
+    elif cached is not None and not force_refresh:
+        article = cached
     elif item.get("source") == "ТАСС" and item.get("summary"):
         # RSS ТАСС отдаёт официальный анонс сразу и без браузерной проверки.
         # Полную публикацию при необходимости можно открыть по ссылке.
@@ -2383,7 +2388,12 @@ def article_page():
                 "paragraphs": [item["summary"]],
                 "error": "",
             }
-    if cached is None or force_refresh:
+    embedded_text_changed = (
+        bool(embedded_paragraphs)
+        and cached is not None
+        and cached.get("paragraphs") != article.get("paragraphs")
+    )
+    if cached is None or force_refresh or embedded_text_changed:
         saved = save_cached_article(url, article, item.get("source", ""))
         if saved is not None:
             article = saved

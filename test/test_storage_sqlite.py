@@ -415,6 +415,44 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertIn("Новая версия".encode("utf-8"), failed.data)
         self.assertIn("Источник временно недоступен".encode("utf-8"), failed.data)
 
+    def test_embedded_article_replaces_stale_cached_page_text(self):
+        item = {
+            "source": "Сахалинская обл.",
+            "title": "Официальная публикация Сахалина",
+            "url": "https://sakhalin.gov.ru/official-article",
+            "date": "2026-08-20",
+            "article_paragraphs": [
+                "Официальный полный текст публикации из JSON API."
+            ],
+        }
+        self._write_json(self.all_json, [item])
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+        storage.save_cached_article(
+            item["url"],
+            {
+                "title": item["title"],
+                "paragraphs": ["Решаем вместе. Сообщить о проблеме."],
+                "error": "",
+            },
+            item["source"],
+        )
+
+        response = web_app.app.test_client().get(
+            "/article",
+            query_string={"url": item["url"]},
+        )
+
+        self.assertIn(
+            "Официальный полный текст".encode("utf-8"),
+            response.data,
+        )
+        self.assertNotIn("Решаем вместе".encode("utf-8"), response.data)
+        self.assertEqual(
+            storage.load_cached_article(item["url"])["paragraphs"],
+            item["article_paragraphs"],
+        )
+
     def test_web_interface_reads_news_from_sqlite(self):
         item = {
             "source": "МЧС",

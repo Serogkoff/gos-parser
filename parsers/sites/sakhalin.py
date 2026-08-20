@@ -3,6 +3,8 @@
 from datetime import datetime, timedelta
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
+from bs4 import BeautifulSoup
+
 from utils.dates import validate_publication_date
 from utils.filters import is_junk
 from utils.http_client import fetch_json
@@ -86,16 +88,46 @@ def _parse_api_page(payload, now, cutoff, seen_articles):
             continue
 
         seen_articles.add(article_url)
-        result.append(
-            {
-                "source": SOURCE_NAME,
-                "title": title,
-                "url": article_url,
-                "date": publication_date,
-            }
-        )
+        news_item = {
+            "source": SOURCE_NAME,
+            "title": title,
+            "url": article_url,
+            "date": publication_date,
+        }
+        article_paragraphs = _article_paragraphs(item)
+        if article_paragraphs:
+            news_item["article_paragraphs"] = article_paragraphs
+        result.append(news_item)
 
     return result, False
+
+
+def _article_paragraphs(item):
+    """Извлекает официальный анонс и текст из полей JSON API."""
+    paragraphs = []
+    seen = set()
+
+    for field in ("caption", "text"):
+        raw_text = str(item.get(field, "") or "").strip()
+        if not raw_text:
+            continue
+
+        soup = BeautifulSoup(raw_text, "html.parser")
+        nodes = soup.select("p, li")
+        values = (
+            [node.get_text(" ", strip=True) for node in nodes]
+            if nodes
+            else [soup.get_text(" ", strip=True)]
+        )
+        for value in values:
+            paragraph = " ".join(value.split())
+            normalized = paragraph.casefold()
+            if len(paragraph) < 15 or normalized in seen:
+                continue
+            seen.add(normalized)
+            paragraphs.append(paragraph)
+
+    return paragraphs[:100]
 
 
 def _article_url(slug):
