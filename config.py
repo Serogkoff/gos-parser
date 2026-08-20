@@ -1,4 +1,4 @@
-PROJECT_VERSION = "2026.08.17.5"
+PROJECT_VERSION = "2026.08.17.6"
 
 KEYWORDS = [
     "Курил", "Сахалин", "Владивосток", "Хабаровск", "Камчатка", "Дальний Восток",
@@ -27,6 +27,7 @@ YONHAP_KEYWORDS = [
 PAUSE_BETWEEN_REQUESTS = 2
 GOVERNMENT_UPDATE_INTERVAL = 300
 AGENCY_UPDATE_INTERVAL = 180
+YAHOO_UPDATE_INTERVAL = 600
 KYODO_UPDATE_INTERVAL = 600
 # Свежие номера газет проверяем строго один раз в день в 08:00 по локальному
 # времени компьютера. Запуск программы вечером не вызывает лишнюю проверку.

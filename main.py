@@ -16,6 +16,7 @@ from config import (
     PROJECT_VERSION,
     SOURCE_TIMEOUT_OVERRIDES,
     SOURCE_TIMEOUT_SECONDS,
+    YAHOO_UPDATE_INTERVAL,
 )
 from utils.parser_runner import ParserTimeoutError, run_parser_with_timeout
 from utils.news import deduplicate_news
@@ -62,6 +63,7 @@ from parsers.sites.ria import parse as ria
 from parsers.sites.tass import parse as tass
 from parsers.sites.interfax import parse as interfax
 from parsers.sites.yonhap import parse as yonhap
+from parsers.sites.yahoo_japan import YAHOO_SITES
 from parsers.sites.kyodo import parse as kyodo
 from parsers.sites.minoborony import parse as minoborony
 from parsers.sites.ng import parse as ng
@@ -129,6 +131,7 @@ NEWSPAPER_SITES = [
 SITES = [
     *GOVERNMENT_SITES,
     *AGENCY_SITES,
+    *YAHOO_SITES,
     *KYODO_SITES,
     *NEWSPAPER_SITES,
 ]
@@ -425,7 +428,14 @@ def _parse_arguments(argv=None):
     )
     parser.add_argument(
         "--once",
-        choices=("government", "agencies", "kyodo", "newspapers", "all"),
+        choices=(
+            "government",
+            "agencies",
+            "yahoo",
+            "kyodo",
+            "newspapers",
+            "all",
+        ),
         help="однократно обновить выбранную группу и завершить работу",
     )
     return parser.parse_args(argv)
@@ -452,7 +462,8 @@ def run_manual_group(group_name):
     """Обновляет выбранную группу сразу, независимо от расписания."""
     groups = {
         "government": (GOVERNMENT_SITES, "Госструктуры"),
-        "agencies": (AGENCY_SITES, "Информагентства"),
+        "agencies": ([*AGENCY_SITES, *YAHOO_SITES], "Информагентства"),
+        "yahoo": (YAHOO_SITES, "Yahoo! JAPAN"),
         "kyodo": (KYODO_SITES, "Киодо"),
         "newspapers": (NEWSPAPER_SITES, "Газеты"),
     }
@@ -492,6 +503,19 @@ def main(argv=None):
         daemon=True,
     )
     agency_thread.start()
+
+    yahoo_thread = Thread(
+        target=run_schedule,
+        args=(
+            YAHOO_SITES,
+            "Yahoo! JAPAN",
+            YAHOO_UPDATE_INTERVAL,
+            stop_event,
+        ),
+        name="yahoo-parser",
+        daemon=True,
+    )
+    yahoo_thread.start()
 
     kyodo_thread = Thread(
         target=run_schedule,
@@ -533,6 +557,7 @@ def main(argv=None):
     finally:
         stop_event.set()
         agency_thread.join(timeout=2)
+        yahoo_thread.join(timeout=2)
         kyodo_thread.join(timeout=2)
         newspaper_thread.join(timeout=2)
 

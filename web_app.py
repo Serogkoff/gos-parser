@@ -2111,7 +2111,10 @@ def render_news_page(
 
     if source_group == AGENCIES_GROUP:
         group_title = "Новости информагентств"
-        group_eyebrow = "РИА Новости · ТАСС · Интерфакс · Yonhap · Киодо"
+        group_eyebrow = (
+            "РИА Новости · ТАСС · Интерфакс · Yahoo! JAPAN · "
+            "Yonhap · Киодо"
+        )
         group_home = "/agencies"
         group_found = "/agencies/found"
         source_base = "/agencies/filter/"
@@ -2376,6 +2379,18 @@ def article_page():
     else:
         article = extract_article(url, item.get("title", ""))
         if (
+            str(item.get("source", "")).startswith("Yahoo! JAPAN ·")
+            and item.get("summary")
+            and not article.get("paragraphs")
+        ):
+            # Полный текст Yahoo загружается только при открытии карточки.
+            # Если защита сайта его не отдала, сохраняем официальный RSS-анонс.
+            article = {
+                "title": item.get("title", ""),
+                "paragraphs": [item["summary"]],
+                "error": "",
+            }
+        elif (
             item.get("source") == "Минобороны РФ"
             and item.get("summary")
             and not article.get("paragraphs")

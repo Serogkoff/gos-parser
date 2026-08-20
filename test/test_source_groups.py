@@ -19,6 +19,14 @@ class SourceGroupTests(unittest.TestCase):
         self.assertEqual(source_group("Интерфакс"), AGENCIES_GROUP)
         self.assertEqual(source_group("Yonhap"), AGENCIES_GROUP)
         self.assertEqual(source_group("Киодо (共同通信)"), AGENCIES_GROUP)
+        self.assertEqual(
+            source_group("Yahoo! JAPAN · 時事通信"),
+            AGENCIES_GROUP,
+        )
+        self.assertEqual(
+            source_group("Yahoo! JAPAN · トップ"),
+            AGENCIES_GROUP,
+        )
         self.assertEqual(source_group("Независимая газета"), NEWSPAPERS_GROUP)
         self.assertEqual(source_group("Коммерсантъ"), NEWSPAPERS_GROUP)
         self.assertEqual(source_group("Известия"), NEWSPAPERS_GROUP)
@@ -48,6 +56,7 @@ class SourceGroupTests(unittest.TestCase):
     def test_update_intervals_are_independent(self):
         self.assertEqual(config.GOVERNMENT_UPDATE_INTERVAL, 300)
         self.assertEqual(config.AGENCY_UPDATE_INTERVAL, 180)
+        self.assertEqual(config.YAHOO_UPDATE_INTERVAL, 600)
         self.assertEqual(config.KYODO_UPDATE_INTERVAL, 600)
         self.assertEqual(config.NEWSPAPER_UPDATE_HOUR, 8)
 
@@ -102,6 +111,14 @@ class SourceGroupPageTests(unittest.TestCase):
                     "section": "В России",
                 },
                 {
+                    "source": "Yahoo! JAPAN · 時事通信",
+                    "title": "Yahoo! JAPANのニュース",
+                    "url": "https://news.yahoo.co.jp/articles/test-yahoo",
+                    "date": "2026-08-20",
+                    "section": "時事通信",
+                    "summary": "Yahoo! JAPAN RSSの公式概要です。",
+                },
+                {
                     "source": "Независимая газета",
                     "title": "Материал свежего номера НГ",
                     "url": "https://www.ng.ru/world/2026-08-05/1_9553_test.html",
@@ -138,6 +155,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Материал информационного агентства", html)
         self.assertIn("Материал ТАСС", html)
         self.assertIn("Материал Интерфакса", html)
+        self.assertIn("Yahoo! JAPANのニュース", html)
         self.assertIn("Политика", html)
         self.assertNotIn("Материал государственного ведомства", html)
 
@@ -290,6 +308,73 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Материал ТАСС", html)
         self.assertIn("Официальный анонс публикации ТАСС.", html)
+
+    def test_yahoo_article_uses_official_rss_summary(self):
+        with patch.object(
+            web_app,
+            "load_json",
+            side_effect=self._load_json,
+        ), patch.object(
+            web_app,
+            "extract_article",
+            return_value={
+                "title": "Yahoo! JAPANのニュース",
+                "paragraphs": [],
+                "error": "Yahoo не отдал страницу",
+            },
+        ), patch.object(
+            web_app,
+            "load_cached_article",
+            return_value=None,
+        ), patch.object(
+            web_app,
+            "save_cached_article",
+            return_value=None,
+        ):
+            response = web_app.app.test_client().get(
+                "/article?url=https%3A%2F%2Fnews.yahoo.co.jp%2Farticles%2Ftest-yahoo"
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Yahoo! JAPANのニュース", html)
+        self.assertIn("Yahoo! JAPAN RSSの公式概要です。", html)
+
+    def test_yahoo_article_loads_full_text_only_when_opened(self):
+        full_article = {
+            "title": "Yahoo! JAPANのニュース",
+            "paragraphs": ["選択した記事の全文をオンデマンドで取得しました。"],
+            "error": "",
+        }
+        with patch.object(
+            web_app,
+            "load_json",
+            side_effect=self._load_json,
+        ), patch.object(
+            web_app,
+            "extract_article",
+            return_value=full_article,
+        ) as extractor, patch.object(
+            web_app,
+            "load_cached_article",
+            return_value=None,
+        ), patch.object(
+            web_app,
+            "save_cached_article",
+            return_value=None,
+        ):
+            response = web_app.app.test_client().get(
+                "/article?url=https%3A%2F%2Fnews.yahoo.co.jp%2Farticles%2Ftest-yahoo"
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("選択した記事の全文をオンデマンドで取得しました。", html)
+        self.assertNotIn("Yahoo! JAPAN RSSの公式概要です。", html)
+        extractor.assert_called_once_with(
+            "https://news.yahoo.co.jp/articles/test-yahoo",
+            "Yahoo! JAPANのニュース",
+        )
 
     def test_kremlin_article_uses_full_atom_text(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):

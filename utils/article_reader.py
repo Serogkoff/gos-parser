@@ -119,6 +119,13 @@ VERIFIED_ARTICLE_SELECTORS = {
         "article",
         "main",
     ),
+    "news.yahoo.co.jp": (
+        "[itemprop='articleBody']",
+        ".article_body",
+        ".articleBody",
+        "[class*='articleBody']",
+        "article",
+    ),
     "mcx.gov.ru": (
         "[itemprop='articleBody']",
         ".news-detail__content",
@@ -352,6 +359,11 @@ def extract_article(url, fallback_title=""):
         if article:
             return article
 
+    if _is_yahoo_url(url):
+        article = _extract_yahoo_article(soup, fallback_title)
+        if article:
+            return article
+
     if verified_selectors:
         return _extract_verified_article(
             soup,
@@ -400,6 +412,11 @@ def _is_minobrnauki_url(url):
 def _is_ng_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
     return hostname == "ng.ru" or hostname.endswith(".ng.ru")
+
+
+def _is_yahoo_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return hostname == "news.yahoo.co.jp"
 
 
 def _ng_mirror_url(url):
@@ -761,6 +778,66 @@ def _verified_article_selectors(url):
         if hostname == required_host or hostname.endswith(f".{required_host}"):
             return selectors
     return ()
+
+
+def _extract_yahoo_article(soup, fallback_title):
+    """Читает только подтверждённый текст выбранной статьи Yahoo."""
+    structured_article = _extract_structured_article(soup, fallback_title)
+    page_titles = [
+        _first_text(soup.select_one("h1")),
+        _first_text(soup.select_one("[itemprop='headline']")),
+        _first_text(soup.select_one("meta[property='og:title']")),
+    ]
+    if structured_article:
+        page_titles.append(structured_article["title"])
+    page_titles = [title for title in page_titles if title]
+
+    if fallback_title:
+        title_confirmed = any(
+            _titles_match(fallback_title, page_title)
+            for page_title in page_titles
+        )
+    else:
+        title_confirmed = bool(page_titles)
+
+    title = fallback_title or (page_titles[0] if page_titles else "")
+    if not title_confirmed:
+        return {
+            "title": title,
+            "paragraphs": [],
+            "error": (
+                "Yahoo открыл служебную страницу вместо публикации. "
+                "Используйте кнопку «Открыть оригинал»."
+            ),
+        }
+
+    if structured_article and structured_article["paragraphs"]:
+        return {
+            "title": title,
+            "paragraphs": structured_article["paragraphs"][:100],
+            "error": "",
+        }
+
+    selectors = VERIFIED_ARTICLE_SELECTORS["news.yahoo.co.jp"]
+    candidates = []
+    for selector in selectors:
+        candidates.extend(soup.select(selector))
+
+    best = []
+    for container in candidates:
+        nodes = container.select("p") or [container]
+        paragraphs = _exact_article_paragraphs(nodes, title)
+        if sum(map(len, paragraphs)) > sum(map(len, best)):
+            best = paragraphs
+
+    return {
+        "title": title,
+        "paragraphs": best[:100],
+        "error": "" if best else (
+            "Yahoo подтвердил публикацию, но не отдал её полный текст. "
+            "Используйте кнопку «Открыть оригинал»."
+        ),
+    }
 
 
 def _extract_verified_article(soup, fallback_title, selectors):

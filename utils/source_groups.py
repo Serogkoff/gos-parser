@@ -43,6 +43,18 @@ AGENCY_SOURCES = frozenset({
     "Интерфакс",
     "Yonhap",
     "Киодо (共同通信)",
+    "Yahoo! JAPAN · トップ",
+    "Yahoo! JAPAN · 国内",
+    "Yahoo! JAPAN · 国際",
+    "Yahoo! JAPAN · 経済",
+    "Yahoo! JAPAN · IT",
+    "Yahoo! JAPAN · ライフ",
+    "Yahoo! JAPAN · 地域",
+    "Yahoo! JAPAN · エンタメ",
+    "Yahoo! JAPAN · 時事通信",
+    "Yahoo! JAPAN · AP通信",
+    "Yahoo! JAPAN · CNN",
+    "Yahoo! JAPAN · 帝国データバンク",
 })
 
 NEWSPAPER_SOURCES = frozenset({
