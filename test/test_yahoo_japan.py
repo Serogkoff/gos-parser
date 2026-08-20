@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 
 import main
 from parsers.sites import yahoo_japan
-from utils.article_reader import extract_article
+from utils.article_reader import extract_article, yahoo_article_is_polluted
 
 
 class YahooJapanRssTests(unittest.TestCase):
@@ -108,10 +108,17 @@ class YahooJapanRssTests(unittest.TestCase):
             "content='日本の新しいニュースです'></head><body>"
             "<nav><p>トップ 国内 国際 経済</p></nav>"
             "<h1>日本の新しいニュースです</h1>"
+            "<article>"
             "<div class='article_body'>"
+            "<p>Yahoo!ニュース</p>"
+            "<p>2026年8月19日：現場の写真。(AP Photo/Test)</p>"
             "<p>これは選択した記事の本文の第一段落です。</p>"
             "<p>これは選択した記事の本文の第二段落です。</p>"
-            "</div></body></html>",
+            "</div>"
+            "<aside><h2>アクセスランキング（国際）</h2>"
+            "<p>1 本文ではないランキングのニュースです。</p>"
+            "<p>2 こちらも本文ではないニュースです。</p>"
+            "</aside></article></body></html>",
             "html.parser",
         )
         with patch(
@@ -131,11 +138,33 @@ class YahooJapanRssTests(unittest.TestCase):
             ],
         )
         self.assertNotIn("トップ 国内", " ".join(article["paragraphs"]))
+        self.assertNotIn("AP Photo", " ".join(article["paragraphs"]))
+        self.assertNotIn("ランキング", " ".join(article["paragraphs"]))
         fetch.assert_called_once_with(
             "https://news.yahoo.co.jp/articles/abc123",
             "Просмотр новости",
             timeout=25,
             verify=False,
+        )
+
+    def test_recognizes_polluted_cached_yahoo_article(self):
+        self.assertTrue(
+            yahoo_article_is_polluted({
+                "paragraphs": [
+                    "これは記事の正しい本文です。",
+                    "1 ランキングにある別の記事です。",
+                    "2 ランキングにある二つ目の記事です。",
+                    "3 ランキングにある三つ目の記事です。",
+                ]
+            })
+        )
+        self.assertFalse(
+            yahoo_article_is_polluted({
+                "paragraphs": [
+                    "これは記事の正しい第一段落です。",
+                    "これは記事の正しい第二段落です。",
+                ]
+            })
         )
 
     def test_registers_exact_requested_feeds_without_exclusions(self):

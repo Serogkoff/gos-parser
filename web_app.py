@@ -20,7 +20,7 @@ from flask import (
 )
 from config import PROJECT_VERSION
 from utils.auth import load_secret_key
-from utils.article_reader import extract_article
+from utils.article_reader import extract_article, yahoo_article_is_polluted
 from utils.diagnostics import alert_summary, source_alerts, system_alerts
 from utils.keywords import (
     add_keyword,
@@ -39,6 +39,7 @@ from utils.source_groups import (
     NEWSPAPERS_GROUP,
     NEWSPAPER_SOURCES,
     filter_news_by_group,
+    is_yahoo_source,
     source_group as get_source_group,
 )
 from utils.storage import (
@@ -650,6 +651,13 @@ HTML = """
         .check{width:16px;height:16px;display:grid;place-items:center;color:#fff;border:1px solid #bdb5a9;border-radius:3px;font-size:11px}
         .source-row.active .check{border-color:var(--coral);background:var(--coral)}
         .source-row b{min-width:28px;padding:3px 5px;color:#827b71;border:1px solid var(--line);border-radius:5px;background:#f8f4ed;text-align:center;font-size:10px;font-weight:500}
+        .yahoo-source-toggle{width:100%;border:0;color:inherit;background:transparent}
+        .yahoo-source-toggle.source-link{grid-template-columns:20px minmax(0,1fr) auto auto auto}
+        .yahoo-chevron{color:var(--muted);font-size:14px;transition:transform .2s}
+        .source-list.yahoo-expanded .yahoo-chevron{transform:rotate(180deg)}
+        .yahoo-source-row{max-height:0;min-height:0;padding-left:20px;overflow:hidden;opacity:0;transition:max-height .22s ease,opacity .18s ease}
+        .source-list.yahoo-expanded .yahoo-source-row{max-height:44px;min-height:40px;opacity:1}
+        .yahoo-source-row .source-link{padding-left:8px}
         .source-drag-handle{display:none;flex:0 0 22px;color:#aaa196;text-align:center;font-size:13px;letter-spacing:-2px;cursor:grab;user-select:none}
         .source-list.order-editing .sortable-source{cursor:grab;background:#fffbf6}
         .source-list.order-editing .sortable-source:hover{background:#fff4ea}
@@ -870,7 +878,7 @@ HTML = """
                         <button class="collapse-button" id="collapse-sources" type="button" aria-label="Свернуть список">−</button>
                     </div>
                 </header>
-                <div class="source-list" id="source-list">
+                <div class="source-list {{'yahoo-expanded' if yahoo_expanded else ''}}" id="source-list">
                     <div class="source-row {{'active' if not source_filter else ''}}">
                         <a class="source-link" href="{{group_home}}">
                             <span class="check">{{'✓' if not source_filter else ''}}</span>
@@ -879,7 +887,7 @@ HTML = """
                             <span class="unread-count" data-unread-source="__all__"></span>
                         </a>
                     </div>
-                    {% for src, count in sources %}
+                    {% for src, count in sidebar_sources %}
                     <div class="source-row sortable-source {{'active' if src == source_filter else ''}}" data-source-row data-source-name="{{src}}">
                         <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
                         <a class="source-link" href="{{source_base}}{{src|urlencode}}">
@@ -890,6 +898,29 @@ HTML = """
                         </a>
                     </div>
                     {% endfor %}
+                    {% if yahoo_sources %}
+                    <div class="source-row yahoo-source-header {{'active' if yahoo_active else ''}}">
+                        <button class="source-link yahoo-source-toggle" id="yahoo-source-toggle" type="button" aria-expanded="{{'true' if yahoo_expanded else 'false'}}" aria-controls="yahoo-source-items">
+                            <span class="check">{{'✓' if yahoo_active else ''}}</span>
+                            <span>Yahoo! JAPAN</span>
+                            <b>{{yahoo_total}}</b>
+                            <span class="unread-count" data-unread-source="__yahoo__"></span>
+                            <span class="yahoo-chevron" aria-hidden="true">⌄</span>
+                        </button>
+                    </div>
+                    <span id="yahoo-source-items"></span>
+                    {% for src, count, label in yahoo_sources %}
+                    <div class="source-row sortable-source yahoo-source-row {{'active' if src == source_filter else ''}}" data-source-row data-source-name="{{src}}">
+                        <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
+                        <a class="source-link" href="{{source_base}}{{src|urlencode}}">
+                            <span class="check">{{'✓' if src == source_filter else ''}}</span>
+                            <span>{{label}}</span>
+                            <b>{{count}}</b>
+                            <span class="unread-count" data-unread-source="{{src}}"></span>
+                        </a>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
                 </div>
             </section>
 
@@ -1017,15 +1048,19 @@ HTML = """
     function refreshUnread(){
         const counts = {};
         let groupUnreadCount = 0;
+        let yahooUnreadCount = 0;
         newsIndex.forEach(item => {
             if(unread.has(item.url)){
                 groupUnreadCount++;
                 counts[item.source] = (counts[item.source] || 0) + 1;
+                if(item.source.startsWith('Yahoo! JAPAN')) yahooUnreadCount++;
             }
         });
         document.querySelectorAll('[data-unread-source]').forEach(badge => {
             const source = badge.dataset.unreadSource;
-            const count = source === '__all__' ? groupUnreadCount : (counts[source] || 0);
+            const count = source === '__all__'
+                ? groupUnreadCount
+                : (source === '__yahoo__' ? yahooUnreadCount : (counts[source] || 0));
             badge.textContent = count ? '+' + count : '';
         });
         cards.forEach(card => {
@@ -1132,6 +1167,13 @@ HTML = """
         event.currentTarget.textContent = list.classList.contains('hidden') ? '+' : '−';
     });
     const sourceList = document.getElementById('source-list');
+    const yahooSourceToggle = document.getElementById('yahoo-source-toggle');
+    if(yahooSourceToggle){
+        yahooSourceToggle.addEventListener('click', () => {
+            const expanded = sourceList.classList.toggle('yahoo-expanded');
+            yahooSourceToggle.setAttribute('aria-expanded', String(expanded));
+        });
+    }
     function orderedSourceRows(){
         return [...sourceList.querySelectorAll('[data-source-row]')];
     }
@@ -1158,6 +1200,10 @@ HTML = """
     let sourceOrderChanged = false;
     function setSourceOrderEditing(editing){
         sourceList.classList.toggle('order-editing', editing);
+        if(editing && yahooSourceToggle){
+            sourceList.classList.add('yahoo-expanded');
+            yahooSourceToggle.setAttribute('aria-expanded', 'true');
+        }
         sourceOrderToggle.setAttribute('aria-pressed', String(editing));
         sourceOrderToggle.textContent = editing ? 'Готово' : 'Изменить';
         orderedSourceRows().forEach(row => row.draggable = editing);
@@ -1192,6 +1238,10 @@ HTML = """
         if(!draggedSourceRow) return;
         const target = event.target.closest('[data-source-row]');
         if(!target || target === draggedSourceRow) return;
+        if(
+            target.classList.contains('yahoo-source-row') !==
+            draggedSourceRow.classList.contains('yahoo-source-row')
+        ) return;
         event.preventDefault();
         orderedSourceRows().forEach(row => row.classList.remove('source-drag-over'));
         target.classList.add('source-drag-over');
@@ -2084,6 +2134,27 @@ def render_news_page(
             sources,
             load_source_order(user["id"], source_group),
         )
+    if source_group == AGENCIES_GROUP:
+        yahoo_sources = [
+            (
+                name,
+                count,
+                name.split("·", 1)[-1].strip() or name,
+            )
+            for name, count in sources
+            if is_yahoo_source(name)
+        ]
+        sidebar_sources = [
+            (name, count)
+            for name, count in sources
+            if not is_yahoo_source(name)
+        ]
+    else:
+        yahoo_sources = []
+        sidebar_sources = sources
+    yahoo_active = is_yahoo_source(source_filter)
+    yahoo_expanded = yahoo_active
+    yahoo_total = sum(count for _name, count, _label in yahoo_sources)
 
     status_sources = [
         item
@@ -2207,6 +2278,11 @@ def render_news_page(
         total=len(group_news),
         found_count=len(group_found_news),
         sources=sources,
+        sidebar_sources=sidebar_sources,
+        yahoo_sources=yahoo_sources,
+        yahoo_active=yahoo_active,
+        yahoo_expanded=yahoo_expanded,
+        yahoo_total=yahoo_total,
         news_index=[
             {
                 "url": item.get("url", ""),
@@ -2353,6 +2429,13 @@ def article_page():
         abort(404)
     force_refresh = request.method == "POST"
     cached = load_cached_article(url)
+    if (
+        is_yahoo_source(item.get("source", ""))
+        and yahoo_article_is_polluted(cached)
+    ):
+        # Версия 2026.08.17.6 могла сохранить вместе со статьёй рейтинг Yahoo.
+        # Такой кэш не показываем и заменяем чистым текстом при этом открытии.
+        cached = None
     embedded_paragraphs = [
         " ".join(str(paragraph).split())
         for paragraph in item.get("article_paragraphs", [])

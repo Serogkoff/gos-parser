@@ -4,6 +4,7 @@
 GOVERNMENT_GROUP = "government"
 AGENCIES_GROUP = "agencies"
 NEWSPAPERS_GROUP = "newspapers"
+YAHOO_SOURCE_PREFIX = "Yahoo! JAPAN"
 
 GOVERNMENT_SOURCES = frozenset({
     "Президент России",
@@ -70,11 +71,18 @@ NEWSPAPER_SOURCES = frozenset({
 
 def source_group(source):
     """Возвращает группу источника; старые записи считаются госорганами."""
-    if source in AGENCY_SOURCES:
+    if source in AGENCY_SOURCES or is_yahoo_source(source):
         return AGENCIES_GROUP
     if source in NEWSPAPER_SOURCES:
         return NEWSPAPERS_GROUP
     return GOVERNMENT_GROUP
+
+
+def is_yahoo_source(source):
+    """Узнаёт все нынешние и будущие подразделы Yahoo! JAPAN."""
+    return str(source or "").casefold().startswith(
+        YAHOO_SOURCE_PREFIX.casefold()
+    )
 
 
 def filter_news_by_group(items, group):

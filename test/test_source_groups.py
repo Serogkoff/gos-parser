@@ -27,6 +27,10 @@ class SourceGroupTests(unittest.TestCase):
             source_group("Yahoo! JAPAN · トップ"),
             AGENCIES_GROUP,
         )
+        self.assertEqual(
+            source_group("Yahoo! JAPAN · 新しい配信元"),
+            AGENCIES_GROUP,
+        )
         self.assertEqual(source_group("Независимая газета"), NEWSPAPERS_GROUP)
         self.assertEqual(source_group("Коммерсантъ"), NEWSPAPERS_GROUP)
         self.assertEqual(source_group("Известия"), NEWSPAPERS_GROUP)
@@ -156,6 +160,10 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Материал ТАСС", html)
         self.assertIn("Материал Интерфакса", html)
         self.assertIn("Yahoo! JAPANのニュース", html)
+        self.assertIn('id="yahoo-source-toggle"', html)
+        self.assertIn('aria-expanded="false"', html)
+        self.assertIn("<span>Yahoo! JAPAN</span>", html)
+        self.assertIn("<span>時事通信</span>", html)
         self.assertIn("Политика", html)
         self.assertNotIn("Материал государственного ведомства", html)
 
@@ -168,6 +176,18 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Новости госструктур", html)
         self.assertIn("Материал государственного ведомства", html)
         self.assertNotIn("Материал информационного агентства", html)
+        self.assertNotIn("Yahoo! JAPANのニュース", html)
+
+    def test_selected_yahoo_subsection_is_expanded(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get(
+                "/agencies/filter/Yahoo!%20JAPAN%20%C2%B7%20%E6%99%82%E4%BA%8B%E9%80%9A%E4%BF%A1"
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('class="source-list yahoo-expanded"', html)
+        self.assertIn('aria-expanded="true"', html)
 
     def test_main_sections_are_rendered_inside_header(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
@@ -375,6 +395,49 @@ class SourceGroupPageTests(unittest.TestCase):
             "https://news.yahoo.co.jp/articles/test-yahoo",
             "Yahoo! JAPANのニュース",
         )
+
+    def test_yahoo_polluted_cache_is_automatically_refreshed(self):
+        polluted = {
+            "title": "Yahoo! JAPANのニュース",
+            "paragraphs": [
+                "記事の本文です。",
+                "1 ランキングの別の記事です。",
+                "2 ランキングの二つ目の記事です。",
+                "3 ランキングの三つ目の記事です。",
+            ],
+            "error": "",
+        }
+        cleaned = {
+            "title": "Yahoo! JAPANのニュース",
+            "paragraphs": ["再取得した記事のきれいな全文です。"],
+            "error": "",
+        }
+        with patch.object(
+            web_app,
+            "load_json",
+            side_effect=self._load_json,
+        ), patch.object(
+            web_app,
+            "load_cached_article",
+            return_value=polluted,
+        ), patch.object(
+            web_app,
+            "extract_article",
+            return_value=cleaned,
+        ) as extractor, patch.object(
+            web_app,
+            "save_cached_article",
+            return_value=None,
+        ):
+            response = web_app.app.test_client().get(
+                "/article?url=https%3A%2F%2Fnews.yahoo.co.jp%2Farticles%2Ftest-yahoo"
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("再取得した記事のきれいな全文です。", html)
+        self.assertNotIn("ランキングの別の記事", html)
+        extractor.assert_called_once()
 
     def test_kremlin_article_uses_full_atom_text(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):

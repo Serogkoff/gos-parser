@@ -40,6 +40,24 @@ KYODO_BOILERPLATE_PARTS = (
     "国内外約100の拠点を軸に",
 )
 
+YAHOO_STOP_HEADINGS = (
+    "アクセスランキング",
+    "関連記事",
+    "おすすめ記事",
+    "おすすめのニュース",
+    "あわせて読みたい",
+    "こちらもおすすめ",
+)
+YAHOO_END_MARKERS = (
+    "日本語翻訳・編集",
+)
+YAHOO_PHOTO_MARKERS = (
+    "AP Photo/",
+    "Getty Images",
+    "写真：",
+    "写真提供",
+)
+
 VERIFIED_ARTICLE_SELECTORS = {
     "kremlin.ru": (
         "[itemprop='articleBody']",
@@ -402,6 +420,23 @@ def extract_article(url, fallback_title=""):
         "paragraphs": best[:100],
         "error": "" if best else "Не удалось выделить текст публикации автоматически.",
     }
+
+
+def yahoo_article_is_polluted(article):
+    """Определяет старый кэш Yahoo, в который попал блок рейтинга."""
+    paragraphs = [
+        " ".join(str(value).split())
+        for value in (article or {}).get("paragraphs", [])
+        if " ".join(str(value).split())
+    ]
+    joined = "\n".join(paragraphs)
+    if any(marker in joined for marker in YAHOO_STOP_HEADINGS):
+        return True
+    numbered_ranking_rows = sum(
+        re.match(r"^[1-5]\s+\S", paragraph) is not None
+        for paragraph in paragraphs
+    )
+    return numbered_ranking_rows >= 3
 
 
 def _is_minobrnauki_url(url):
@@ -819,16 +854,18 @@ def _extract_yahoo_article(soup, fallback_title):
         }
 
     selectors = VERIFIED_ARTICLE_SELECTORS["news.yahoo.co.jp"]
-    candidates = []
-    for selector in selectors:
-        candidates.extend(soup.select(selector))
-
     best = []
-    for container in candidates:
-        nodes = container.select("p") or [container]
-        paragraphs = _exact_article_paragraphs(nodes, title)
-        if sum(map(len, paragraphs)) > sum(map(len, best)):
-            best = paragraphs
+    for selector in selectors:
+        selector_best = []
+        for container in soup.select(selector):
+            paragraphs = _yahoo_article_paragraphs(container, title)
+            if sum(map(len, paragraphs)) > sum(map(len, selector_best)):
+                selector_best = paragraphs
+        if selector_best:
+            # Более точные селекторы перечислены первыми. Не заменяем чистый
+            # текст широким <article>, куда Yahoo добавляет правый рейтинг.
+            best = selector_best
+            break
 
     return {
         "title": title,
@@ -838,6 +875,46 @@ def _extract_yahoo_article(soup, fallback_title):
             "Используйте кнопку «Открыть оригинал»."
         ),
     }
+
+
+def _yahoo_article_paragraphs(container, title):
+    """Оставляет текст статьи без подписей к фото и боковых рекомендаций."""
+    nodes = container.select("p, h2, h3") or [container]
+    result = []
+    seen = set()
+    title_key = _title_key(title)
+
+    for node in nodes:
+        text = " ".join(node.get_text(" ", strip=True).split())
+        if any(text.startswith(marker) for marker in YAHOO_STOP_HEADINGS):
+            break
+        if getattr(node, "name", "") in {"h2", "h3"}:
+            continue
+        if text.startswith("Yahoo!ニュース"):
+            text = text[len("Yahoo!ニュース"):].strip(" |｜—-")
+        if (
+            len(text) < 300
+            and any(marker in text for marker in YAHOO_PHOTO_MARKERS)
+        ):
+            continue
+
+        normalized = _title_key(text)
+        folded = text.casefold()
+        if len(text) < 15:
+            continue
+        if title_key and normalized == title_key:
+            continue
+        if any(part in folded for part in SKIP_PARTS):
+            continue
+        if any(part in folded for part in ARTICLE_MENU_PARTS):
+            continue
+        if normalized not in seen:
+            seen.add(normalized)
+            result.append(text)
+        if any(marker in text for marker in YAHOO_END_MARKERS):
+            break
+
+    return result
 
 
 def _extract_verified_article(soup, fallback_title, selectors):
