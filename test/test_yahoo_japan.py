@@ -180,7 +180,12 @@ class YahooJapanRssTests(unittest.TestCase):
     def test_reads_yahoo_body_stored_in_text_divs(self):
         soup = BeautifulSoup(
             "<html><head><meta property='og:title' "
-            "content='divで構成された記事'></head><body>"
+            "content='divで構成された記事'>"
+            "<script type='application/ld+json'>"
+            "{\"headline\":\"divで構成された記事\","
+            "\"articleBody\":\"これは途中で切れた構造化データの本文であり、"
+            "実際の記事より短いため採用してはいけません。続きはHTMLにあります。\"}"
+            "</script></head><body>"
             "<h1>divで構成された記事</h1>"
             "<article><div class='article_body'>"
             "<div><span>これはdivに保存された記事本文の第一段落です。</span></div>"
@@ -206,6 +211,7 @@ class YahooJapanRssTests(unittest.TestCase):
             ],
         )
         self.assertNotIn("ランキング", " ".join(article["paragraphs"]))
+        self.assertNotIn("構造化データ", " ".join(article["paragraphs"]))
 
     def test_recognizes_polluted_cached_yahoo_article(self):
         self.assertTrue(

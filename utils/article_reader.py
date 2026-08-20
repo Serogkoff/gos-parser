@@ -56,6 +56,7 @@ YAHOO_PHOTO_MARKERS = (
     "Getty Images",
     "写真：",
     "写真提供",
+    "【写真を見る】",
 )
 
 VERIFIED_ARTICLE_SELECTORS = {
@@ -846,15 +847,15 @@ def _extract_yahoo_article(soup, fallback_title):
             ),
         }
 
-    if structured_article and structured_article["paragraphs"]:
-        return {
-            "title": title,
-            "paragraphs": structured_article["paragraphs"][:100],
-            "error": "",
-        }
-
     selectors = VERIFIED_ARTICLE_SELECTORS["news.yahoo.co.jp"]
-    best = []
+    # Yahoo иногда кладёт в JSON-LD укороченный articleBody, обрывающийся
+    # посреди предложения. Считаем его кандидатом, но не возвращаем раньше
+    # более полного HTML-текста.
+    best = (
+        list(structured_article["paragraphs"])
+        if structured_article and structured_article["paragraphs"]
+        else []
+    )
     for selector in selectors:
         selector_best = []
         selector_seen = set()
