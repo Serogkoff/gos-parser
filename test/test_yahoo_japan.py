@@ -177,6 +177,36 @@ class YahooJapanRssTests(unittest.TestCase):
         )
         self.assertNotIn("ランキング", " ".join(article["paragraphs"]))
 
+    def test_reads_yahoo_body_stored_in_text_divs(self):
+        soup = BeautifulSoup(
+            "<html><head><meta property='og:title' "
+            "content='divで構成された記事'></head><body>"
+            "<h1>divで構成された記事</h1>"
+            "<article><div class='article_body'>"
+            "<div><span>これはdivに保存された記事本文の第一段落です。</span></div>"
+            "<div><span>これはdivに保存された記事本文の第二段落です。</span></div>"
+            "<div><p>これは通常のp要素に保存された第三段落です。</p></div>"
+            "</div><aside><h2>アクセスランキング</h2>"
+            "<div>1 本文ではないランキングのニュースです。</div>"
+            "</aside></article></body></html>",
+            "html.parser",
+        )
+        with patch("utils.article_reader.fetch_soup", return_value=soup):
+            article = extract_article(
+                "https://news.yahoo.co.jp/articles/div123",
+                "divで構成された記事",
+            )
+
+        self.assertEqual(
+            article["paragraphs"],
+            [
+                "これはdivに保存された記事本文の第一段落です。",
+                "これはdivに保存された記事本文の第二段落です。",
+                "これは通常のp要素に保存された第三段落です。",
+            ],
+        )
+        self.assertNotIn("ランキング", " ".join(article["paragraphs"]))
+
     def test_recognizes_polluted_cached_yahoo_article(self):
         self.assertTrue(
             yahoo_article_is_polluted({

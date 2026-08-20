@@ -880,7 +880,19 @@ def _extract_yahoo_article(soup, fallback_title):
 
 def _yahoo_article_paragraphs(container, title):
     """Оставляет текст статьи без подписей к фото и боковых рекомендаций."""
-    nodes = container.select("p, h2, h3") or [container]
+    nodes = []
+    for node in container.select("p, h2, h3, div"):
+        # Yahoo часть публикаций размечает текстовыми <div>, а не <p>.
+        # Берём только самые глубокие блочные узлы, чтобы обёртки не
+        # дублировали содержащиеся в них абзацы.
+        if (
+            getattr(node, "name", "") == "div"
+            and node.select_one("p, h2, h3, div") is not None
+        ):
+            continue
+        nodes.append(node)
+    if not nodes:
+        nodes = [container]
     result = []
     seen = set()
     title_key = _title_key(title)
