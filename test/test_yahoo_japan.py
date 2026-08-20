@@ -147,6 +147,36 @@ class YahooJapanRssTests(unittest.TestCase):
             verify=False,
         )
 
+    def test_prefers_complete_article_over_single_exact_body_block(self):
+        soup = BeautifulSoup(
+            "<html><head><meta property='og:title' "
+            "content='長い記事のタイトル'></head><body>"
+            "<h1>長い記事のタイトル</h1>"
+            "<article>"
+            "<div itemprop='articleBody'>"
+            "<p>これは記事の第一段落で、十分な長さがあります。</p>"
+            "</div>"
+            "<div><p>これは同じ記事の第二段落で、続きの本文です。</p></div>"
+            "<aside><h2>アクセスランキング（国際）</h2>"
+            "<p>1 本文ではないランキングのニュースです。</p>"
+            "</aside></article></body></html>",
+            "html.parser",
+        )
+        with patch("utils.article_reader.fetch_soup", return_value=soup):
+            article = extract_article(
+                "https://news.yahoo.co.jp/articles/long123",
+                "長い記事のタイトル",
+            )
+
+        self.assertEqual(
+            article["paragraphs"],
+            [
+                "これは記事の第一段落で、十分な長さがあります。",
+                "これは同じ記事の第二段落で、続きの本文です。",
+            ],
+        )
+        self.assertNotIn("ランキング", " ".join(article["paragraphs"]))
+
     def test_recognizes_polluted_cached_yahoo_article(self):
         self.assertTrue(
             yahoo_article_is_polluted({

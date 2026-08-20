@@ -857,15 +857,16 @@ def _extract_yahoo_article(soup, fallback_title):
     best = []
     for selector in selectors:
         selector_best = []
+        selector_seen = set()
         for container in soup.select(selector):
             paragraphs = _yahoo_article_paragraphs(container, title)
-            if sum(map(len, paragraphs)) > sum(map(len, selector_best)):
-                selector_best = paragraphs
-        if selector_best:
-            # Более точные селекторы перечислены первыми. Не заменяем чистый
-            # текст широким <article>, куда Yahoo добавляет правый рейтинг.
+            for paragraph in paragraphs:
+                normalized = _title_key(paragraph)
+                if normalized and normalized not in selector_seen:
+                    selector_seen.add(normalized)
+                    selector_best.append(paragraph)
+        if sum(map(len, selector_best)) > sum(map(len, best)):
             best = selector_best
-            break
 
     return {
         "title": title,
