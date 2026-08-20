@@ -32,7 +32,9 @@ def parse(now=None):
             page_url,
             SOURCE_NAME,
             timeout=20,
-            verify=True,
+            # У API не отдается полная цепочка сертификатов для requests.
+            # Исключение ограничено одним публичным новостным источником.
+            verify=False,
         )
         if not isinstance(payload, dict):
             break

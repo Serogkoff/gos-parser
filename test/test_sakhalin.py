@@ -27,7 +27,11 @@ class SakhalinApiTests(unittest.TestCase):
             "links": {"next": None},
         }
 
-        with mock.patch.object(sakhalin, "fetch_json", return_value=payload):
+        with mock.patch.object(
+            sakhalin,
+            "fetch_json",
+            return_value=payload,
+        ) as fetch:
             result = sakhalin.parse(now=self.NOW)
 
         self.assertEqual(
@@ -47,6 +51,7 @@ class SakhalinApiTests(unittest.TestCase):
                 },
             ],
         )
+        self.assertFalse(fetch.call_args.kwargs["verify"])
 
     def test_follows_cursor_and_stops_when_old_news_is_reached(self):
         first_page = {
