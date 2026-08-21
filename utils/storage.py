@@ -159,6 +159,7 @@ def _create_schema(connection):
             name TEXT NOT NULL COLLATE NOCASE,
             description TEXT NOT NULL DEFAULT '',
             visibility TEXT NOT NULL DEFAULT 'private',
+            sort_order INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL DEFAULT '',
             UNIQUE(user_id, name),
@@ -180,6 +181,10 @@ def _create_schema(connection):
             user_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             body TEXT NOT NULL DEFAULT '',
+            url TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT '',
+            publication_date TEXT NOT NULL DEFAULT '',
+            comment TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(folder_id) REFERENCES bookmark_folders(id) ON DELETE CASCADE,
@@ -298,6 +303,34 @@ def _create_schema(connection):
         connection.execute(
             "ALTER TABLE bookmark_folders ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''"
         )
+    if "sort_order" not in columns:
+        connection.execute(
+            "ALTER TABLE bookmark_folders ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
+        )
+        users = connection.execute(
+            "SELECT DISTINCT user_id FROM bookmark_folders"
+        ).fetchall()
+        for user in users:
+            folders = connection.execute(
+                """SELECT id FROM bookmark_folders WHERE user_id = ?
+                   ORDER BY name COLLATE NOCASE, id""",
+                (user["user_id"],),
+            ).fetchall()
+            connection.executemany(
+                "UPDATE bookmark_folders SET sort_order = ? WHERE id = ?",
+                [(position, folder["id"]) for position, folder in enumerate(folders)],
+            )
+
+    note_columns = {
+        row["name"] for row in connection.execute(
+            "PRAGMA table_info(collection_notes)"
+        ).fetchall()
+    }
+    for name in ("url", "source", "publication_date", "comment"):
+        if name not in note_columns:
+            connection.execute(
+                f"ALTER TABLE collection_notes ADD COLUMN {name} TEXT NOT NULL DEFAULT ''"
+            )
 
 
 def count_users():
@@ -1004,7 +1037,7 @@ def list_bookmark_folders(user_id):
         rows = connection.execute(
             """
             SELECT f.id, f.name, f.description, f.visibility,
-                   f.created_at, f.updated_at,
+                   f.sort_order, f.created_at, f.updated_at,
                    COUNT(DISTINCT b.id) AS bookmark_count,
                    COUNT(DISTINCT n.id) AS note_count
             FROM bookmark_folders AS f
@@ -1013,7 +1046,7 @@ def list_bookmark_folders(user_id):
             LEFT JOIN collection_notes AS n ON n.folder_id = f.id
             WHERE f.user_id = ?
             GROUP BY f.id
-            ORDER BY f.name COLLATE NOCASE
+            ORDER BY f.sort_order, f.name COLLATE NOCASE, f.id
             """,
             (user_id,),
         ).fetchall()
@@ -1023,6 +1056,7 @@ def list_bookmark_folders(user_id):
             "name": row["name"],
             "description": row["description"],
             "visibility": row["visibility"],
+            "sort_order": int(row["sort_order"]),
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
             "bookmark_count": int(row["bookmark_count"]),
@@ -1040,11 +1074,18 @@ def create_bookmark_folder(user_id, name):
     now = datetime.now().isoformat(timespec="seconds")
     try:
         with STORAGE_LOCK, _connection() as connection:
+            sort_order = int(
+                connection.execute(
+                    """SELECT COALESCE(MAX(sort_order), -1) + 1
+                       FROM bookmark_folders WHERE user_id = ?""",
+                    (user_id,),
+                ).fetchone()[0]
+            )
             cursor = connection.execute(
                 """INSERT INTO bookmark_folders(
-                       user_id, name, created_at, updated_at
-                   ) VALUES (?, ?, ?, ?)""",
-                (user_id, name, now, now),
+                       user_id, name, sort_order, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?)""",
+                (user_id, name, sort_order, now, now),
             )
             folder_id = cursor.lastrowid
     except sqlite3.IntegrityError as error:
@@ -1089,6 +1130,40 @@ def delete_bookmark_folder(user_id, folder_id):
         )
         if cursor.rowcount != 1:
             raise ValueError("Папка не найдена")
+
+
+def move_bookmark_folder(user_id, folder_id, direction):
+    """Перемещает личную подборку на одну позицию вверх или вниз."""
+    user_id = _validated_user_id(user_id)
+    folder_id = _owned_folder_id(user_id, folder_id)
+    direction = str(direction or "").strip().casefold()
+    if direction not in {"up", "down"}:
+        raise ValueError("Неизвестное направление перемещения")
+    initialize_database()
+    with STORAGE_LOCK, _connection() as connection:
+        rows = connection.execute(
+            """SELECT id, sort_order FROM bookmark_folders
+               WHERE user_id = ? ORDER BY sort_order, name COLLATE NOCASE, id""",
+            (user_id,),
+        ).fetchall()
+        current_index = next(
+            (index for index, row in enumerate(rows) if int(row["id"]) == folder_id),
+            None,
+        )
+        if current_index is None:
+            raise ValueError("Папка не найдена")
+        target_index = current_index + (-1 if direction == "up" else 1)
+        if target_index < 0 or target_index >= len(rows):
+            return list_bookmark_folders(user_id)
+        ordered_ids = [int(row["id"]) for row in rows]
+        ordered_ids[current_index], ordered_ids[target_index] = (
+            ordered_ids[target_index], ordered_ids[current_index]
+        )
+        connection.executemany(
+            "UPDATE bookmark_folders SET sort_order = ? WHERE id = ? AND user_id = ?",
+            [(position, item_id, user_id) for position, item_id in enumerate(ordered_ids)],
+        )
+    return list_bookmark_folders(user_id)
 
 
 def update_collection(user_id, folder_id, name, description="", visibility="private",
@@ -1163,6 +1238,7 @@ def load_collection(user_id, folder_id):
         "id": int(row["id"]), "user_id": int(row["user_id"]),
         "name": row["name"], "description": row["description"],
         "visibility": row["visibility"], "owner_name": row["owner_name"],
+        "sort_order": int(row["sort_order"]),
         "can_edit": bool(row["can_edit"]),
         "shared_users": [dict(id=int(item["id"]), username=item["username"])
                          for item in shared_rows],
@@ -1187,7 +1263,7 @@ def list_shared_collections(user_id):
                    SELECT 1 FROM bookmark_folder_shares AS s
                    WHERE s.folder_id = f.id AND s.user_id = ?
                ))
-               GROUP BY f.id ORDER BY f.updated_at DESC, f.name COLLATE NOCASE""",
+               GROUP BY f.id ORDER BY f.sort_order, f.name COLLATE NOCASE, f.id""",
             (user_id, user_id),
         ).fetchall()
     return [dict(row) for row in rows]
@@ -1223,11 +1299,27 @@ def save_external_bookmark(user_id, folder_id, url, title, note=""):
     )
 
 
-def save_collection_note(user_id, folder_id, title, body):
+def save_collection_note(user_id, folder_id, title, body, url="", source="",
+                         publication_date="", comment=""):
+    """Добавляет в подборку заметку или вручную сохранённую статью."""
     user_id = _validated_user_id(user_id)
     folder_id = _owned_folder_id(user_id, folder_id)
     title = " ".join(str(title or "").split())
     body = str(body or "").strip()
+    raw_url = str(url or "").strip()
+    normalized_url = normalize_url(raw_url) if raw_url else ""
+    if raw_url and not normalized_url.startswith(("http://", "https://")):
+        raise ValueError("Укажи полный адрес, начинающийся с http:// или https://")
+    source = " ".join(str(source or "").split())
+    if len(source) > 300:
+        raise ValueError("Источник не должен превышать 300 символов")
+    publication_date = str(publication_date or "").strip()
+    if publication_date:
+        try:
+            datetime.strptime(publication_date, "%Y-%m-%d")
+        except ValueError as error:
+            raise ValueError("Дата публикации указана неверно") from error
+    comment = _validated_bookmark_note(comment)
     if not 1 <= len(title) <= 200:
         raise ValueError("Заголовок заметки должен содержать от 1 до 200 символов")
     if len(body) > 20_000:
@@ -1236,9 +1328,13 @@ def save_collection_note(user_id, folder_id, title, body):
     with STORAGE_LOCK, _connection() as connection:
         cursor = connection.execute(
             """INSERT INTO collection_notes(
-                   folder_id, user_id, title, body, created_at, updated_at
-               ) VALUES (?, ?, ?, ?, ?, ?)""",
-            (folder_id, user_id, title, body, now, now),
+                   folder_id, user_id, title, body, url, source,
+                   publication_date, comment, created_at, updated_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                folder_id, user_id, title, body, normalized_url, source,
+                publication_date, comment, now, now,
+            ),
         )
     return cursor.lastrowid
 
@@ -1249,7 +1345,8 @@ def list_collection_notes(user_id, folder_id):
         raise ValueError("Подборка не найдена")
     with _connection() as connection:
         rows = connection.execute(
-            """SELECT id, title, body, created_at, updated_at
+            """SELECT id, title, body, url, source, publication_date, comment,
+                      created_at, updated_at
                FROM collection_notes WHERE folder_id = ?
                ORDER BY updated_at DESC, id DESC""",
             (collection["id"],),
@@ -1571,6 +1668,9 @@ def initialize_database():
 
         with _connection() as connection:
             _create_schema(connection)
+            # ALTER TABLE при обновлении старой базы открывает транзакцию.
+            # Фиксируем только изменение схемы до BEGIN IMMEDIATE ниже.
+            connection.commit()
             completed = connection.execute(
                 "SELECT 1 FROM metadata WHERE key = ?",
                 (JSON_MIGRATION_KEY,),

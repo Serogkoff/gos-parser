@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import secrets
 from collections import Counter
 from datetime import timedelta
@@ -70,6 +71,7 @@ from utils.storage import (
     load_cached_article,
     load_found_news,
     load_user,
+    move_bookmark_folder,
     remove_bookmark,
     rename_bookmark_folder,
     save_cached_article,
@@ -427,8 +429,8 @@ BOOKMARKS_HTML = """
     <title>Подборки — Монитор</title>
     <style>
         :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655}
-        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}a{color:inherit;text-decoration:none}.shell{width:min(1250px,calc(100% - 34px));margin:auto;padding:28px 0 80px}.top{display:flex;align-items:center;justify-content:space-between;gap:15px}.back{color:var(--muted)}.account{font-size:12px;color:var(--muted)}header{margin:38px 0 26px}h1{margin:0;font-size:clamp(42px,6vw,70px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:20px;align-items:start}.panel,.feed{border:1px solid var(--line);border-radius:8px;background:var(--surface)}.panel{position:sticky;top:18px;overflow:hidden}.panel h2{margin:0;padding:19px;border-bottom:1px solid var(--line);font-size:17px}.folder-list{padding:9px}.folder{min-height:42px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-radius:5px;color:#5e574e;font-size:13px}.folder:hover,.folder.active{color:var(--coral);background:#fff3ed}.folder b{font-size:11px}.create{padding:15px;border-top:1px solid var(--line)}label{display:grid;gap:6px;color:var(--muted);font-size:11px}input,select,textarea{width:100%;padding:10px 11px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}input,select{height:42px}textarea{min-height:92px;resize:vertical}button{min-height:40px;padding:0 13px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;font:650 12px Inter,Arial,sans-serif;cursor:pointer}.primary{color:#fff;background:var(--coral)}.create button{width:100%;margin-top:8px}.message,.error{margin:0 0 16px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.feed-head{padding:20px 23px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.feed-head h2{margin:0;font-size:18px}.bookmark{padding:24px;border-bottom:1px solid var(--line)}.bookmark:last-child{border-bottom:0}.meta{display:flex;flex-wrap:wrap;gap:9px;color:var(--muted);font-size:12px}.bookmark h3{margin:10px 0 18px;font-size:clamp(21px,3vw,31px);line-height:1.15;letter-spacing:-.035em}.bookmark h3 a:hover{color:var(--coral)}.edit{display:grid;grid-template-columns:190px minmax(0,1fr) auto;gap:10px;align-items:end}.remove{margin-top:9px;border-color:var(--line);color:var(--muted)}.folder-tools{margin:0 9px 10px;padding:12px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.folder-tools form{display:flex;gap:7px}.folder-tools form+form{margin-top:7px}.folder-tools input{min-width:0}.empty{padding:70px 25px;color:var(--muted);text-align:center}.empty strong{display:block;margin-bottom:7px;color:var(--ink);font-size:20px}
-        .folder small{display:block;margin-top:2px;color:var(--muted)}.section-label{padding:13px 19px 5px;color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.collection-head{padding:22px 24px;border-bottom:1px solid var(--line)}.collection-head h2{margin:0 0 6px;font-size:28px}.collection-head p{margin:0;color:var(--muted);font-size:14px}.owner{margin-top:10px!important;font-size:12px!important}.composer{padding:18px 24px;border-bottom:1px solid var(--line);background:#faf6ef}.composer-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.composer-actions{display:flex;gap:8px;margin-top:10px}.share{margin:14px 9px;padding:14px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.share h3{margin:0 0 10px;font-size:14px}.share label+label{margin-top:8px}.share-users{max-height:145px;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:6px;background:#fff}.share-user{display:flex;grid-template:none;align-items:center;gap:8px;font-size:12px}.share-user input{width:auto;height:auto}.note-card{padding:24px;border-bottom:1px solid var(--line);background:#fffaf0}.note-card h3{margin:8px 0;font-size:22px}.note-card p{white-space:pre-wrap;line-height:1.55}.readonly{padding:12px 24px;color:#655c50;background:#fff3dd;border-bottom:1px solid var(--line);font-size:13px}.badge{padding:3px 7px;border-radius:10px;background:#eee7db;font-size:10px}.open-external{color:var(--coral)}
+        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}a{color:inherit;text-decoration:none}.shell{width:min(1250px,calc(100% - 34px));margin:auto;padding:28px 0 80px}.top{display:flex;align-items:center;justify-content:space-between;gap:15px}.back{color:var(--muted)}.account{font-size:12px;color:var(--muted)}header{margin:38px 0 26px}h1{margin:0;font-size:clamp(42px,6vw,70px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:20px;align-items:start}.panel,.feed{border:1px solid var(--line);border-radius:8px;background:var(--surface)}.panel{position:sticky;top:18px;overflow:hidden}.panel h2{margin:0;padding:19px;border-bottom:1px solid var(--line);font-size:17px}.folder-list{padding:9px}.folder-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px}.folder{min-height:42px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-radius:5px;color:#5e574e;font-size:13px}.folder:hover,.folder.active{color:var(--coral);background:#fff3ed}.folder b{font-size:11px}.folder-order{display:flex;gap:2px}.folder-order form{margin:0}.folder-order button{width:24px;min-height:28px;padding:0;border-color:transparent;color:var(--muted);font-size:14px}.folder-order button:hover{color:var(--coral);background:#fff3ed}.create{padding:15px;border-top:1px solid var(--line)}label{display:grid;gap:6px;color:var(--muted);font-size:11px}input,select,textarea{width:100%;padding:10px 11px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}input,select{height:42px}textarea{min-height:92px;resize:vertical}button{min-height:40px;padding:0 13px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;font:650 12px Inter,Arial,sans-serif;cursor:pointer}.primary{color:#fff;background:var(--coral)}.create button{width:100%;margin-top:8px}.message,.error{margin:0 0 16px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.bookmark{padding:24px;border-bottom:1px solid var(--line)}.bookmark:last-child{border-bottom:0}.meta{display:flex;flex-wrap:wrap;align-items:center;gap:9px;color:var(--muted);font-size:12px}.bookmark h3{margin:10px 0 12px;font-size:clamp(21px,3vw,31px);line-height:1.15;letter-spacing:-.035em}.bookmark h3 a:hover{color:var(--coral)}.edit{display:grid;grid-template-columns:190px minmax(0,1fr) auto;gap:10px;align-items:end;margin-top:16px}.remove{margin-top:9px;border-color:var(--line);color:var(--muted)}.folder-tools{margin:0 9px 10px;padding:12px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.folder-tools form{display:flex;gap:7px}.folder-tools form+form{margin-top:7px}.folder-tools input{min-width:0}.empty{padding:70px 25px;color:var(--muted);text-align:center}.empty strong{display:block;margin-bottom:7px;color:var(--ink);font-size:20px}
+        .folder small{display:block;margin-top:2px;color:var(--muted)}.section-label{padding:13px 19px 5px;color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.collection-head{padding:22px 24px;border-bottom:1px solid var(--line)}.collection-head h2{margin:0 0 6px;font-size:28px}.collection-head p{margin:0;color:var(--muted);font-size:14px}.owner{margin-top:10px!important;font-size:12px!important}.search{display:flex;gap:8px;padding:14px 24px;border-bottom:1px solid var(--line);background:#fff}.search input{min-width:0}.search button{white-space:nowrap}.search-clear{display:flex;align-items:center;padding:0 8px;color:var(--muted);font-size:12px}.composer{padding:18px 24px;border-bottom:1px solid var(--line);background:#faf6ef}.composer h3{margin:0 0 14px;font-size:17px}.composer-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.composer .wide{grid-column:1/-1}.composer textarea[name=body]{min-height:180px}.composer-actions{display:flex;gap:8px;margin-top:12px}.share{margin:14px 9px;padding:14px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.share h3{margin:0 0 10px;font-size:14px}.share label+label{margin-top:8px}.share-users{max-height:145px;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:6px;background:#fff}.share-user{display:flex;grid-template:none;align-items:center;gap:8px;font-size:12px}.share-user input{width:auto;height:auto}.note-card{padding:24px;border-bottom:1px solid var(--line);background:#fffaf0}.note-card h3{margin:10px 0 12px;font-size:clamp(21px,3vw,31px);line-height:1.15}.note-card p{white-space:pre-wrap;line-height:1.55}.note-body{margin:0 0 14px}.note-more{margin:0 0 14px}.note-more summary{display:inline-flex;align-items:center;min-height:36px;padding:0 12px;color:var(--coral);border:1px solid var(--coral);border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;list-style:none}.note-more summary::-webkit-details-marker{display:none}.note-more[open] summary{margin-bottom:12px}.comment{margin:12px 0;padding:11px 13px;border-left:3px solid var(--line);background:#fff;color:#554f46;white-space:pre-wrap;line-height:1.5}.material-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}.original{display:inline-flex;align-items:center;min-height:34px;padding:0 11px;color:var(--coral);border:1px solid var(--coral);border-radius:6px;font-weight:700}.readonly{padding:12px 24px;color:#655c50;background:#fff3dd;border-bottom:1px solid var(--line);font-size:13px}.badge{padding:3px 7px;border-radius:10px;background:#eee7db;font-size:10px}
         @media(max-width:800px){.layout{grid-template-columns:1fr}.panel{position:static}.edit,.composer-grid{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
     </style>
 </head>
@@ -441,7 +443,7 @@ BOOKMARKS_HTML = """
             <h2>Мои подборки</h2>
             <nav class="folder-list">
                 <a class="folder {{'active' if selected_folder == 'unfiled' else ''}}" href="/collections?folder=unfiled"><span>Без подборки</span><b>{{unfiled_count}}</b></a>
-                {% for folder in folders %}<a class="folder {{'active' if selected_folder == folder.id|string else ''}}" href="/collections?folder={{folder.id}}"><span>{{folder.name}}<small>{{folder.bookmark_count + folder.note_count}} материалов</small></span><b>{{'◉' if folder.visibility == 'all' else ('◎' if folder.visibility == 'selected' else '·')}}</b></a>{% endfor %}
+                {% for folder in folders %}<div class="folder-row"><a class="folder {{'active' if selected_folder == folder.id|string else ''}}" href="/collections?folder={{folder.id}}"><span>{{folder.name}}<small>{{folder.bookmark_count + folder.note_count}} материалов</small></span><b>{{'◉' if folder.visibility == 'all' else ('◎' if folder.visibility == 'selected' else '·')}}</b></a><div class="folder-order"><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="move_collection"><input type="hidden" name="folder_id" value="{{folder.id}}"><input type="hidden" name="direction" value="up"><button type="submit" title="Поднять подборку" aria-label="Поднять подборку">↑</button></form><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="move_collection"><input type="hidden" name="folder_id" value="{{folder.id}}"><input type="hidden" name="direction" value="down"><button type="submit" title="Опустить подборку" aria-label="Опустить подборку">↓</button></form></div></div>{% endfor %}
             </nav>
             {% if shared_folders %}<div class="section-label">Доступные мне</div><nav class="folder-list">{% for folder in shared_folders %}<a class="folder {{'active' if selected_folder == folder.id|string else ''}}" href="/collections?folder={{folder.id}}"><span>{{folder.name}}<small>{{folder.owner_name}}</small></span><b>{{folder.bookmark_count + folder.note_count}}</b></a>{% endfor %}</nav>{% endif %}
             {% if selected_folder not in ('all','unfiled') and selected_folder_data and selected_folder_data.can_edit %}
@@ -456,13 +458,15 @@ BOOKMARKS_HTML = """
         <section class="feed">
             <div class="collection-head"><h2>{{selected_title}}</h2>{% if selected_folder_data %}<p>{{selected_folder_data.description or 'Описание пока не добавлено'}}</p><p class="owner">Владелец: {{selected_folder_data.owner_name}} · {{'редактирование' if selected_folder_data.can_edit else 'только просмотр'}}</p>{% endif %}</div>
             {% if selected_folder_data and not selected_folder_data.can_edit %}<div class="readonly">Подборка открыта тебе владельцем. Новые материалы появятся здесь автоматически.</div>{% endif %}
-            {% if selected_folder_data and selected_folder_data.can_edit %}<div class="composer"><div class="composer-grid"><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="add_external"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><label>Ссылка<input type="url" name="url" placeholder="https://…" required></label><label>Название<input name="title" maxlength="1000" required></label><label>Комментарий<textarea name="note" maxlength="5000"></textarea></label><button class="primary" type="submit">Добавить ссылку</button></form><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="add_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><label>Заголовок заметки<input name="title" maxlength="200" required></label><label>Текст<textarea name="body" maxlength="20000"></textarea></label><button class="primary" type="submit">Добавить заметку</button></form></div></div>{% endif %}
-            {% for note in notes %}<article class="note-card"><div class="meta"><span class="badge">Заметка</span><time>{{note.updated_at}}</time></div><h3>{{note.title}}</h3><p>{{note.body}}</p>{% if selected_folder_data.can_edit %}<form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input type="hidden" name="note_id" value="{{note.id}}"><button class="remove" type="submit">Удалить заметку</button></form>{% endif %}</article>{% endfor %}
+            <form class="search" method="get"><input type="hidden" name="folder" value="{{selected_folder}}"><input type="search" name="q" value="{{search_query}}" maxlength="200" placeholder="Поиск по заголовку, источнику, тексту и комментариям"><button type="submit">Найти</button>{% if search_query %}<a class="search-clear" href="/collections?folder={{selected_folder}}">Сбросить</a>{% endif %}</form>
+            {% if selected_folder_data and selected_folder_data.can_edit %}<div class="composer"><h3>Добавить заметку</h3><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="add_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><div class="composer-grid"><label>Ссылка<input type="url" name="url" placeholder="https://…"></label><label>Источник<input name="source" maxlength="300" placeholder="Например: Коммерсантъ"></label><label>Дата публикации<input type="date" name="publication_date"></label><label>Заголовок заметки<input name="title" maxlength="200" required></label><label class="wide">Текст<textarea name="body" maxlength="20000" placeholder="Вставь текст статьи или напиши заметку"></textarea></label><label class="wide">Комментарий<textarea name="comment" maxlength="5000" placeholder="Что важно в этом материале?"></textarea></label></div><div class="composer-actions"><button class="primary" type="submit">Добавить заметку</button></div></form></div>{% endif %}
+            {% for note in notes %}<article class="note-card"><div class="meta"><span class="badge">Заметка</span>{% if note.publication_date %}<time>{{note.publication_date}}</time>{% endif %}</div><h3>{{note.title}}</h3>{% if note.body_preview %}<p class="note-body">{{note.body_preview}}</p>{% endif %}{% if note.body_remainder %}<details class="note-more"><summary>Читать полностью</summary><p>{{note.body_remainder}}</p></details>{% endif %}{% if note.comment %}<div class="comment">{{note.comment}}</div>{% endif %}<div class="material-footer"><span>{{note.source or 'Личная заметка'}}</span>{% if note.url %}<a class="original" href="{{note.url}}" target="_blank" rel="noopener">Оригинал ↗</a>{% endif %}</div>{% if selected_folder_data.can_edit %}<form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input type="hidden" name="note_id" value="{{note.id}}"><button class="remove" type="submit">Удалить заметку</button></form>{% endif %}</article>{% endfor %}
             {% if bookmarks %}
                 {% for bookmark in bookmarks %}
                 <article class="bookmark">
-                    <div class="meta"><span>{{bookmark.source}}</span><span>•</span><time>{{bookmark.date or 'дата не указана'}}</time>{% if bookmark.folder_name %}<span>•</span><span>{{bookmark.folder_name}}</span>{% endif %}</div>
-                    <h3><a class="{{'open-external' if bookmark.source == 'Внешний источник' else ''}}" href="{{bookmark.url if bookmark.source == 'Внешний источник' else '/article?url=' + (bookmark.url|urlencode)}}" {{'target=_blank rel=noopener' if bookmark.source == 'Внешний источник' else ''}}>{{bookmark.title}}</a></h3>
+                    <div class="meta">{% if bookmark.date %}<time>{{bookmark.date}}</time>{% endif %}{% if bookmark.folder_name %}<span>•</span><span>{{bookmark.folder_name}}</span>{% endif %}</div>
+                    <h3><a href="/article?url={{bookmark.url|urlencode}}">{{bookmark.title}}</a></h3>
+                    {% if bookmark.note %}<div class="comment">{{bookmark.note}}</div>{% endif %}<div class="material-footer"><span>{{bookmark.source or 'Источник не указан'}}</span><a class="original" href="{{bookmark.url}}" target="_blank" rel="noopener">Оригинал ↗</a></div>
                     {% if selected_folder_data is none or selected_folder_data.can_edit %}<form class="edit" method="post">
                         <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="update_bookmark"><input type="hidden" name="bookmark_url" value="{{bookmark.url}}">
                         <label>Папка<select name="folder_id"><option value="">Без папки</option>{% for folder in folders %}<option value="{{folder.id}}" {{'selected' if bookmark.folder_id == folder.id else ''}}>{{folder.name}}</option>{% endfor %}</select></label>
@@ -473,7 +477,7 @@ BOOKMARKS_HTML = """
                     {% endif %}
                 </article>
                 {% endfor %}
-            {% elif not notes %}<div class="empty"><strong>Здесь пока пусто</strong><span>Добавь ссылку, заметку или перемести сюда сохранённую новость.</span></div>{% endif %}
+            {% elif not notes %}<div class="empty"><strong>{{'Ничего не найдено' if search_query else 'Здесь пока пусто'}}</strong><span>{{'Попробуй изменить запрос.' if search_query else 'Добавь заметку или перемести сюда сохранённую новость.'}}</span></div>{% endif %}
         </section>
     </div>
 </main></body></html>
@@ -2005,6 +2009,32 @@ def admin_reliability():
     )
 
 
+def _matches_collection_search(item, query, fields):
+    if not query:
+        return True
+    haystack = "\n".join(str(item.get(field, "") or "") for field in fields)
+    return query.casefold() in haystack.casefold()
+
+
+def _prepare_collection_note(note):
+    """Оставляет в ленте до трёх абзацев, полный текст прячет под кнопку."""
+    prepared = dict(note)
+    body = str(prepared.get("body", "") or "").strip()
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", body) if part.strip()]
+    if len(paragraphs) > 3:
+        prepared["body_preview"] = "\n\n".join(paragraphs[:3])
+        prepared["body_remainder"] = "\n\n".join(paragraphs[3:])
+    elif len(body) > 1200:
+        split_at = body.rfind(" ", 0, 900)
+        split_at = split_at if split_at >= 500 else 900
+        prepared["body_preview"] = body[:split_at].rstrip() + "…"
+        prepared["body_remainder"] = body[split_at:].lstrip()
+    else:
+        prepared["body_preview"] = body
+        prepared["body_remainder"] = ""
+    return prepared
+
+
 @app.route("/bookmarks", methods=["GET", "POST"])
 @app.route("/collections", methods=["GET", "POST"])
 def bookmarks_page():
@@ -2058,6 +2088,13 @@ def bookmarks_page():
                 delete_bookmark_folder(user_id, request.form.get("folder_id"))
                 message = "Подборка удалена, её новости перенесены в «Без подборки»"
                 selected_folder = "unfiled"
+            elif action == "move_collection":
+                move_bookmark_folder(
+                    user_id,
+                    request.form.get("folder_id"),
+                    request.form.get("direction"),
+                )
+                message = "Порядок подборок сохранён"
             elif action == "add_external":
                 save_external_bookmark(
                     user_id, request.form.get("folder_id"), request.form.get("url"),
@@ -2069,6 +2106,9 @@ def bookmarks_page():
                 save_collection_note(
                     user_id, request.form.get("folder_id"),
                     request.form.get("title"), request.form.get("body"),
+                    request.form.get("url"), request.form.get("source"),
+                    request.form.get("publication_date"),
+                    request.form.get("comment"),
                 )
                 message = "Заметка добавлена"
                 selected_folder = str(request.form.get("folder_id"))
@@ -2103,6 +2143,7 @@ def bookmarks_page():
             url_for("bookmarks_page", folder=selected_folder, message=message)
         )
 
+    search_query = str(request.args.get("q", "")).strip()[:200]
     all_bookmarks = list_bookmarks(user_id)
     selected_folder_data = None
     notes = []
@@ -2112,6 +2153,22 @@ def bookmarks_page():
         notes = list_collection_notes(user_id, selected_folder)
     else:
         bookmarks = list_bookmarks(user_id, selected_folder)
+    bookmarks = [
+        item for item in bookmarks
+        if _matches_collection_search(
+            item,
+            search_query,
+            ("title", "source", "note", "date", "url", "folder_name"),
+        )
+    ]
+    notes = [
+        _prepare_collection_note(item) for item in notes
+        if _matches_collection_search(
+            item,
+            search_query,
+            ("title", "source", "body", "comment", "publication_date", "url"),
+        )
+    ]
     if selected_folder_data:
         selected_title = selected_folder_data["name"]
     elif selected_folder == "unfiled":
@@ -2133,6 +2190,7 @@ def bookmarks_page():
         selected_folder=selected_folder,
         selected_folder_data=selected_folder_data,
         selected_title=selected_title,
+        search_query=search_query,
         total_count=len(all_bookmarks),
         unfiled_count=sum(item["folder_id"] is None for item in all_bookmarks),
         available_users=active_users,

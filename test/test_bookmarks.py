@@ -1,3 +1,4 @@
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -179,6 +180,128 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertEqual(item["note"], "Проверить выводы")
         storage.delete_collection_note(self.first["id"], folder["id"], note_id)
         self.assertEqual(storage.list_collection_notes(self.first["id"], folder["id"]), [])
+
+    def test_unified_note_form_stores_article_fields_and_compacts_long_text(self):
+        folder = storage.create_bookmark_folder(self.first["id"], "Топливный кризис")
+        client = web_app.app.test_client()
+        token = self._login(client, self.first["id"])
+        body = "\n\n".join(
+            f"Абзац {number}: подробности материала о поставках топлива."
+            for number in range(1, 6)
+        )
+
+        response = client.post(
+            f"/collections?folder={folder['id']}",
+            data={
+                "csrf_token": token,
+                "action": "add_note",
+                "folder_id": folder["id"],
+                "url": "https://example.com/fuel-report",
+                "source": "Коммерсантъ",
+                "publication_date": "2026-08-21",
+                "title": "На АЗС рассказали о лимитах",
+                "body": body,
+                "comment": "Проверить данные Минэнерго",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        note = storage.list_collection_notes(self.first["id"], folder["id"])[0]
+        self.assertEqual(note["source"], "Коммерсантъ")
+        self.assertEqual(note["publication_date"], "2026-08-21")
+        self.assertEqual(note["url"], "https://example.com/fuel-report")
+        page = client.get(f"/collections?folder={folder['id']}").get_data(as_text=True)
+        self.assertIn("Читать полностью", page)
+        self.assertIn("Оригинал ↗", page)
+        self.assertIn("Коммерсантъ", page)
+        self.assertIn("2026-08-21", page)
+        self.assertNotIn(note["updated_at"], page)
+        self.assertNotIn("Добавить ссылку", page)
+
+        found = client.get(
+            f"/collections?folder={folder['id']}&q=Минэнерго"
+        ).get_data(as_text=True)
+        missing = client.get(
+            f"/collections?folder={folder['id']}&q=авиаперевозки"
+        ).get_data(as_text=True)
+        self.assertIn(note["title"], found)
+        self.assertNotIn(note["title"], missing)
+        self.assertIn("Ничего не найдено", missing)
+
+    def test_user_can_change_collection_order(self):
+        first = storage.create_bookmark_folder(self.first["id"], "Первая")
+        second = storage.create_bookmark_folder(self.first["id"], "Вторая")
+        third = storage.create_bookmark_folder(self.first["id"], "Третья")
+
+        self.assertEqual(
+            [item["id"] for item in storage.list_bookmark_folders(self.first["id"])],
+            [first["id"], second["id"], third["id"]],
+        )
+        storage.move_bookmark_folder(self.first["id"], third["id"], "up")
+        storage.move_bookmark_folder(self.first["id"], third["id"], "up")
+
+        self.assertEqual(
+            [item["id"] for item in storage.list_bookmark_folders(self.first["id"])],
+            [third["id"], first["id"], second["id"]],
+        )
+
+    def test_collection_schema_migrates_without_losing_existing_notes(self):
+        legacy_database = Path(self.temporary.name) / "legacy-collections.db"
+        with sqlite3.connect(legacy_database) as connection:
+            connection.executescript(
+                """
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'user',
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    last_login_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE TABLE bookmark_folders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL COLLATE NOCASE,
+                    description TEXT NOT NULL DEFAULT '',
+                    visibility TEXT NOT NULL DEFAULT 'private',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    UNIQUE(user_id, name)
+                );
+                CREATE TABLE collection_notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    folder_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    body TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO users(
+                    id, username, password_hash, role, is_active, created_at
+                ) VALUES (1, 'legacy', 'hash', 'user', 1, '2026-08-20');
+                INSERT INTO bookmark_folders(
+                    id, user_id, name, created_at, updated_at
+                ) VALUES (1, 1, 'Старая подборка', '2026-08-20', '2026-08-20');
+                INSERT INTO collection_notes(
+                    id, folder_id, user_id, title, body, created_at, updated_at
+                ) VALUES (
+                    1, 1, 1, 'Старая заметка', 'Текст сохранён',
+                    '2026-08-20', '2026-08-20'
+                );
+                """
+            )
+
+        with patch.object(storage, "DATABASE_FILE", legacy_database):
+            storage.initialize_database()
+            notes = storage.list_collection_notes(1, 1)
+            folders = storage.list_bookmark_folders(1)
+
+        self.assertEqual(notes[0]["title"], "Старая заметка")
+        self.assertEqual(notes[0]["body"], "Текст сохранён")
+        self.assertEqual(notes[0]["source"], "")
+        self.assertEqual(folders[0]["sort_order"], 0)
 
 
 if __name__ == "__main__":
