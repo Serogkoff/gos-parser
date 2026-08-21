@@ -174,6 +174,63 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertIsNone(storage.load_collection(self.second["id"], folder["id"]))
         self.assertEqual(storage.list_shared_collections(self.second["id"]), [])
 
+    def test_article_read_mark_is_personal_and_available_to_shared_reader(self):
+        folder = storage.create_bookmark_folder(self.first["id"], "Общая папка")
+        note_id = storage.save_collection_note(
+            self.first["id"], folder["id"], "Статья для чтения", "Текст статьи"
+        )
+        storage.update_collection(
+            self.first["id"], folder["id"], "Общая папка", "", "selected",
+            [self.second["id"]],
+        )
+        owner_client = web_app.app.test_client()
+        owner_token = self._login(owner_client, self.first["id"], "owner-csrf")
+        reader_client = web_app.app.test_client()
+        self._login(reader_client, self.second["id"], "reader-csrf")
+
+        owner_page = owner_client.get(
+            f"/collections?folder={folder['id']}"
+        ).get_data(as_text=True)
+        self.assertIn('data-article-read', owner_page)
+        self.assertIn('aria-pressed="false"', owner_page)
+        response = owner_client.post(
+            "/api/collection-note-read",
+            json={"folder_id": folder["id"], "note_id": note_id, "is_read": True},
+            headers={"X-CSRF-Token": owner_token},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["is_read"])
+        self.assertEqual(
+            storage.list_collection_note_read_ids(self.first["id"], folder["id"]),
+            {note_id},
+        )
+        self.assertEqual(
+            storage.list_collection_note_read_ids(self.second["id"], folder["id"]),
+            set(),
+        )
+        reader_page = reader_client.get(
+            f"/collections?folder={folder['id']}"
+        ).get_data(as_text=True)
+        self.assertIn('aria-pressed="false"', reader_page)
+        self.assertIn("📖", reader_page)
+        owner_page = owner_client.get(
+            f"/collections?folder={folder['id']}"
+        ).get_data(as_text=True)
+        self.assertIn('aria-pressed="true"', owner_page)
+        self.assertIn("📕", owner_page)
+        response = owner_client.post(
+            "/api/collection-note-read",
+            json={"folder_id": folder["id"], "note_id": note_id, "is_read": False},
+            headers={"X-CSRF-Token": owner_token},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.get_json()["is_read"])
+        self.assertEqual(
+            storage.list_collection_note_read_ids(self.first["id"], folder["id"]),
+            set(),
+        )
+
     def test_external_link_and_note_are_added_to_collection(self):
         folder = storage.create_bookmark_folder(self.first["id"], "Внешние материалы")
         storage.save_external_bookmark(

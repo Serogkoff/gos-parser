@@ -62,6 +62,7 @@ from utils.storage import (
     list_bookmark_folders,
     list_bookmarks,
     list_collection_bookmarks,
+    list_collection_note_read_ids,
     list_collection_notes,
     list_shared_collections,
     load_collection,
@@ -80,6 +81,7 @@ from utils.storage import (
     save_external_bookmark,
     save_source_order,
     set_source_enabled,
+    set_collection_note_read,
     set_user_active,
     set_user_password,
     set_user_role,
@@ -431,7 +433,7 @@ BOOKMARKS_HTML = """
     <style>
         :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655}
         *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}a{color:inherit;text-decoration:none}.shell{width:min(1250px,calc(100% - 34px));margin:auto;padding:28px 0 80px}.top{display:flex;align-items:center;justify-content:space-between;gap:15px}.back{color:var(--muted)}.account{font-size:12px;color:var(--muted)}header{margin:38px 0 26px}h1{margin:0;font-size:clamp(42px,6vw,70px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:20px;align-items:start}.panel,.feed{border:1px solid var(--line);border-radius:8px;background:var(--surface)}.panel{position:sticky;top:18px;overflow:hidden}.panel-heading{min-height:59px;padding:0 19px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line)}.panel-heading h2{margin:0;font-size:17px}.folder-order-toggle{min-height:30px;padding:0 8px;border-color:transparent;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.04em}.folder-order-toggle:hover,.folder-order-toggle[aria-pressed="true"]{color:var(--coral);background:#fff3ed}.folder-list{padding:9px}.folder-row{display:flex;align-items:center}.folder{min-width:0;min-height:42px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;flex:1;gap:8px;border-radius:5px;color:#5e574e;font-size:13px}.folder:hover,.folder.active{color:var(--coral);background:#fff3ed}.folder b{font-size:11px}.folder-drag-handle{display:none;flex:0 0 24px;color:#aaa196;text-align:center;font-size:13px;letter-spacing:-2px;cursor:grab;user-select:none}.folder-list.order-editing .sortable-folder{cursor:grab;background:#fffbf6}.folder-list.order-editing .folder-drag-handle{display:block}.folder-list.order-editing .folder{padding-left:4px;pointer-events:none}.sortable-folder.folder-dragging{opacity:.38}.sortable-folder.folder-drag-over{box-shadow:inset 0 2px 0 var(--coral)}.create{padding:15px;border-top:1px solid var(--line)}label{display:grid;gap:6px;color:var(--muted);font-size:11px}input,select,textarea{width:100%;padding:10px 11px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}input,select{height:42px}textarea{min-height:92px;resize:vertical}button{min-height:40px;padding:0 13px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;font:650 12px Inter,Arial,sans-serif;cursor:pointer}.primary{color:#fff;background:var(--coral)}.create button{width:100%;margin-top:8px}.message,.error{margin:0 0 16px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.bookmark{padding:24px;border-bottom:1px solid var(--line)}.bookmark:last-child{border-bottom:0}.meta{display:flex;flex-wrap:wrap;align-items:center;gap:9px;color:var(--muted);font-size:12px}.bookmark h3{margin:10px 0 12px;font-size:clamp(21px,3vw,31px);line-height:1.15;letter-spacing:-.035em}.bookmark h3 a:hover{color:var(--coral)}.edit{display:grid;grid-template-columns:190px minmax(0,1fr) auto;gap:10px;align-items:end;margin-top:16px}.remove{margin-top:9px;border-color:var(--line);color:var(--muted)}.folder-tools{margin:0 9px 10px;padding:12px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.folder-tools form{display:flex;gap:7px}.folder-tools form+form{margin-top:7px}.folder-tools input{min-width:0}.empty{padding:70px 25px;color:var(--muted);text-align:center}.empty strong{display:block;margin-bottom:7px;color:var(--ink);font-size:20px}
-        .folder small{display:block;margin-top:2px;color:var(--muted)}.section-label{padding:13px 19px 5px;color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.collection-head{padding:22px 24px;border-bottom:1px solid var(--line)}.collection-head h2{margin:0 0 6px;font-size:28px}.collection-head p{margin:0;color:var(--muted);font-size:14px}.owner{margin-top:10px!important;font-size:12px!important}.search{display:flex;gap:8px;padding:14px 24px;border-bottom:1px solid var(--line);background:#fff}.search input{min-width:0}.search button{white-space:nowrap}.search-clear{display:flex;align-items:center;padding:0 8px;color:var(--muted);font-size:12px}.composer{padding:16px 24px;border-bottom:1px solid var(--line);background:#faf6ef}.composer-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.composer-label{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.composer-form{margin-top:16px}.composer-form[hidden],.composer-open[hidden]{display:none}.composer h3{margin:0 0 14px;font-size:17px}.composer-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.composer .wide{grid-column:1/-1}.composer textarea[name=body]{min-height:180px}.composer-actions{display:flex;gap:8px;margin-top:12px}.share{margin:14px 9px;padding:14px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.share h3{margin:0 0 10px;font-size:14px}.share label+label{margin-top:8px}.share-users{max-height:145px;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:6px;background:#fff}.share-user{display:flex;grid-template:none;align-items:center;gap:8px;font-size:12px}.share-user input{width:auto;height:auto}.note-card{padding:24px;border-bottom:1px solid var(--line);background:#fffaf0}.note-card h3{margin:10px 0 8px;font-size:clamp(21px,3vw,31px);line-height:1.15}.note-text{margin-top:16px}.note-text-part{white-space:pre-wrap;line-height:1.55}.note-remainder[hidden]{display:none}.note-toggle{margin-top:16px}.note-actions{display:flex;align-items:center;gap:8px;margin-top:14px}.note-actions form{margin:0}.note-actions .remove{margin:0}.note-edit-form{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.note-edit-form[hidden]{display:none}.note-edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.note-edit-grid .wide{grid-column:1/-1}.note-edit-grid textarea[name=body]{min-height:220px}.note-edit-form .primary{margin-top:12px}.comment{margin:12px 0;padding:11px 13px;border-left:3px solid var(--line);background:#fff;color:#554f46;white-space:pre-wrap;line-height:1.5}.material-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding-bottom:12px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px}.original{display:inline-flex;align-items:center;min-height:34px;padding:0 11px;color:var(--coral);border:1px solid var(--coral);border-radius:6px;font-weight:700}.readonly{padding:12px 24px;color:#655c50;background:#fff3dd;border-bottom:1px solid var(--line);font-size:13px}.badge{padding:3px 7px;border-radius:10px;background:#eee7db;font-size:10px}
+        .folder small{display:block;margin-top:2px;color:var(--muted)}.section-label{padding:13px 19px 5px;color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.collection-head{padding:22px 24px;border-bottom:1px solid var(--line)}.collection-head h2{margin:0 0 6px;font-size:28px}.collection-head p{margin:0;color:var(--muted);font-size:14px}.owner{margin-top:10px!important;font-size:12px!important}.search{display:flex;gap:8px;padding:14px 24px;border-bottom:1px solid var(--line);background:#fff}.search input{min-width:0}.search button{white-space:nowrap}.search-clear{display:flex;align-items:center;padding:0 8px;color:var(--muted);font-size:12px}.composer{padding:16px 24px;border-bottom:1px solid var(--line);background:#faf6ef}.composer-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.composer-label{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.composer-form{margin-top:16px}.composer-form[hidden],.composer-open[hidden]{display:none}.composer h3{margin:0 0 14px;font-size:17px}.composer-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.composer .wide{grid-column:1/-1}.composer textarea[name=body]{min-height:180px}.composer-actions{display:flex;gap:8px;margin-top:12px}.share{margin:14px 9px;padding:14px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.share h3{margin:0 0 10px;font-size:14px}.share label+label{margin-top:8px}.share-users{max-height:145px;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:6px;background:#fff}.share-user{display:flex;grid-template:none;align-items:center;gap:8px;font-size:12px}.share-user input{width:auto;height:auto}.note-card{position:relative;padding:24px 72px 24px 24px;border-bottom:1px solid var(--line);background:#fffaf0}.note-card h3{margin:10px 0 8px;font-size:clamp(21px,3vw,31px);line-height:1.15}.article-read-toggle{position:absolute;top:18px;right:20px;width:38px;min-height:38px;padding:0;border:0;color:var(--muted);background:transparent;font-size:25px;line-height:1}.article-read-toggle:hover{color:var(--coral);transform:translateY(-1px)}.article-read-toggle[aria-pressed="true"]{color:var(--coral)}.note-text{margin-top:16px}.note-text-part{white-space:pre-wrap;line-height:1.55}.note-remainder[hidden]{display:none}.note-toggle{margin-top:16px}.note-actions{display:flex;align-items:center;gap:8px;margin-top:14px}.note-actions form{margin:0}.note-actions .remove{margin:0}.note-edit-form{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.note-edit-form[hidden]{display:none}.note-edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.note-edit-grid .wide{grid-column:1/-1}.note-edit-grid textarea[name=body]{min-height:220px}.note-edit-form .primary{margin-top:12px}.comment{margin:12px 0;padding:11px 13px;border-left:3px solid var(--line);background:#fff;color:#554f46;white-space:pre-wrap;line-height:1.5}.material-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding-bottom:12px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px}.original{display:inline-flex;align-items:center;min-height:34px;padding:0 11px;color:var(--coral);border:1px solid var(--coral);border-radius:6px;font-weight:700}.readonly{padding:12px 24px;color:#655c50;background:#fff3dd;border-bottom:1px solid var(--line);font-size:13px}.badge{padding:3px 7px;border-radius:10px;background:#eee7db;font-size:10px}
         @media(max-width:800px){.layout{grid-template-columns:1fr}.panel{position:static}.edit,.composer-grid,.note-edit-grid{grid-template-columns:1fr}.note-edit-grid .wide{grid-column:auto}.top{align-items:flex-start;flex-direction:column}}
     </style>
 </head>
@@ -461,7 +463,7 @@ BOOKMARKS_HTML = """
             {% if selected_folder_data and not selected_folder_data.can_edit %}<div class="readonly">Подборка открыта тебе владельцем. Новые материалы появятся здесь автоматически.</div>{% endif %}
             <form class="search" method="get"><input type="hidden" name="folder" value="{{selected_folder}}"><input type="search" name="q" value="{{search_query}}" maxlength="200" placeholder="Поиск по заголовку, источнику, тексту и комментариям"><button type="submit">Найти</button>{% if search_query %}<a class="search-clear" href="/collections?folder={{selected_folder}}">Сбросить</a>{% endif %}</form>
             {% if selected_folder_data and selected_folder_data.can_edit %}<div class="composer" data-article-composer><div class="composer-head"><strong class="composer-label">Статьи</strong><button class="primary composer-open" type="button" data-composer-open aria-expanded="false">+ Добавить статью</button></div><form class="composer-form" data-composer-form method="post" hidden><h3>Новая статья</h3><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="add_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><div class="composer-grid"><label>Ссылка<input type="url" name="url" placeholder="https://…"></label><label>Источник<input name="source" maxlength="300" placeholder="Например: Коммерсантъ"></label><label>Дата публикации<input type="date" name="publication_date"></label><label>Заголовок<input name="title" maxlength="200" required></label><label class="wide">Текст<textarea name="body" maxlength="20000" placeholder="Вставь текст статьи или напиши свой текст"></textarea></label><label class="wide">Комментарий<textarea name="comment" maxlength="5000" placeholder="Что важно в этой статье?"></textarea></label></div><div class="composer-actions"><button class="primary" type="submit">Сохранить в подборку</button><button type="button" data-composer-cancel>Отмена</button></div></form></div>{% endif %}
-            {% for note in notes %}<article class="note-card"><div class="meta"><span class="badge">Статья</span>{% if note.publication_date %}<time>{{note.publication_date}}</time>{% endif %}</div><h3>{{note.title}}</h3><div class="material-footer"><span>{{note.source or 'Источник не указан'}}</span>{% if note.url %}<a class="original" href="{{note.url}}" target="_blank" rel="noopener">Оригинал ↗</a>{% endif %}</div>{% if note.body_preview or note.body_remainder %}<div class="note-text" data-expandable-note><div class="note-text-part">{{note.body_preview}}{% if note.body_remainder %}<span class="note-remainder" data-note-remainder hidden>{{note.body_remainder}}</span>{% endif %}</div>{% if note.body_remainder %}<button class="note-toggle" type="button" data-note-toggle aria-expanded="false">Читать полностью</button>{% endif %}</div>{% endif %}{% if note.comment %}<div class="comment">{{note.comment}}</div>{% endif %}{% if selected_folder_data.can_edit %}<div class="note-actions"><button class="remove" type="button" data-note-edit-toggle aria-expanded="false">Изменить</button><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input type="hidden" name="note_id" value="{{note.id}}"><button class="remove" type="submit">Удалить статью</button></form></div><form class="note-edit-form" data-note-editor method="post" hidden><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="update_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input type="hidden" name="note_id" value="{{note.id}}"><div class="note-edit-grid"><label>Ссылка<input type="url" name="url" value="{{note.url}}" placeholder="https://…"></label><label>Источник<input name="source" value="{{note.source}}" maxlength="300"></label><label>Дата публикации<input type="date" name="publication_date" value="{{note.publication_date}}"></label><label>Заголовок<input name="title" value="{{note.title}}" maxlength="200" required></label><label class="wide">Текст<textarea name="body" maxlength="20000">{{note.body}}</textarea></label><label class="wide">Комментарий<textarea name="comment" maxlength="5000">{{note.comment}}</textarea></label></div><button class="primary" type="submit">Сохранить изменения</button></form>{% endif %}</article>{% endfor %}
+            {% for note in notes %}<article class="note-card"><button class="article-read-toggle" type="button" data-article-read data-folder-id="{{selected_folder_data.id}}" data-note-id="{{note.id}}" aria-pressed="{{'true' if note.is_read else 'false'}}" aria-label="{{'Отметить непрочитанной' if note.is_read else 'Отметить прочитанной'}}" title="{{'Прочитано — нажми, чтобы отменить' if note.is_read else 'Не прочитано — нажми, чтобы отметить'}}"><span aria-hidden="true">{{'📕' if note.is_read else '📖'}}</span></button><div class="meta"><span class="badge">Статья</span>{% if note.publication_date %}<time>{{note.publication_date}}</time>{% endif %}</div><h3>{{note.title}}</h3><div class="material-footer"><span>{{note.source or 'Источник не указан'}}</span>{% if note.url %}<a class="original" href="{{note.url}}" target="_blank" rel="noopener">Оригинал ↗</a>{% endif %}</div>{% if note.body_preview or note.body_remainder %}<div class="note-text" data-expandable-note><div class="note-text-part">{{note.body_preview}}{% if note.body_remainder %}<span class="note-remainder" data-note-remainder hidden>{{note.body_remainder}}</span>{% endif %}</div>{% if note.body_remainder %}<button class="note-toggle" type="button" data-note-toggle aria-expanded="false">Читать полностью</button>{% endif %}</div>{% endif %}{% if note.comment %}<div class="comment">{{note.comment}}</div>{% endif %}{% if selected_folder_data.can_edit %}<div class="note-actions"><button class="remove" type="button" data-note-edit-toggle aria-expanded="false">Изменить</button><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input type="hidden" name="note_id" value="{{note.id}}"><button class="remove" type="submit">Удалить статью</button></form></div><form class="note-edit-form" data-note-editor method="post" hidden><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="update_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input type="hidden" name="note_id" value="{{note.id}}"><div class="note-edit-grid"><label>Ссылка<input type="url" name="url" value="{{note.url}}" placeholder="https://…"></label><label>Источник<input name="source" value="{{note.source}}" maxlength="300"></label><label>Дата публикации<input type="date" name="publication_date" value="{{note.publication_date}}"></label><label>Заголовок<input name="title" value="{{note.title}}" maxlength="200" required></label><label class="wide">Текст<textarea name="body" maxlength="20000">{{note.body}}</textarea></label><label class="wide">Комментарий<textarea name="comment" maxlength="5000">{{note.comment}}</textarea></label></div><button class="primary" type="submit">Сохранить изменения</button></form>{% endif %}</article>{% endfor %}
             {% if bookmarks %}
                 {% for bookmark in bookmarks %}
                 <article class="bookmark">
@@ -482,6 +484,38 @@ BOOKMARKS_HTML = """
         </section>
     </div>
     <script>
+    document.querySelectorAll('[data-article-read]').forEach(button => {
+        button.addEventListener('click', async () => {
+            const isRead = button.getAttribute('aria-pressed') === 'true';
+            button.disabled = true;
+            try{
+                const response = await fetch('/api/collection-note-read', {
+                    method:'POST',
+                    headers:{
+                        'Content-Type':'application/json',
+                        'X-CSRF-Token': {{csrf_token|tojson}}
+                    },
+                    body:JSON.stringify({
+                        folder_id:Number(button.dataset.folderId),
+                        note_id:Number(button.dataset.noteId),
+                        is_read:!isRead
+                    })
+                });
+                const data = await response.json().catch(() => ({}));
+                if(!response.ok) throw new Error(data.error || 'Не удалось сохранить отметку');
+                button.setAttribute('aria-pressed', String(data.is_read));
+                button.setAttribute('aria-label', data.is_read ? 'Отметить непрочитанной' : 'Отметить прочитанной');
+                button.title = data.is_read
+                    ? 'Прочитано — нажми, чтобы отменить'
+                    : 'Не прочитано — нажми, чтобы отметить';
+                button.querySelector('span').textContent = data.is_read ? '📕' : '📖';
+            }catch(error){
+                window.alert(error.message);
+            }finally{
+                button.disabled = false;
+            }
+        });
+    });
     document.querySelectorAll('[data-note-toggle]').forEach(button => {
         button.addEventListener('click', () => {
             const note = button.closest('[data-expandable-note]');
@@ -699,6 +733,8 @@ HTML = """
         .search input{width:100%;border:0;outline:0;color:var(--ink);background:transparent;font-size:16px}
         .search input::placeholder{color:#918b81}
         .source-select select{width:100%;border:0;outline:0;color:var(--ink);background:transparent}
+        .source-summary{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--muted);font-size:12px}
+        .source-summary a{color:var(--coral-dark);font-weight:700}
         .tool-button{
             min-width:142px;padding:0 18px;display:flex;align-items:center;justify-content:center;
             gap:10px;color:#554f48;transition:.16s
@@ -769,9 +805,9 @@ HTML = """
         }
         .source-row:hover{background:#fff8f2}
         .source-link{
-            min-width:0;min-height:40px;padding:0 7px 0 18px;display:grid;flex:1;
+            width:100%;min-width:0;min-height:40px;padding:0 7px 0 18px;display:grid;flex:1;
             grid-template-columns:20px minmax(0,1fr) auto auto;align-items:center;
-            gap:9px;text-align:left
+            gap:9px;border:0;color:inherit;background:transparent;text-align:left
         }
         .source-link>span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .check{width:16px;height:16px;display:grid;place-items:center;color:#fff;border:1px solid #bdb5a9;border-radius:3px;font-size:11px}
@@ -903,26 +939,19 @@ HTML = """
         <p class="eyebrow">{{group_eyebrow}}</p>
         <h1>{{group_title}}</h1>
         <nav class="tabs">
-            <a class="tab {{'active' if mode == 'all' else ''}}" href="{{group_home}}">Все</a>
-            <a class="tab {{'active' if mode == 'found' else ''}}" href="{{group_found}}">Совпадения</a>
+            <a class="tab {{'active' if mode == 'all' else ''}}" href="{{group_home_url}}">Все</a>
+            <a class="tab {{'active' if mode == 'found' else ''}}" href="{{group_found_url}}">Совпадения</a>
         </nav>
     </section>
 
     <section class="toolbar">
         <form class="search" method="get" action="{{current_path}}">
             <span class="search-icon">⌕</span>
+            {% for src in source_filters %}<input type="hidden" name="source" value="{{src}}">{% endfor %}
             <input id="news-search" name="q" value="{{search_query}}"
                    placeholder="Поиск по заголовкам · Enter" autocomplete="off">
         </form>
-        <label class="source-select">
-            <span>▱</span>
-            <select onchange="goToSource(this.value)">
-                <option value="">Все источники</option>
-                {% for src, count in sources %}
-                <option value="{{src}}" {{'selected' if src == source_filter else ''}}>{{src}} — {{count}}</option>
-                {% endfor %}
-            </select>
-        </label>
+        {% if source_filters %}<div class="source-summary"><span>Выбрано: {{source_filters|length}}</span><a href="{{clear_sources_url}}">Сбросить</a></div>{% endif %}
         <button class="tool-button" id="keywords-open" type="button">✣ Ключевые слова</button>
         <a class="tool-button" href="/collections">
             ♡ Подборки <span class="saved-count {{'hidden' if not bookmark_count else ''}}" id="saved-count">{{bookmark_count}}</span>
@@ -932,7 +961,7 @@ HTML = """
     <div class="content-grid">
         <section class="feed">
             <header class="feed-heading">
-                <h2>{{'Совпадения' if mode == 'found' else ('Источник: ' + source_filter if source_filter else 'Последние публикации')}}</h2>
+                <h2>{{feed_title}}</h2>
                 <span id="visible-count" data-default="{{page_label}}">{{page_label}}</span>
             </header>
             <div id="empty-state" class="empty hidden">
@@ -1005,23 +1034,23 @@ HTML = """
                     </div>
                 </header>
                 <div class="source-list {{'yahoo-expanded' if yahoo_expanded else ''}}" id="source-list">
-                    <div class="source-row {{'active' if not source_filter else ''}}">
-                        <a class="source-link" href="{{group_home}}">
-                            <span class="check">{{'✓' if not source_filter else ''}}</span>
+                    <div class="source-row {{'active' if not source_filters else ''}}">
+                        <button class="source-link" type="button" data-source-clear>
+                            <span class="check">{{'✓' if not source_filters else ''}}</span>
                             <span>Все источники</span>
                             <b>{{total}}</b>
                             <span class="unread-count" data-unread-source="__all__"></span>
-                        </a>
+                        </button>
                     </div>
                     {% for src, count in sidebar_sources %}
-                    <div class="source-row sortable-source {{'active' if src == source_filter else ''}}" data-source-row data-source-name="{{src}}">
+                    <div class="source-row sortable-source {{'active' if src in source_filters else ''}}" data-source-row data-source-name="{{src}}">
                         <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
-                        <a class="source-link" href="{{source_base}}{{src|urlencode}}">
-                            <span class="check">{{'✓' if src == source_filter else ''}}</span>
+                        <button class="source-link" type="button" data-source-filter="{{src}}">
+                            <span class="check">{{'✓' if src in source_filters else ''}}</span>
                             <span>{{src}}</span>
                             <b>{{count}}</b>
                             <span class="unread-count" data-unread-source="{{src}}"></span>
-                        </a>
+                        </button>
                     </div>
                     {% endfor %}
                     {% if yahoo_sources %}
@@ -1036,14 +1065,14 @@ HTML = """
                     </div>
                     <span id="yahoo-source-items"></span>
                     {% for src, count, label in yahoo_sources %}
-                    <div class="source-row sortable-source yahoo-source-row {{'active' if src == source_filter else ''}}" data-source-row data-source-name="{{src}}">
+                    <div class="source-row sortable-source yahoo-source-row {{'active' if src in source_filters else ''}}" data-source-row data-source-name="{{src}}">
                         <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
-                        <a class="source-link" href="{{source_base}}{{src|urlencode}}">
-                            <span class="check">{{'✓' if src == source_filter else ''}}</span>
+                        <button class="source-link" type="button" data-source-filter="{{src}}">
+                            <span class="check">{{'✓' if src in source_filters else ''}}</span>
                             <span>{{label}}</span>
                             <b>{{count}}</b>
                             <span class="unread-count" data-unread-source="{{src}}"></span>
-                        </a>
+                        </button>
                     </div>
                     {% endfor %}
                     {% endif %}
@@ -1099,8 +1128,8 @@ HTML = """
     const savedCount = document.getElementById('saved-count');
     const brandHome = document.getElementById('brand-home');
     const newsIndex = {{news_index|tojson}};
-    const groupHome = {{group_home|tojson}};
-    const sourceBase = {{source_base|tojson}};
+    const sourceFilterHome = {{filter_home|tojson}};
+    const selectedSources = new Set({{source_filters|tojson}});
     const currentSourceGroup = {{source_group|tojson}};
     let saved = new Set({{saved_urls|tojson}});
     const legacySavedStorageKey = 'monitor-saved';
@@ -1300,6 +1329,27 @@ HTML = """
             yahooSourceToggle.setAttribute('aria-expanded', String(expanded));
         });
     }
+    function filteredSourceUrl(sources){
+        const target = new URL(sourceFilterHome, window.location.origin);
+        const current = new URL(window.location.href);
+        current.searchParams.forEach((value, key) => {
+            if(key !== 'source' && key !== 'page') target.searchParams.append(key, value);
+        });
+        sources.forEach(source => target.searchParams.append('source', source));
+        return target.pathname + target.search;
+    }
+    document.querySelector('[data-source-clear]').addEventListener('click', () => {
+        window.location.href = filteredSourceUrl([]);
+    });
+    document.querySelectorAll('[data-source-filter]').forEach(button => {
+        button.addEventListener('click', () => {
+            const source = button.dataset.sourceFilter;
+            selectedSources.has(source)
+                ? selectedSources.delete(source)
+                : selectedSources.add(source);
+            window.location.href = filteredSourceUrl([...selectedSources]);
+        });
+    });
     function orderedSourceRows(){
         return [...sourceList.querySelectorAll('[data-source-row]')];
     }
@@ -1382,9 +1432,6 @@ HTML = """
         orderedSourceRows().forEach(row => row.classList.remove('source-dragging', 'source-drag-over'));
         draggedSourceRow = null;
     });
-    function goToSource(source){
-        window.location.href = source ? sourceBase + encodeURIComponent(source) : groupHome;
-    }
     function updateClocks(){
         document.querySelectorAll('[data-clock]').forEach(clock => {
             const parts = Object.fromEntries(
@@ -2255,10 +2302,12 @@ def bookmarks_page():
     all_bookmarks = list_bookmarks(user_id)
     selected_folder_data = None
     notes = []
+    read_note_ids = set()
     if selected_folder in folder_by_id or selected_folder in shared_by_id:
         selected_folder_data = load_collection(user_id, selected_folder)
         bookmarks = list_collection_bookmarks(user_id, selected_folder)
         notes = list_collection_notes(user_id, selected_folder)
+        read_note_ids = list_collection_note_read_ids(user_id, selected_folder)
     else:
         bookmarks = list_bookmarks(user_id, selected_folder)
     bookmarks = [
@@ -2269,14 +2318,18 @@ def bookmarks_page():
             ("title", "source", "note", "date", "url", "folder_name"),
         )
     ]
-    notes = [
-        _prepare_collection_note(item) for item in notes
-        if _matches_collection_search(
+    prepared_notes = []
+    for item in notes:
+        if not _matches_collection_search(
             item,
             search_query,
             ("title", "source", "body", "comment", "publication_date", "url"),
-        )
-    ]
+        ):
+            continue
+        prepared = _prepare_collection_note(item)
+        prepared["is_read"] = int(item["id"]) in read_note_ids
+        prepared_notes.append(prepared)
+    notes = prepared_notes
     if selected_folder_data:
         selected_title = selected_folder_data["name"]
     elif selected_folder == "unfiled":
@@ -2340,7 +2393,7 @@ def apply_source_order(sources, preferred_names):
 def render_news_page(
     news,
     mode="all",
-    source_filter="",
+    source_filters=None,
     source_group=GOVERNMENT_GROUP,
 ):
     user = current_user()
@@ -2368,6 +2421,23 @@ def render_news_page(
         for item in group_news
     )
     sources = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    requested_sources = (
+        list(source_filters)
+        if source_filters is not None
+        else request.args.getlist("source")
+    )
+    available_names = set(counts)
+    source_filters = []
+    for source in requested_sources:
+        source = str(source or "").strip()
+        if source in available_names and source not in source_filters:
+            source_filters.append(source)
+    if source_filters:
+        selected_sources = set(source_filters)
+        news = [
+            item for item in news
+            if item.get("source", "Неизвестный источник") in selected_sources
+        ]
     if user["id"]:
         sources = apply_source_order(
             sources,
@@ -2391,7 +2461,7 @@ def render_news_page(
     else:
         yahoo_sources = []
         sidebar_sources = sources
-    yahoo_active = is_yahoo_source(source_filter)
+    yahoo_active = any(is_yahoo_source(source) for source in source_filters)
     yahoo_expanded = yahoo_active
     yahoo_total = sum(count for _name, count, _label in yahoo_sources)
 
@@ -2427,26 +2497,40 @@ def render_news_page(
         )
         group_home = "/agencies"
         group_found = "/agencies/found"
-        source_base = "/agencies/filter/"
     elif source_group == NEWSPAPERS_GROUP:
         group_title = "Свежие номера газет"
         group_eyebrow = "Коммерсантъ · Известия · РГ · Ведомости · Красная звезда · КП"
         group_home = "/newspapers"
         group_found = "/newspapers/found"
-        source_base = "/newspapers/filter/"
     else:
         group_title = "Новости госструктур"
         group_eyebrow = "Агрегатор официальных источников"
         group_home = "/"
         group_found = "/found"
-        source_base = "/filter/"
+
+    filter_home = group_found if mode == "found" else group_home
+    persistent_query_parameters = [
+        (key, value)
+        for key, values in request.args.lists()
+        if key not in {"page", "source"}
+        for value in values
+    ]
+    clear_query = urlencode(persistent_query_parameters, doseq=True)
+    clear_sources_url = filter_home + (f"?{clear_query}" if clear_query else "")
+    source_query = urlencode([("source", source) for source in source_filters])
+    group_home_url = group_home + (f"?{source_query}" if source_query else "")
+    group_found_url = group_found + (f"?{source_query}" if source_query else "")
+    if mode == "found":
+        feed_title = "Совпадения"
+    elif len(source_filters) == 1:
+        feed_title = f"Источник: {source_filters[0]}"
+    elif source_filters:
+        feed_title = f"Выбрано источников: {len(source_filters)}"
+    else:
+        feed_title = "Последние публикации"
 
     sorted_news = sort_news_by_publication(news)
-    unread_index_news = (
-        sorted_news
-        if news is group_news
-        else sort_news_by_publication(group_news)
-    )
+    unread_index_news = sort_news_by_publication(group_news)
     search_query = request.args.get("q", "").strip()
     if search_query:
         needle = search_query.casefold()
@@ -2481,15 +2565,12 @@ def render_news_page(
         else "0 материалов"
     )
 
-    query_parameters = request.args.to_dict(flat=True)
-
     def page_url(number):
-        parameters = dict(query_parameters)
+        parameters = list(persistent_query_parameters)
+        parameters.extend(("source", source) for source in source_filters)
         if number > 1:
-            parameters["page"] = number
-        else:
-            parameters.pop("page", None)
-        query_string = urlencode(parameters)
+            parameters.append(("page", number))
+        query_string = urlencode(parameters, doseq=True)
         return request.path + (f"?{query_string}" if query_string else "")
 
     visible_pages = sorted(
@@ -2530,14 +2611,18 @@ def render_news_page(
             for item in unread_index_news[:UNREAD_INDEX_LIMIT]
             if item.get("url")
         ],
-        source_filter=source_filter,
+        source_filters=source_filters,
+        feed_title=feed_title,
         mode=mode,
         source_group=source_group,
         group_title=group_title,
         group_eyebrow=group_eyebrow,
         group_home=group_home,
         group_found=group_found,
-        source_base=source_base,
+        group_home_url=group_home_url,
+        group_found_url=group_found_url,
+        filter_home=filter_home,
+        clear_sources_url=clear_sources_url,
         health_total=total_sources,
         health_ok=ok_sources,
         health_empty=sum(
@@ -2594,7 +2679,7 @@ def filter_source(source):
     news = [item for item in all_news if item.get("source") == source]
     return render_news_page(
         news,
-        source_filter=source,
+        source_filters=[source],
         source_group=get_source_group(source),
     )
 
@@ -2622,7 +2707,7 @@ def agencies_filter_source(source):
     news = [item for item in all_news if item.get("source") == source]
     return render_news_page(
         news,
-        source_filter=source,
+        source_filters=[source],
         source_group=AGENCIES_GROUP,
     )
 
@@ -2650,7 +2735,7 @@ def newspapers_filter_source(source):
     news = [item for item in all_news if item.get("source") == source]
     return render_news_page(
         news,
-        source_filter=source,
+        source_filters=[source],
         source_group=NEWSPAPERS_GROUP,
     )
 
@@ -2864,6 +2949,25 @@ def collection_order_api():
     except ValueError as error:
         return jsonify(error=str(error)), 400
     return jsonify(folder_ids=[folder["id"] for folder in folders])
+
+
+@app.post("/api/collection-note-read")
+def collection_note_read_api():
+    """Сохраняет личную отметку чтения статьи в доступной подборке."""
+    user = current_user()
+    if not csrf_is_valid():
+        return jsonify(error="Сессия устарела. Обновите страницу."), 400
+    payload = request.get_json(silent=True) or {}
+    is_read = payload.get("is_read")
+    if not isinstance(is_read, bool):
+        return jsonify(error="Некорректная отметка чтения"), 400
+    try:
+        saved = set_collection_note_read(
+            user["id"], payload.get("folder_id"), payload.get("note_id"), is_read,
+        )
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+    return jsonify(is_read=saved)
 
 
 if __name__ == "__main__":

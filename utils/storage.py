@@ -191,6 +191,15 @@ def _create_schema(connection):
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS collection_note_reads (
+            user_id INTEGER NOT NULL,
+            note_id INTEGER NOT NULL,
+            read_at TEXT NOT NULL,
+            PRIMARY KEY(user_id, note_id),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(note_id) REFERENCES collection_notes(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS bookmarks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -271,6 +280,8 @@ def _create_schema(connection):
             ON bookmark_folder_shares(user_id, folder_id);
         CREATE INDEX IF NOT EXISTS idx_collection_notes_folder
             ON collection_notes(folder_id, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_collection_note_reads_note
+            ON collection_note_reads(note_id);
         CREATE INDEX IF NOT EXISTS idx_user_source_orders_user
             ON user_source_orders(user_id, source_group);
         CREATE INDEX IF NOT EXISTS idx_parser_jobs_status
@@ -1381,6 +1392,55 @@ def list_collection_notes(user_id, folder_id):
             (collection["id"],),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def list_collection_note_read_ids(user_id, folder_id):
+    """Возвращает статьи подборки, прочитанные именно этим пользователем."""
+    user_id = _validated_user_id(user_id)
+    collection = load_collection(user_id, folder_id)
+    if collection is None:
+        raise ValueError("Подборка не найдена")
+    with _connection() as connection:
+        rows = connection.execute(
+            """SELECT r.note_id FROM collection_note_reads AS r
+               JOIN collection_notes AS n ON n.id = r.note_id
+               WHERE r.user_id = ? AND n.folder_id = ?""",
+            (user_id, collection["id"]),
+        ).fetchall()
+    return {int(row["note_id"]) for row in rows}
+
+
+def set_collection_note_read(user_id, folder_id, note_id, is_read):
+    """Меняет личную отметку чтения, не затрагивая других читателей."""
+    user_id = _validated_user_id(user_id)
+    collection = load_collection(user_id, folder_id)
+    if collection is None:
+        raise ValueError("Подборка не найдена")
+    try:
+        note_id = int(note_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Статья не найдена") from error
+    with STORAGE_LOCK, _connection() as connection:
+        note = connection.execute(
+            "SELECT id FROM collection_notes WHERE id = ? AND folder_id = ?",
+            (note_id, collection["id"]),
+        ).fetchone()
+        if note is None:
+            raise ValueError("Статья не найдена")
+        if is_read:
+            connection.execute(
+                """INSERT INTO collection_note_reads(user_id, note_id, read_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(user_id, note_id)
+                   DO UPDATE SET read_at = excluded.read_at""",
+                (user_id, note_id, datetime.now().isoformat(timespec="seconds")),
+            )
+        else:
+            connection.execute(
+                "DELETE FROM collection_note_reads WHERE user_id = ? AND note_id = ?",
+                (user_id, note_id),
+            )
+    return bool(is_read)
 
 
 def delete_collection_note(user_id, folder_id, note_id):

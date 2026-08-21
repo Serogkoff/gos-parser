@@ -178,6 +178,27 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertNotIn("Материал информационного агентства", html)
         self.assertNotIn("Yahoo! JAPANのニュース", html)
 
+    def test_multiple_sources_can_be_selected_together(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get(
+                "/agencies?source=%D0%A2%D0%90%D0%A1%D0%A1&"
+                "source=%D0%98%D0%BD%D1%82%D0%B5%D1%80%D1%84%D0%B0%D0%BA%D1%81"
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Материал ТАСС", html)
+        self.assertIn("Материал Интерфакса", html)
+        self.assertNotIn("Материал информационного агентства", html)
+        self.assertNotIn("Yahoo! JAPANのニュース", html)
+        self.assertIn("Выбрано источников: 2", html)
+        self.assertIn('name="source" value="ТАСС"', html)
+        self.assertIn('name="source" value="Интерфакс"', html)
+        self.assertIn('data-source-filter="ТАСС"', html)
+        self.assertIn('data-source-filter="Интерфакс"', html)
+        self.assertIn("selectedSources.add(source)", html)
+        self.assertIn("data-source-clear", html)
+
     def test_selected_yahoo_subsection_is_expanded(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
             response = web_app.app.test_client().get(
