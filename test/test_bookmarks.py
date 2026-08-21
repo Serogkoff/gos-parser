@@ -213,12 +213,12 @@ class PersonalBookmarksTests(unittest.TestCase):
             f"/collections?folder={folder['id']}"
         ).get_data(as_text=True)
         self.assertIn('aria-pressed="false"', reader_page)
-        self.assertIn("📖", reader_page)
+        self.assertIn("article-read-toggle::before", reader_page)
         owner_page = owner_client.get(
             f"/collections?folder={folder['id']}"
         ).get_data(as_text=True)
         self.assertIn('aria-pressed="true"', owner_page)
-        self.assertIn("📕", owner_page)
+        self.assertIn('article-read-toggle[aria-pressed="true"]::before', owner_page)
         response = owner_client.post(
             "/api/collection-note-read",
             json={"folder_id": folder["id"], "note_id": note_id, "is_read": False},
