@@ -1134,10 +1134,18 @@ def _titles_match(expected, actual):
     expected_key = _title_key(expected)
     actual_key = _title_key(actual)
     return (
-        len(expected_key) >= 12
+        bool(expected_key)
+        and bool(actual_key)
         and (
-            expected_key in actual_key
-            or actual_key in expected_key
+            expected_key == actual_key
+            or (
+                len(expected_key) >= 12
+                and len(actual_key) >= 12
+                and (
+                    expected_key in actual_key
+                    or actual_key in expected_key
+                )
+            )
         )
     )
 

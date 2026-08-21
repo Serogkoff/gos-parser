@@ -269,6 +269,25 @@ class YahooJapanRssTests(unittest.TestCase):
         self.assertNotIn("ランキング", " ".join(article["paragraphs"]))
         self.assertNotIn("構造化データ", " ".join(article["paragraphs"]))
 
+    def test_short_exact_yahoo_title_confirms_selected_article(self):
+        soup = BeautifulSoup(
+            "<html><head><meta property='og:title' content='短い記事題'></head>"
+            "<body><h1>短い記事題</h1><article><div class='article_body'>"
+            "<p>これは短い見出しを持つ記事の完全な本文段落です。</p>"
+            "</div></article></body></html>",
+            "html.parser",
+        )
+        with patch("utils.article_reader.fetch_soup", return_value=soup):
+            article = extract_article(
+                "https://news.yahoo.co.jp/articles/short123",
+                "短い記事題",
+            )
+
+        self.assertEqual(
+            article["paragraphs"],
+            ["これは短い見出しを持つ記事の完全な本文段落です。"],
+        )
+
     def test_recognizes_polluted_cached_yahoo_article(self):
         self.assertTrue(
             yahoo_article_is_polluted({
