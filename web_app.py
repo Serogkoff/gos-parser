@@ -49,6 +49,7 @@ from utils.storage import (
     count_users,
     count_bookmarks,
     create_bookmark_folder,
+    delete_collection_note,
     create_user,
     delete_bookmark_folder,
     enqueue_parser_job,
@@ -59,6 +60,10 @@ from utils.storage import (
     list_parser_jobs,
     list_bookmark_folders,
     list_bookmarks,
+    list_collection_bookmarks,
+    list_collection_notes,
+    list_shared_collections,
+    load_collection,
     load_source_order,
     load_source_settings,
     load_all_news,
@@ -69,11 +74,14 @@ from utils.storage import (
     rename_bookmark_folder,
     save_cached_article,
     save_bookmark,
+    save_collection_note,
+    save_external_bookmark,
     save_source_order,
     set_source_enabled,
     set_user_active,
     set_user_password,
     set_user_role,
+    update_collection,
     source_news_statistics,
     source_incident_statistics,
     source_reliability_statistics,
@@ -416,50 +424,56 @@ BOOKMARKS_HTML = """
 <html lang="ru">
 <head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Закладки — Монитор</title>
+    <title>Подборки — Монитор</title>
     <style>
         :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655}
         *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}a{color:inherit;text-decoration:none}.shell{width:min(1250px,calc(100% - 34px));margin:auto;padding:28px 0 80px}.top{display:flex;align-items:center;justify-content:space-between;gap:15px}.back{color:var(--muted)}.account{font-size:12px;color:var(--muted)}header{margin:38px 0 26px}h1{margin:0;font-size:clamp(42px,6vw,70px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:20px;align-items:start}.panel,.feed{border:1px solid var(--line);border-radius:8px;background:var(--surface)}.panel{position:sticky;top:18px;overflow:hidden}.panel h2{margin:0;padding:19px;border-bottom:1px solid var(--line);font-size:17px}.folder-list{padding:9px}.folder{min-height:42px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-radius:5px;color:#5e574e;font-size:13px}.folder:hover,.folder.active{color:var(--coral);background:#fff3ed}.folder b{font-size:11px}.create{padding:15px;border-top:1px solid var(--line)}label{display:grid;gap:6px;color:var(--muted);font-size:11px}input,select,textarea{width:100%;padding:10px 11px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}input,select{height:42px}textarea{min-height:92px;resize:vertical}button{min-height:40px;padding:0 13px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;font:650 12px Inter,Arial,sans-serif;cursor:pointer}.primary{color:#fff;background:var(--coral)}.create button{width:100%;margin-top:8px}.message,.error{margin:0 0 16px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.feed-head{padding:20px 23px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.feed-head h2{margin:0;font-size:18px}.bookmark{padding:24px;border-bottom:1px solid var(--line)}.bookmark:last-child{border-bottom:0}.meta{display:flex;flex-wrap:wrap;gap:9px;color:var(--muted);font-size:12px}.bookmark h3{margin:10px 0 18px;font-size:clamp(21px,3vw,31px);line-height:1.15;letter-spacing:-.035em}.bookmark h3 a:hover{color:var(--coral)}.edit{display:grid;grid-template-columns:190px minmax(0,1fr) auto;gap:10px;align-items:end}.remove{margin-top:9px;border-color:var(--line);color:var(--muted)}.folder-tools{margin:0 9px 10px;padding:12px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.folder-tools form{display:flex;gap:7px}.folder-tools form+form{margin-top:7px}.folder-tools input{min-width:0}.empty{padding:70px 25px;color:var(--muted);text-align:center}.empty strong{display:block;margin-bottom:7px;color:var(--ink);font-size:20px}
-        @media(max-width:800px){.layout{grid-template-columns:1fr}.panel{position:static}.edit{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
+        .folder small{display:block;margin-top:2px;color:var(--muted)}.section-label{padding:13px 19px 5px;color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.collection-head{padding:22px 24px;border-bottom:1px solid var(--line)}.collection-head h2{margin:0 0 6px;font-size:28px}.collection-head p{margin:0;color:var(--muted);font-size:14px}.owner{margin-top:10px!important;font-size:12px!important}.composer{padding:18px 24px;border-bottom:1px solid var(--line);background:#faf6ef}.composer-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.composer-actions{display:flex;gap:8px;margin-top:10px}.share{margin:14px 9px;padding:14px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.share h3{margin:0 0 10px;font-size:14px}.share label+label{margin-top:8px}.share-users{max-height:145px;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:6px;background:#fff}.share-user{display:flex;grid-template:none;align-items:center;gap:8px;font-size:12px}.share-user input{width:auto;height:auto}.note-card{padding:24px;border-bottom:1px solid var(--line);background:#fffaf0}.note-card h3{margin:8px 0;font-size:22px}.note-card p{white-space:pre-wrap;line-height:1.55}.readonly{padding:12px 24px;color:#655c50;background:#fff3dd;border-bottom:1px solid var(--line);font-size:13px}.badge{padding:3px 7px;border-radius:10px;background:#eee7db;font-size:10px}.open-external{color:var(--coral)}
+        @media(max-width:800px){.layout{grid-template-columns:1fr}.panel{position:static}.edit,.composer-grid{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
     </style>
 </head>
 <body><main class="shell">
     <div class="top"><a class="back" href="/">← Вернуться к Монитору</a><a class="account" href="/account">{{current_user.username}} · настройки аккаунта</a></div>
-    <header><h1>Закладки</h1><p class="subtitle">Личные папки, сохранённые новости и рабочие заметки</p></header>
+    <header><h1>Подборки</h1><p class="subtitle">Рабочие папки со статьями, внешними ссылками и заметками</p></header>
     {% if message %}<p class="message">{{message}}</p>{% endif %}{% if error %}<p class="error">{{error}}</p>{% endif %}
     <div class="layout">
         <aside class="panel">
-            <h2>Папки</h2>
+            <h2>Мои подборки</h2>
             <nav class="folder-list">
-                <a class="folder {{'active' if selected_folder == 'all' else ''}}" href="/bookmarks"><span>Все закладки</span><b>{{total_count}}</b></a>
-                <a class="folder {{'active' if selected_folder == 'unfiled' else ''}}" href="/bookmarks?folder=unfiled"><span>Без папки</span><b>{{unfiled_count}}</b></a>
-                {% for folder in folders %}<a class="folder {{'active' if selected_folder == folder.id|string else ''}}" href="/bookmarks?folder={{folder.id}}"><span>{{folder.name}}</span><b>{{folder.bookmark_count}}</b></a>{% endfor %}
+                <a class="folder {{'active' if selected_folder == 'unfiled' else ''}}" href="/collections?folder=unfiled"><span>Без подборки</span><b>{{unfiled_count}}</b></a>
+                {% for folder in folders %}<a class="folder {{'active' if selected_folder == folder.id|string else ''}}" href="/collections?folder={{folder.id}}"><span>{{folder.name}}<small>{{folder.bookmark_count + folder.note_count}} материалов</small></span><b>{{'◉' if folder.visibility == 'all' else ('◎' if folder.visibility == 'selected' else '·')}}</b></a>{% endfor %}
             </nav>
-            {% if selected_folder not in ('all','unfiled') and selected_folder_data %}
+            {% if shared_folders %}<div class="section-label">Доступные мне</div><nav class="folder-list">{% for folder in shared_folders %}<a class="folder {{'active' if selected_folder == folder.id|string else ''}}" href="/collections?folder={{folder.id}}"><span>{{folder.name}}<small>{{folder.owner_name}}</small></span><b>{{folder.bookmark_count + folder.note_count}}</b></a>{% endfor %}</nav>{% endif %}
+            {% if selected_folder not in ('all','unfiled') and selected_folder_data and selected_folder_data.can_edit %}
             <div class="folder-tools">
-                <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="rename_folder"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input name="name" value="{{selected_folder_data.name}}" maxlength="80" required><button type="submit">Переименовать</button></form>
+                <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="update_collection"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input name="name" value="{{selected_folder_data.name}}" maxlength="80" required><button type="submit">Сохранить название</button></form>
                 <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_folder"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><button type="submit">Удалить папку</button></form>
             </div>
+            <form class="share" method="post"><h3>Доступ к подборке</h3><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="share_collection"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><label>Описание<textarea name="description" maxlength="1000">{{selected_folder_data.description}}</textarea></label><label>Кто видит<select name="visibility"><option value="private" {{'selected' if selected_folder_data.visibility == 'private' else ''}}>Только я</option><option value="all" {{'selected' if selected_folder_data.visibility == 'all' else ''}}>Все пользователи</option><option value="selected" {{'selected' if selected_folder_data.visibility == 'selected' else ''}}>Выбранные пользователи</option></select></label><div class="share-users">{% for account in available_users %}<label class="share-user"><input type="checkbox" name="shared_user_ids" value="{{account.id}}" {{'checked' if account.id in selected_shared_ids else ''}}>{{account.username}}</label>{% endfor %}</div><button class="primary" type="submit">Сохранить доступ</button></form>
             {% endif %}
-            <form class="create" method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="create_folder"><label>Новая папка<input name="name" maxlength="80" placeholder="Например: Выборы" required></label><button class="primary" type="submit">Создать папку</button></form>
+            <form class="create" method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="create_folder"><label>Новая подборка<input name="name" maxlength="80" placeholder="Например: Выборы в Японии" required></label><button class="primary" type="submit">Создать подборку</button></form>
         </aside>
         <section class="feed">
-            <div class="feed-head"><h2>{{selected_title}}</h2><span>{{bookmarks|length}} материалов</span></div>
+            <div class="collection-head"><h2>{{selected_title}}</h2>{% if selected_folder_data %}<p>{{selected_folder_data.description or 'Описание пока не добавлено'}}</p><p class="owner">Владелец: {{selected_folder_data.owner_name}} · {{'редактирование' if selected_folder_data.can_edit else 'только просмотр'}}</p>{% endif %}</div>
+            {% if selected_folder_data and not selected_folder_data.can_edit %}<div class="readonly">Подборка открыта тебе владельцем. Новые материалы появятся здесь автоматически.</div>{% endif %}
+            {% if selected_folder_data and selected_folder_data.can_edit %}<div class="composer"><div class="composer-grid"><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="add_external"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><label>Ссылка<input type="url" name="url" placeholder="https://…" required></label><label>Название<input name="title" maxlength="1000" required></label><label>Комментарий<textarea name="note" maxlength="5000"></textarea></label><button class="primary" type="submit">Добавить ссылку</button></form><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="add_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><label>Заголовок заметки<input name="title" maxlength="200" required></label><label>Текст<textarea name="body" maxlength="20000"></textarea></label><button class="primary" type="submit">Добавить заметку</button></form></div></div>{% endif %}
+            {% for note in notes %}<article class="note-card"><div class="meta"><span class="badge">Заметка</span><time>{{note.updated_at}}</time></div><h3>{{note.title}}</h3><p>{{note.body}}</p>{% if selected_folder_data.can_edit %}<form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input type="hidden" name="note_id" value="{{note.id}}"><button class="remove" type="submit">Удалить заметку</button></form>{% endif %}</article>{% endfor %}
             {% if bookmarks %}
                 {% for bookmark in bookmarks %}
                 <article class="bookmark">
                     <div class="meta"><span>{{bookmark.source}}</span><span>•</span><time>{{bookmark.date or 'дата не указана'}}</time>{% if bookmark.folder_name %}<span>•</span><span>{{bookmark.folder_name}}</span>{% endif %}</div>
-                    <h3><a href="/article?url={{bookmark.url|urlencode}}">{{bookmark.title}}</a></h3>
-                    <form class="edit" method="post">
+                    <h3><a class="{{'open-external' if bookmark.source == 'Внешний источник' else ''}}" href="{{bookmark.url if bookmark.source == 'Внешний источник' else '/article?url=' + (bookmark.url|urlencode)}}" {{'target=_blank rel=noopener' if bookmark.source == 'Внешний источник' else ''}}>{{bookmark.title}}</a></h3>
+                    {% if selected_folder_data is none or selected_folder_data.can_edit %}<form class="edit" method="post">
                         <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="update_bookmark"><input type="hidden" name="bookmark_url" value="{{bookmark.url}}">
                         <label>Папка<select name="folder_id"><option value="">Без папки</option>{% for folder in folders %}<option value="{{folder.id}}" {{'selected' if bookmark.folder_id == folder.id else ''}}>{{folder.name}}</option>{% endfor %}</select></label>
                         <label>Заметка<textarea name="note" maxlength="5000" placeholder="Что важно в этой публикации?">{{bookmark.note}}</textarea></label>
                         <button class="primary" type="submit">Сохранить</button>
                     </form>
                     <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="remove_bookmark"><input type="hidden" name="bookmark_url" value="{{bookmark.url}}"><button class="remove" type="submit">Удалить из закладок</button></form>
+                    {% endif %}
                 </article>
                 {% endfor %}
-            {% else %}<div class="empty"><strong>Здесь пока пусто</strong><span>Нажми ♡ у новости в ленте, чтобы сохранить её.</span></div>{% endif %}
+            {% elif not notes %}<div class="empty"><strong>Здесь пока пусто</strong><span>Добавь ссылку, заметку или перемести сюда сохранённую новость.</span></div>{% endif %}
         </section>
     </div>
 </main></body></html>
@@ -739,8 +753,8 @@ HTML = """
             <a class="site-section {{'active' if source_group == 'newspapers' else ''}}" href="/newspapers">
                 Газеты
             </a>
-            <a class="site-section" href="/bookmarks">
-                Закладки
+            <a class="site-section" href="/collections">
+                Подборки
             </a>
         </nav>
         <div class="topbar-tools">
@@ -798,8 +812,8 @@ HTML = """
             </select>
         </label>
         <button class="tool-button" id="keywords-open" type="button">✣ Ключевые слова</button>
-        <a class="tool-button" href="/bookmarks">
-            ♡ Закладки <span class="saved-count {{'hidden' if not bookmark_count else ''}}" id="saved-count">{{bookmark_count}}</span>
+        <a class="tool-button" href="/collections">
+            ♡ Подборки <span class="saved-count {{'hidden' if not bookmark_count else ''}}" id="saved-count">{{bookmark_count}}</span>
         </a>
     </section>
 
@@ -1992,14 +2006,17 @@ def admin_reliability():
 
 
 @app.route("/bookmarks", methods=["GET", "POST"])
+@app.route("/collections", methods=["GET", "POST"])
 def bookmarks_page():
-    """Показывает личные папки, новости и заметки текущего пользователя."""
+    """Показывает рабочие подборки, общий доступ, ссылки и заметки."""
     user = current_user()
     user_id = user["id"]
-    selected_folder = str(request.args.get("folder", "all")).strip() or "all"
+    selected_folder = str(request.args.get("folder", "unfiled")).strip() or "unfiled"
     folders = list_bookmark_folders(user_id)
     folder_by_id = {str(folder["id"]): folder for folder in folders}
-    if selected_folder not in {"all", "unfiled", *folder_by_id}:
+    shared_folders = list_shared_collections(user_id)
+    shared_by_id = {str(folder["id"]): folder for folder in shared_folders}
+    if selected_folder not in {"all", "unfiled", *folder_by_id, *shared_by_id}:
         abort(404)
 
     if request.method == "POST":
@@ -2009,20 +2026,58 @@ def bookmarks_page():
         try:
             if action == "create_folder":
                 created = create_bookmark_folder(user_id, request.form.get("name"))
-                message = f"Папка «{created['name']}» создана"
+                message = f"Подборка «{created['name']}» создана"
                 selected_folder = str(created["id"])
-            elif action == "rename_folder":
-                renamed = rename_bookmark_folder(
+            elif action == "update_collection":
+                current = load_collection(user_id, request.form.get("folder_id"))
+                if current is None or not current["can_edit"]:
+                    raise ValueError("Подборка не найдена")
+                updated = update_collection(
                     user_id,
                     request.form.get("folder_id"),
                     request.form.get("name"),
+                    current["description"],
+                    current["visibility"],
+                    [item["id"] for item in current["shared_users"]],
                 )
-                message = f"Папка переименована в «{renamed['name']}»"
-                selected_folder = str(renamed["id"])
+                message = f"Название изменено на «{updated['name']}»"
+                selected_folder = str(updated["id"])
+            elif action == "share_collection":
+                current = load_collection(user_id, request.form.get("folder_id"))
+                if current is None or not current["can_edit"]:
+                    raise ValueError("Подборка не найдена")
+                update_collection(
+                    user_id, current["id"], current["name"],
+                    request.form.get("description"),
+                    request.form.get("visibility"),
+                    request.form.getlist("shared_user_ids"),
+                )
+                message = "Доступ к подборке обновлён"
+                selected_folder = str(current["id"])
             elif action == "delete_folder":
                 delete_bookmark_folder(user_id, request.form.get("folder_id"))
-                message = "Папка удалена, её новости перенесены в «Без папки»"
+                message = "Подборка удалена, её новости перенесены в «Без подборки»"
                 selected_folder = "unfiled"
+            elif action == "add_external":
+                save_external_bookmark(
+                    user_id, request.form.get("folder_id"), request.form.get("url"),
+                    request.form.get("title"), request.form.get("note"),
+                )
+                message = "Внешняя ссылка добавлена"
+                selected_folder = str(request.form.get("folder_id"))
+            elif action == "add_note":
+                save_collection_note(
+                    user_id, request.form.get("folder_id"),
+                    request.form.get("title"), request.form.get("body"),
+                )
+                message = "Заметка добавлена"
+                selected_folder = str(request.form.get("folder_id"))
+            elif action == "delete_note":
+                delete_collection_note(
+                    user_id, request.form.get("folder_id"), request.form.get("note_id"),
+                )
+                message = "Заметка удалена"
+                selected_folder = str(request.form.get("folder_id"))
             elif action == "update_bookmark":
                 update_bookmark(
                     user_id,
@@ -2049,25 +2104,43 @@ def bookmarks_page():
         )
 
     all_bookmarks = list_bookmarks(user_id)
-    bookmarks = list_bookmarks(user_id, selected_folder)
-    selected_folder_data = folder_by_id.get(selected_folder)
+    selected_folder_data = None
+    notes = []
+    if selected_folder in folder_by_id or selected_folder in shared_by_id:
+        selected_folder_data = load_collection(user_id, selected_folder)
+        bookmarks = list_collection_bookmarks(user_id, selected_folder)
+        notes = list_collection_notes(user_id, selected_folder)
+    else:
+        bookmarks = list_bookmarks(user_id, selected_folder)
     if selected_folder_data:
         selected_title = selected_folder_data["name"]
     elif selected_folder == "unfiled":
         selected_title = "Без папки"
     else:
-        selected_title = "Все закладки"
+        selected_title = "Все сохранённые"
+    active_users = [
+        account for account in list_users()
+        if account["is_active"] and account["id"] != user_id
+    ]
     return render_template_string(
         BOOKMARKS_HTML,
         current_user=user,
         csrf_token=csrf_token(),
         folders=folders,
+        shared_folders=shared_folders,
         bookmarks=bookmarks,
+        notes=notes,
         selected_folder=selected_folder,
         selected_folder_data=selected_folder_data,
         selected_title=selected_title,
         total_count=len(all_bookmarks),
         unfiled_count=sum(item["folder_id"] is None for item in all_bookmarks),
+        available_users=active_users,
+        selected_shared_ids={
+            account["id"] for account in (
+                selected_folder_data["shared_users"] if selected_folder_data else []
+            )
+        },
         message=str(request.args.get("message", "")).strip(),
         error=str(request.args.get("error", "")).strip(),
     )

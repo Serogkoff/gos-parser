@@ -131,6 +131,55 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertEqual(response.get_json()["count"], 1)
         self.assertEqual(storage.count_bookmarks(self.first["id"]), 1)
 
+    def test_collection_access_is_inherited_and_read_only(self):
+        folder = storage.create_bookmark_folder(self.first["id"], "Выборы")
+        storage.save_bookmark(self.first["id"], self.item, folder["id"])
+        storage.save_collection_note(
+            self.first["id"], folder["id"], "Справка", "Следить за обновлениями."
+        )
+        storage.update_collection(
+            self.first["id"], folder["id"], "Выборы", "Материалы для шефа",
+            "selected", [self.second["id"]],
+        )
+
+        shared = storage.load_collection(self.second["id"], folder["id"])
+        self.assertFalse(shared["can_edit"])
+        self.assertEqual(shared["owner_name"], "first")
+        self.assertEqual(
+            storage.list_collection_bookmarks(self.second["id"], folder["id"])[0]["title"],
+            self.item["title"],
+        )
+        self.assertEqual(
+            storage.list_collection_notes(self.second["id"], folder["id"])[0]["title"],
+            "Справка",
+        )
+        with self.assertRaisesRegex(ValueError, "Папка не найдена"):
+            storage.save_collection_note(
+                self.second["id"], folder["id"], "Чужая правка", "Нельзя"
+            )
+
+    def test_private_collection_is_not_visible_to_another_user(self):
+        folder = storage.create_bookmark_folder(self.first["id"], "Закрыто")
+
+        self.assertIsNone(storage.load_collection(self.second["id"], folder["id"]))
+        self.assertEqual(storage.list_shared_collections(self.second["id"]), [])
+
+    def test_external_link_and_note_are_added_to_collection(self):
+        folder = storage.create_bookmark_folder(self.first["id"], "Внешние материалы")
+        storage.save_external_bookmark(
+            self.first["id"], folder["id"], "https://example.com/report",
+            "Доклад наблюдателей", "Проверить выводы",
+        )
+        note_id = storage.save_collection_note(
+            self.first["id"], folder["id"], "План", "Сопоставить с официальными данными."
+        )
+
+        item = storage.list_collection_bookmarks(self.first["id"], folder["id"])[0]
+        self.assertEqual(item["source"], "Внешний источник")
+        self.assertEqual(item["note"], "Проверить выводы")
+        storage.delete_collection_note(self.first["id"], folder["id"], note_id)
+        self.assertEqual(storage.list_collection_notes(self.first["id"], folder["id"]), [])
+
 
 if __name__ == "__main__":
     unittest.main()

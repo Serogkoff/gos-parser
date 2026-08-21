@@ -157,8 +157,32 @@ def _create_schema(connection):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             name TEXT NOT NULL COLLATE NOCASE,
+            description TEXT NOT NULL DEFAULT '',
+            visibility TEXT NOT NULL DEFAULT 'private',
             created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT '',
             UNIQUE(user_id, name),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS bookmark_folder_shares (
+            folder_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(folder_id, user_id),
+            FOREIGN KEY(folder_id) REFERENCES bookmark_folders(id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS collection_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            folder_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(folder_id) REFERENCES bookmark_folders(id) ON DELETE CASCADE,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
@@ -238,6 +262,10 @@ def _create_schema(connection):
             ON bookmarks(user_id, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_bookmarks_folder
             ON bookmarks(user_id, folder_id, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_bookmark_folder_shares_user
+            ON bookmark_folder_shares(user_id, folder_id);
+        CREATE INDEX IF NOT EXISTS idx_collection_notes_folder
+            ON collection_notes(folder_id, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_user_source_orders_user
             ON user_source_orders(user_id, source_group);
         CREATE INDEX IF NOT EXISTS idx_parser_jobs_status
@@ -252,6 +280,24 @@ def _create_schema(connection):
             ON source_incidents(source, started_at DESC);
         """
     )
+
+    columns = {
+        row["name"] for row in connection.execute(
+            "PRAGMA table_info(bookmark_folders)"
+        ).fetchall()
+    }
+    if "description" not in columns:
+        connection.execute(
+            "ALTER TABLE bookmark_folders ADD COLUMN description TEXT NOT NULL DEFAULT ''"
+        )
+    if "visibility" not in columns:
+        connection.execute(
+            "ALTER TABLE bookmark_folders ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'"
+        )
+    if "updated_at" not in columns:
+        connection.execute(
+            "ALTER TABLE bookmark_folders ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''"
+        )
 
 
 def count_users():
@@ -957,12 +1003,16 @@ def list_bookmark_folders(user_id):
     with _connection() as connection:
         rows = connection.execute(
             """
-            SELECT f.id, f.name, f.created_at, COUNT(b.id) AS bookmark_count
+            SELECT f.id, f.name, f.description, f.visibility,
+                   f.created_at, f.updated_at,
+                   COUNT(DISTINCT b.id) AS bookmark_count,
+                   COUNT(DISTINCT n.id) AS note_count
             FROM bookmark_folders AS f
             LEFT JOIN bookmarks AS b
               ON b.folder_id = f.id AND b.user_id = f.user_id
+            LEFT JOIN collection_notes AS n ON n.folder_id = f.id
             WHERE f.user_id = ?
-            GROUP BY f.id, f.name, f.created_at
+            GROUP BY f.id
             ORDER BY f.name COLLATE NOCASE
             """,
             (user_id,),
@@ -971,8 +1021,12 @@ def list_bookmark_folders(user_id):
         {
             "id": int(row["id"]),
             "name": row["name"],
+            "description": row["description"],
+            "visibility": row["visibility"],
             "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
             "bookmark_count": int(row["bookmark_count"]),
+            "note_count": int(row["note_count"]),
         }
         for row in rows
     ]
@@ -983,11 +1037,14 @@ def create_bookmark_folder(user_id, name):
     user_id = _validated_user_id(user_id)
     name = _validated_folder_name(name)
     initialize_database()
+    now = datetime.now().isoformat(timespec="seconds")
     try:
         with STORAGE_LOCK, _connection() as connection:
             cursor = connection.execute(
-                "INSERT INTO bookmark_folders(user_id, name, created_at) VALUES (?, ?, ?)",
-                (user_id, name, datetime.now().isoformat(timespec="seconds")),
+                """INSERT INTO bookmark_folders(
+                       user_id, name, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?)""",
+                (user_id, name, now, now),
             )
             folder_id = cursor.lastrowid
     except sqlite3.IntegrityError as error:
@@ -1032,6 +1089,185 @@ def delete_bookmark_folder(user_id, folder_id):
         )
         if cursor.rowcount != 1:
             raise ValueError("Папка не найдена")
+
+
+def update_collection(user_id, folder_id, name, description="", visibility="private",
+                      shared_user_ids=None):
+    """Обновляет подборку и её наследуемый доступ только от имени владельца."""
+    user_id = _validated_user_id(user_id)
+    folder_id = _owned_folder_id(user_id, folder_id)
+    name = _validated_folder_name(name)
+    description = str(description or "").strip()
+    if len(description) > 1000:
+        raise ValueError("Описание не должно превышать 1000 символов")
+    visibility = str(visibility or "private").strip().casefold()
+    if visibility not in {"private", "all", "selected"}:
+        raise ValueError("Неизвестный режим доступа")
+    requested_ids = set()
+    for value in shared_user_ids or []:
+        shared_id = _validated_user_id(value)
+        if shared_id != user_id:
+            requested_ids.add(shared_id)
+    now = datetime.now().isoformat(timespec="seconds")
+    try:
+        with STORAGE_LOCK, _connection() as connection:
+            connection.execute(
+                """UPDATE bookmark_folders
+                   SET name = ?, description = ?, visibility = ?, updated_at = ?
+                   WHERE id = ? AND user_id = ?""",
+                (name, description, visibility, now, folder_id, user_id),
+            )
+            connection.execute(
+                "DELETE FROM bookmark_folder_shares WHERE folder_id = ?",
+                (folder_id,),
+            )
+            if visibility == "selected":
+                connection.executemany(
+                    """INSERT INTO bookmark_folder_shares(folder_id, user_id, created_at)
+                       VALUES (?, ?, ?)""",
+                    [(folder_id, shared_id, now) for shared_id in sorted(requested_ids)],
+                )
+    except sqlite3.IntegrityError as error:
+        raise ValueError("Подборка с таким названием уже существует") from error
+    return load_collection(user_id, folder_id)
+
+
+def load_collection(user_id, folder_id):
+    """Возвращает доступную подборку и отмечает права текущего пользователя."""
+    user_id = _validated_user_id(user_id)
+    folder_id = _validated_folder_id(folder_id)
+    initialize_database()
+    with _connection() as connection:
+        row = connection.execute(
+            """SELECT f.*, u.username AS owner_name,
+                      CASE WHEN f.user_id = ? THEN 1 ELSE 0 END AS can_edit
+               FROM bookmark_folders AS f
+               JOIN users AS u ON u.id = f.user_id
+               WHERE f.id = ? AND (
+                   f.user_id = ? OR f.visibility = 'all' OR EXISTS(
+                       SELECT 1 FROM bookmark_folder_shares AS s
+                       WHERE s.folder_id = f.id AND s.user_id = ?
+                   )
+               )""",
+            (user_id, folder_id, user_id, user_id),
+        ).fetchone()
+        if row is None:
+            return None
+        shared_rows = connection.execute(
+            """SELECT u.id, u.username FROM bookmark_folder_shares AS s
+               JOIN users AS u ON u.id = s.user_id
+               WHERE s.folder_id = ? ORDER BY u.username COLLATE NOCASE""",
+            (folder_id,),
+        ).fetchall()
+    return {
+        "id": int(row["id"]), "user_id": int(row["user_id"]),
+        "name": row["name"], "description": row["description"],
+        "visibility": row["visibility"], "owner_name": row["owner_name"],
+        "can_edit": bool(row["can_edit"]),
+        "shared_users": [dict(id=int(item["id"]), username=item["username"])
+                         for item in shared_rows],
+    }
+
+
+def list_shared_collections(user_id):
+    """Показывает подборки других владельцев, доступные пользователю."""
+    user_id = _validated_user_id(user_id)
+    initialize_database()
+    with _connection() as connection:
+        rows = connection.execute(
+            """SELECT f.id, f.name, f.description, f.visibility,
+                      u.username AS owner_name,
+                      COUNT(DISTINCT b.id) AS bookmark_count,
+                      COUNT(DISTINCT n.id) AS note_count
+               FROM bookmark_folders AS f
+               JOIN users AS u ON u.id = f.user_id
+               LEFT JOIN bookmarks AS b ON b.folder_id = f.id
+               LEFT JOIN collection_notes AS n ON n.folder_id = f.id
+               WHERE f.user_id != ? AND (f.visibility = 'all' OR EXISTS(
+                   SELECT 1 FROM bookmark_folder_shares AS s
+                   WHERE s.folder_id = f.id AND s.user_id = ?
+               ))
+               GROUP BY f.id ORDER BY f.updated_at DESC, f.name COLLATE NOCASE""",
+            (user_id, user_id),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def list_collection_bookmarks(user_id, folder_id):
+    collection = load_collection(user_id, folder_id)
+    if collection is None:
+        raise ValueError("Подборка не найдена")
+    with _connection() as connection:
+        rows = connection.execute(
+            """SELECT b.*, f.name AS folder_name FROM bookmarks AS b
+               JOIN bookmark_folders AS f ON f.id = b.folder_id
+               WHERE b.folder_id = ? ORDER BY b.updated_at DESC, b.id DESC""",
+            (collection["id"],),
+        ).fetchall()
+    return [_bookmark_from_row(row) for row in rows]
+
+
+def save_external_bookmark(user_id, folder_id, url, title, note=""):
+    """Добавляет в собственную подборку ссылку, которой нет в ленте."""
+    normalized = normalize_url(str(url or "").strip())
+    if not normalized.startswith(("http://", "https://")):
+        raise ValueError("Укажи полный адрес, начинающийся с http:// или https://")
+    title = " ".join(str(title or "").split())[:1000]
+    if not title:
+        raise ValueError("Укажи название материала")
+    return save_bookmark(
+        user_id,
+        {"url": normalized, "title": title, "source": "Внешний источник", "date": ""},
+        folder_id,
+        note,
+    )
+
+
+def save_collection_note(user_id, folder_id, title, body):
+    user_id = _validated_user_id(user_id)
+    folder_id = _owned_folder_id(user_id, folder_id)
+    title = " ".join(str(title or "").split())
+    body = str(body or "").strip()
+    if not 1 <= len(title) <= 200:
+        raise ValueError("Заголовок заметки должен содержать от 1 до 200 символов")
+    if len(body) > 20_000:
+        raise ValueError("Текст заметки не должен превышать 20000 символов")
+    now = datetime.now().isoformat(timespec="seconds")
+    with STORAGE_LOCK, _connection() as connection:
+        cursor = connection.execute(
+            """INSERT INTO collection_notes(
+                   folder_id, user_id, title, body, created_at, updated_at
+               ) VALUES (?, ?, ?, ?, ?, ?)""",
+            (folder_id, user_id, title, body, now, now),
+        )
+    return cursor.lastrowid
+
+
+def list_collection_notes(user_id, folder_id):
+    collection = load_collection(user_id, folder_id)
+    if collection is None:
+        raise ValueError("Подборка не найдена")
+    with _connection() as connection:
+        rows = connection.execute(
+            """SELECT id, title, body, created_at, updated_at
+               FROM collection_notes WHERE folder_id = ?
+               ORDER BY updated_at DESC, id DESC""",
+            (collection["id"],),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def delete_collection_note(user_id, folder_id, note_id):
+    user_id = _validated_user_id(user_id)
+    folder_id = _owned_folder_id(user_id, folder_id)
+    with STORAGE_LOCK, _connection() as connection:
+        cursor = connection.execute(
+            """DELETE FROM collection_notes
+               WHERE id = ? AND folder_id = ? AND user_id = ?""",
+            (int(note_id), folder_id, user_id),
+        )
+    if cursor.rowcount != 1:
+        raise ValueError("Заметка не найдена")
 
 
 def save_bookmark(user_id, item, folder_id=None, note=""):
