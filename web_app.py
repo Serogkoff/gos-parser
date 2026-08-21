@@ -71,11 +71,11 @@ from utils.storage import (
     load_cached_article,
     load_found_news,
     load_user,
-    move_bookmark_folder,
     remove_bookmark,
     rename_bookmark_folder,
     save_cached_article,
     save_bookmark,
+    save_bookmark_folder_order,
     save_collection_note,
     save_external_bookmark,
     save_source_order,
@@ -429,8 +429,8 @@ BOOKMARKS_HTML = """
     <title>Подборки — Монитор</title>
     <style>
         :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655}
-        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}a{color:inherit;text-decoration:none}.shell{width:min(1250px,calc(100% - 34px));margin:auto;padding:28px 0 80px}.top{display:flex;align-items:center;justify-content:space-between;gap:15px}.back{color:var(--muted)}.account{font-size:12px;color:var(--muted)}header{margin:38px 0 26px}h1{margin:0;font-size:clamp(42px,6vw,70px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:20px;align-items:start}.panel,.feed{border:1px solid var(--line);border-radius:8px;background:var(--surface)}.panel{position:sticky;top:18px;overflow:hidden}.panel h2{margin:0;padding:19px;border-bottom:1px solid var(--line);font-size:17px}.folder-list{padding:9px}.folder-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px}.folder{min-height:42px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-radius:5px;color:#5e574e;font-size:13px}.folder:hover,.folder.active{color:var(--coral);background:#fff3ed}.folder b{font-size:11px}.folder-order{display:flex;gap:2px}.folder-order form{margin:0}.folder-order button{width:24px;min-height:28px;padding:0;border-color:transparent;color:var(--muted);font-size:14px}.folder-order button:hover{color:var(--coral);background:#fff3ed}.create{padding:15px;border-top:1px solid var(--line)}label{display:grid;gap:6px;color:var(--muted);font-size:11px}input,select,textarea{width:100%;padding:10px 11px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}input,select{height:42px}textarea{min-height:92px;resize:vertical}button{min-height:40px;padding:0 13px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;font:650 12px Inter,Arial,sans-serif;cursor:pointer}.primary{color:#fff;background:var(--coral)}.create button{width:100%;margin-top:8px}.message,.error{margin:0 0 16px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.bookmark{padding:24px;border-bottom:1px solid var(--line)}.bookmark:last-child{border-bottom:0}.meta{display:flex;flex-wrap:wrap;align-items:center;gap:9px;color:var(--muted);font-size:12px}.bookmark h3{margin:10px 0 12px;font-size:clamp(21px,3vw,31px);line-height:1.15;letter-spacing:-.035em}.bookmark h3 a:hover{color:var(--coral)}.edit{display:grid;grid-template-columns:190px minmax(0,1fr) auto;gap:10px;align-items:end;margin-top:16px}.remove{margin-top:9px;border-color:var(--line);color:var(--muted)}.folder-tools{margin:0 9px 10px;padding:12px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.folder-tools form{display:flex;gap:7px}.folder-tools form+form{margin-top:7px}.folder-tools input{min-width:0}.empty{padding:70px 25px;color:var(--muted);text-align:center}.empty strong{display:block;margin-bottom:7px;color:var(--ink);font-size:20px}
-        .folder small{display:block;margin-top:2px;color:var(--muted)}.section-label{padding:13px 19px 5px;color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.collection-head{padding:22px 24px;border-bottom:1px solid var(--line)}.collection-head h2{margin:0 0 6px;font-size:28px}.collection-head p{margin:0;color:var(--muted);font-size:14px}.owner{margin-top:10px!important;font-size:12px!important}.search{display:flex;gap:8px;padding:14px 24px;border-bottom:1px solid var(--line);background:#fff}.search input{min-width:0}.search button{white-space:nowrap}.search-clear{display:flex;align-items:center;padding:0 8px;color:var(--muted);font-size:12px}.composer{padding:18px 24px;border-bottom:1px solid var(--line);background:#faf6ef}.composer h3{margin:0 0 14px;font-size:17px}.composer-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.composer .wide{grid-column:1/-1}.composer textarea[name=body]{min-height:180px}.composer-actions{display:flex;gap:8px;margin-top:12px}.share{margin:14px 9px;padding:14px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.share h3{margin:0 0 10px;font-size:14px}.share label+label{margin-top:8px}.share-users{max-height:145px;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:6px;background:#fff}.share-user{display:flex;grid-template:none;align-items:center;gap:8px;font-size:12px}.share-user input{width:auto;height:auto}.note-card{padding:24px;border-bottom:1px solid var(--line);background:#fffaf0}.note-card h3{margin:10px 0 12px;font-size:clamp(21px,3vw,31px);line-height:1.15}.note-card p{white-space:pre-wrap;line-height:1.55}.note-body{margin:0 0 14px}.note-more{margin:0 0 14px}.note-more summary{display:inline-flex;align-items:center;min-height:36px;padding:0 12px;color:var(--coral);border:1px solid var(--coral);border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;list-style:none}.note-more summary::-webkit-details-marker{display:none}.note-more[open] summary{margin-bottom:12px}.comment{margin:12px 0;padding:11px 13px;border-left:3px solid var(--line);background:#fff;color:#554f46;white-space:pre-wrap;line-height:1.5}.material-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}.original{display:inline-flex;align-items:center;min-height:34px;padding:0 11px;color:var(--coral);border:1px solid var(--coral);border-radius:6px;font-weight:700}.readonly{padding:12px 24px;color:#655c50;background:#fff3dd;border-bottom:1px solid var(--line);font-size:13px}.badge{padding:3px 7px;border-radius:10px;background:#eee7db;font-size:10px}
+        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}a{color:inherit;text-decoration:none}.shell{width:min(1250px,calc(100% - 34px));margin:auto;padding:28px 0 80px}.top{display:flex;align-items:center;justify-content:space-between;gap:15px}.back{color:var(--muted)}.account{font-size:12px;color:var(--muted)}header{margin:38px 0 26px}h1{margin:0;font-size:clamp(42px,6vw,70px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:20px;align-items:start}.panel,.feed{border:1px solid var(--line);border-radius:8px;background:var(--surface)}.panel{position:sticky;top:18px;overflow:hidden}.panel-heading{min-height:59px;padding:0 19px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line)}.panel-heading h2{margin:0;font-size:17px}.folder-order-toggle{min-height:30px;padding:0 8px;border-color:transparent;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.04em}.folder-order-toggle:hover,.folder-order-toggle[aria-pressed="true"]{color:var(--coral);background:#fff3ed}.folder-list{padding:9px}.folder-row{display:flex;align-items:center}.folder{min-width:0;min-height:42px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;flex:1;gap:8px;border-radius:5px;color:#5e574e;font-size:13px}.folder:hover,.folder.active{color:var(--coral);background:#fff3ed}.folder b{font-size:11px}.folder-drag-handle{display:none;flex:0 0 24px;color:#aaa196;text-align:center;font-size:13px;letter-spacing:-2px;cursor:grab;user-select:none}.folder-list.order-editing .sortable-folder{cursor:grab;background:#fffbf6}.folder-list.order-editing .folder-drag-handle{display:block}.folder-list.order-editing .folder{padding-left:4px;pointer-events:none}.sortable-folder.folder-dragging{opacity:.38}.sortable-folder.folder-drag-over{box-shadow:inset 0 2px 0 var(--coral)}.create{padding:15px;border-top:1px solid var(--line)}label{display:grid;gap:6px;color:var(--muted);font-size:11px}input,select,textarea{width:100%;padding:10px 11px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}input,select{height:42px}textarea{min-height:92px;resize:vertical}button{min-height:40px;padding:0 13px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;font:650 12px Inter,Arial,sans-serif;cursor:pointer}.primary{color:#fff;background:var(--coral)}.create button{width:100%;margin-top:8px}.message,.error{margin:0 0 16px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.bookmark{padding:24px;border-bottom:1px solid var(--line)}.bookmark:last-child{border-bottom:0}.meta{display:flex;flex-wrap:wrap;align-items:center;gap:9px;color:var(--muted);font-size:12px}.bookmark h3{margin:10px 0 12px;font-size:clamp(21px,3vw,31px);line-height:1.15;letter-spacing:-.035em}.bookmark h3 a:hover{color:var(--coral)}.edit{display:grid;grid-template-columns:190px minmax(0,1fr) auto;gap:10px;align-items:end;margin-top:16px}.remove{margin-top:9px;border-color:var(--line);color:var(--muted)}.folder-tools{margin:0 9px 10px;padding:12px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.folder-tools form{display:flex;gap:7px}.folder-tools form+form{margin-top:7px}.folder-tools input{min-width:0}.empty{padding:70px 25px;color:var(--muted);text-align:center}.empty strong{display:block;margin-bottom:7px;color:var(--ink);font-size:20px}
+        .folder small{display:block;margin-top:2px;color:var(--muted)}.section-label{padding:13px 19px 5px;color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.collection-head{padding:22px 24px;border-bottom:1px solid var(--line)}.collection-head h2{margin:0 0 6px;font-size:28px}.collection-head p{margin:0;color:var(--muted);font-size:14px}.owner{margin-top:10px!important;font-size:12px!important}.search{display:flex;gap:8px;padding:14px 24px;border-bottom:1px solid var(--line);background:#fff}.search input{min-width:0}.search button{white-space:nowrap}.search-clear{display:flex;align-items:center;padding:0 8px;color:var(--muted);font-size:12px}.composer{padding:18px 24px;border-bottom:1px solid var(--line);background:#faf6ef}.composer h3{margin:0 0 14px;font-size:17px}.composer-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.composer .wide{grid-column:1/-1}.composer textarea[name=body]{min-height:180px}.composer-actions{display:flex;gap:8px;margin-top:12px}.share{margin:14px 9px;padding:14px;border:1px solid var(--line);border-radius:6px;background:#faf6ef}.share h3{margin:0 0 10px;font-size:14px}.share label+label{margin-top:8px}.share-users{max-height:145px;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:6px;background:#fff}.share-user{display:flex;grid-template:none;align-items:center;gap:8px;font-size:12px}.share-user input{width:auto;height:auto}.note-card{padding:24px;border-bottom:1px solid var(--line);background:#fffaf0}.note-card h3{margin:10px 0 8px;font-size:clamp(21px,3vw,31px);line-height:1.15}.note-text{margin-top:16px}.note-text-part{white-space:pre-wrap;line-height:1.55}.note-text-part+.note-text-part{margin-top:1.55em}.note-remainder[hidden]{display:none}.note-toggle{margin-top:16px}.comment{margin:12px 0;padding:11px 13px;border-left:3px solid var(--line);background:#fff;color:#554f46;white-space:pre-wrap;line-height:1.5}.material-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding-bottom:12px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px}.original{display:inline-flex;align-items:center;min-height:34px;padding:0 11px;color:var(--coral);border:1px solid var(--coral);border-radius:6px;font-weight:700}.readonly{padding:12px 24px;color:#655c50;background:#fff3dd;border-bottom:1px solid var(--line);font-size:13px}.badge{padding:3px 7px;border-radius:10px;background:#eee7db;font-size:10px}
         @media(max-width:800px){.layout{grid-template-columns:1fr}.panel{position:static}.edit,.composer-grid{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
     </style>
 </head>
@@ -440,10 +440,10 @@ BOOKMARKS_HTML = """
     {% if message %}<p class="message">{{message}}</p>{% endif %}{% if error %}<p class="error">{{error}}</p>{% endif %}
     <div class="layout">
         <aside class="panel">
-            <h2>Мои подборки</h2>
-            <nav class="folder-list">
+            <div class="panel-heading"><h2>Мои подборки</h2>{% if folders %}<button class="folder-order-toggle" id="folder-order-toggle" type="button" aria-pressed="false">Изменить</button>{% endif %}</div>
+            <nav class="folder-list" id="folder-list">
                 <a class="folder {{'active' if selected_folder == 'unfiled' else ''}}" href="/collections?folder=unfiled"><span>Без подборки</span><b>{{unfiled_count}}</b></a>
-                {% for folder in folders %}<div class="folder-row"><a class="folder {{'active' if selected_folder == folder.id|string else ''}}" href="/collections?folder={{folder.id}}"><span>{{folder.name}}<small>{{folder.bookmark_count + folder.note_count}} материалов</small></span><b>{{'◉' if folder.visibility == 'all' else ('◎' if folder.visibility == 'selected' else '·')}}</b></a><div class="folder-order"><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="move_collection"><input type="hidden" name="folder_id" value="{{folder.id}}"><input type="hidden" name="direction" value="up"><button type="submit" title="Поднять подборку" aria-label="Поднять подборку">↑</button></form><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="move_collection"><input type="hidden" name="folder_id" value="{{folder.id}}"><input type="hidden" name="direction" value="down"><button type="submit" title="Опустить подборку" aria-label="Опустить подборку">↓</button></form></div></div>{% endfor %}
+                {% for folder in folders %}<div class="folder-row sortable-folder" data-folder-row data-folder-id="{{folder.id}}"><span class="folder-drag-handle" aria-hidden="true">⋮⋮</span><a class="folder {{'active' if selected_folder == folder.id|string else ''}}" href="/collections?folder={{folder.id}}"><span>{{folder.name}}<small>{{folder.bookmark_count + folder.note_count}} материалов</small></span><b>{{'◉' if folder.visibility == 'all' else ('◎' if folder.visibility == 'selected' else '·')}}</b></a></div>{% endfor %}
             </nav>
             {% if shared_folders %}<div class="section-label">Доступные мне</div><nav class="folder-list">{% for folder in shared_folders %}<a class="folder {{'active' if selected_folder == folder.id|string else ''}}" href="/collections?folder={{folder.id}}"><span>{{folder.name}}<small>{{folder.owner_name}}</small></span><b>{{folder.bookmark_count + folder.note_count}}</b></a>{% endfor %}</nav>{% endif %}
             {% if selected_folder not in ('all','unfiled') and selected_folder_data and selected_folder_data.can_edit %}
@@ -460,13 +460,13 @@ BOOKMARKS_HTML = """
             {% if selected_folder_data and not selected_folder_data.can_edit %}<div class="readonly">Подборка открыта тебе владельцем. Новые материалы появятся здесь автоматически.</div>{% endif %}
             <form class="search" method="get"><input type="hidden" name="folder" value="{{selected_folder}}"><input type="search" name="q" value="{{search_query}}" maxlength="200" placeholder="Поиск по заголовку, источнику, тексту и комментариям"><button type="submit">Найти</button>{% if search_query %}<a class="search-clear" href="/collections?folder={{selected_folder}}">Сбросить</a>{% endif %}</form>
             {% if selected_folder_data and selected_folder_data.can_edit %}<div class="composer"><h3>Добавить заметку</h3><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="add_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><div class="composer-grid"><label>Ссылка<input type="url" name="url" placeholder="https://…"></label><label>Источник<input name="source" maxlength="300" placeholder="Например: Коммерсантъ"></label><label>Дата публикации<input type="date" name="publication_date"></label><label>Заголовок заметки<input name="title" maxlength="200" required></label><label class="wide">Текст<textarea name="body" maxlength="20000" placeholder="Вставь текст статьи или напиши заметку"></textarea></label><label class="wide">Комментарий<textarea name="comment" maxlength="5000" placeholder="Что важно в этом материале?"></textarea></label></div><div class="composer-actions"><button class="primary" type="submit">Добавить заметку</button></div></form></div>{% endif %}
-            {% for note in notes %}<article class="note-card"><div class="meta"><span class="badge">Заметка</span>{% if note.publication_date %}<time>{{note.publication_date}}</time>{% endif %}</div><h3>{{note.title}}</h3>{% if note.body_preview %}<p class="note-body">{{note.body_preview}}</p>{% endif %}{% if note.body_remainder %}<details class="note-more"><summary>Читать полностью</summary><p>{{note.body_remainder}}</p></details>{% endif %}{% if note.comment %}<div class="comment">{{note.comment}}</div>{% endif %}<div class="material-footer"><span>{{note.source or 'Личная заметка'}}</span>{% if note.url %}<a class="original" href="{{note.url}}" target="_blank" rel="noopener">Оригинал ↗</a>{% endif %}</div>{% if selected_folder_data.can_edit %}<form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input type="hidden" name="note_id" value="{{note.id}}"><button class="remove" type="submit">Удалить заметку</button></form>{% endif %}</article>{% endfor %}
+            {% for note in notes %}<article class="note-card"><div class="meta"><span class="badge">Заметка</span>{% if note.publication_date %}<time>{{note.publication_date}}</time>{% endif %}</div><h3>{{note.title}}</h3><div class="material-footer"><span>{{note.source or 'Личная заметка'}}</span>{% if note.url %}<a class="original" href="{{note.url}}" target="_blank" rel="noopener">Оригинал ↗</a>{% endif %}</div>{% if note.body_preview or note.body_remainder %}<div class="note-text" data-expandable-note>{% if note.body_preview %}<div class="note-text-part">{{note.body_preview}}</div>{% endif %}{% if note.body_remainder %}<div class="note-text-part note-remainder" data-note-remainder hidden>{{note.body_remainder}}</div><button class="note-toggle" type="button" data-note-toggle aria-expanded="false">Читать полностью</button>{% endif %}</div>{% endif %}{% if note.comment %}<div class="comment">{{note.comment}}</div>{% endif %}{% if selected_folder_data.can_edit %}<form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input type="hidden" name="note_id" value="{{note.id}}"><button class="remove" type="submit">Удалить заметку</button></form>{% endif %}</article>{% endfor %}
             {% if bookmarks %}
                 {% for bookmark in bookmarks %}
                 <article class="bookmark">
                     <div class="meta">{% if bookmark.date %}<time>{{bookmark.date}}</time>{% endif %}{% if bookmark.folder_name %}<span>•</span><span>{{bookmark.folder_name}}</span>{% endif %}</div>
                     <h3><a href="/article?url={{bookmark.url|urlencode}}">{{bookmark.title}}</a></h3>
-                    {% if bookmark.note %}<div class="comment">{{bookmark.note}}</div>{% endif %}<div class="material-footer"><span>{{bookmark.source or 'Источник не указан'}}</span><a class="original" href="{{bookmark.url}}" target="_blank" rel="noopener">Оригинал ↗</a></div>
+                    <div class="material-footer"><span>{{bookmark.source or 'Источник не указан'}}</span><a class="original" href="{{bookmark.url}}" target="_blank" rel="noopener">Оригинал ↗</a></div>{% if bookmark.note %}<div class="comment">{{bookmark.note}}</div>{% endif %}
                     {% if selected_folder_data is none or selected_folder_data.can_edit %}<form class="edit" method="post">
                         <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="update_bookmark"><input type="hidden" name="bookmark_url" value="{{bookmark.url}}">
                         <label>Папка<select name="folder_id"><option value="">Без папки</option>{% for folder in folders %}<option value="{{folder.id}}" {{'selected' if bookmark.folder_id == folder.id else ''}}>{{folder.name}}</option>{% endfor %}</select></label>
@@ -480,6 +480,91 @@ BOOKMARKS_HTML = """
             {% elif not notes %}<div class="empty"><strong>{{'Ничего не найдено' if search_query else 'Здесь пока пусто'}}</strong><span>{{'Попробуй изменить запрос.' if search_query else 'Добавь заметку или перемести сюда сохранённую новость.'}}</span></div>{% endif %}
         </section>
     </div>
+    <script>
+    document.querySelectorAll('[data-note-toggle]').forEach(button => {
+        button.addEventListener('click', () => {
+            const note = button.closest('[data-expandable-note]');
+            const remainder = note.querySelector('[data-note-remainder]');
+            const expanded = button.getAttribute('aria-expanded') === 'true';
+            remainder.hidden = expanded;
+            button.setAttribute('aria-expanded', String(!expanded));
+            button.textContent = expanded ? 'Читать полностью' : 'Свернуть';
+        });
+    });
+    const folderList = document.getElementById('folder-list');
+    const folderOrderToggle = document.getElementById('folder-order-toggle');
+    if(folderList && folderOrderToggle){
+        const orderedFolderRows = () => [...folderList.querySelectorAll('[data-folder-row]')];
+        let draggedFolderRow = null;
+        let folderOrderChanged = false;
+        function setFolderOrderEditing(editing){
+            folderList.classList.toggle('order-editing', editing);
+            folderOrderToggle.setAttribute('aria-pressed', String(editing));
+            folderOrderToggle.textContent = editing ? 'Готово' : 'Изменить';
+            orderedFolderRows().forEach(row => row.draggable = editing);
+        }
+        async function saveFolderOrder(){
+            const response = await fetch('/api/collection-order', {
+                method:'POST',
+                headers:{
+                    'Content-Type':'application/json',
+                    'X-CSRF-Token': {{csrf_token|tojson}}
+                },
+                body:JSON.stringify({
+                    folder_ids:orderedFolderRows().map(row => Number(row.dataset.folderId))
+                })
+            });
+            if(!response.ok){
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.error || 'Не удалось сохранить порядок подборок');
+            }
+        }
+        folderOrderToggle.addEventListener('click', async () => {
+            const editing = folderList.classList.contains('order-editing');
+            if(!editing){
+                folderOrderChanged = false;
+                setFolderOrderEditing(true);
+                return;
+            }
+            folderOrderToggle.disabled = true;
+            try{
+                if(folderOrderChanged) await saveFolderOrder();
+                setFolderOrderEditing(false);
+            }catch(error){
+                window.alert(error.message);
+                window.location.reload();
+            }finally{
+                folderOrderToggle.disabled = false;
+            }
+        });
+        folderList.addEventListener('dragstart', event => {
+            const row = event.target.closest('[data-folder-row]');
+            if(!row || !folderList.classList.contains('order-editing')) return;
+            draggedFolderRow = row;
+            row.classList.add('folder-dragging');
+            event.dataTransfer.effectAllowed = 'move';
+        });
+        folderList.addEventListener('dragover', event => {
+            if(!draggedFolderRow) return;
+            const target = event.target.closest('[data-folder-row]');
+            if(!target || target === draggedFolderRow) return;
+            event.preventDefault();
+            orderedFolderRows().forEach(row => row.classList.remove('folder-drag-over'));
+            target.classList.add('folder-drag-over');
+            const bounds = target.getBoundingClientRect();
+            folderList.insertBefore(
+                draggedFolderRow,
+                event.clientY < bounds.top + bounds.height / 2 ? target : target.nextSibling
+            );
+            folderOrderChanged = true;
+        });
+        folderList.addEventListener('drop', event => event.preventDefault());
+        folderList.addEventListener('dragend', () => {
+            orderedFolderRows().forEach(row => row.classList.remove('folder-dragging', 'folder-drag-over'));
+            draggedFolderRow = null;
+        });
+    }
+    </script>
 </main></body></html>
 """
 
@@ -2027,7 +2112,7 @@ def _prepare_collection_note(note):
     elif len(body) > 1200:
         split_at = body.rfind(" ", 0, 900)
         split_at = split_at if split_at >= 500 else 900
-        prepared["body_preview"] = body[:split_at].rstrip() + "…"
+        prepared["body_preview"] = body[:split_at].rstrip()
         prepared["body_remainder"] = body[split_at:].lstrip()
     else:
         prepared["body_preview"] = body
@@ -2088,13 +2173,6 @@ def bookmarks_page():
                 delete_bookmark_folder(user_id, request.form.get("folder_id"))
                 message = "Подборка удалена, её новости перенесены в «Без подборки»"
                 selected_folder = "unfiled"
-            elif action == "move_collection":
-                move_bookmark_folder(
-                    user_id,
-                    request.form.get("folder_id"),
-                    request.form.get("direction"),
-                )
-                message = "Порядок подборок сохранён"
             elif action == "add_external":
                 save_external_bookmark(
                     user_id, request.form.get("folder_id"), request.form.get("url"),
@@ -2739,6 +2817,23 @@ def source_order_api():
     except ValueError as error:
         return jsonify(error=str(error)), 400
     return jsonify(sources=saved)
+
+
+@app.post("/api/collection-order")
+def collection_order_api():
+    """Сохраняет порядок личных подборок после перетаскивания мышкой."""
+    user = current_user()
+    if not csrf_is_valid():
+        return jsonify(error="Сессия устарела. Обновите страницу."), 400
+    payload = request.get_json(silent=True) or {}
+    requested = payload.get("folder_ids")
+    if not isinstance(requested, list):
+        return jsonify(error="Некорректный порядок подборок"), 400
+    try:
+        folders = save_bookmark_folder_order(user["id"], requested)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+    return jsonify(folder_ids=[folder["id"] for folder in folders])
 
 
 if __name__ == "__main__":

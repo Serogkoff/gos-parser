@@ -1132,36 +1132,33 @@ def delete_bookmark_folder(user_id, folder_id):
             raise ValueError("Папка не найдена")
 
 
-def move_bookmark_folder(user_id, folder_id, direction):
-    """Перемещает личную подборку на одну позицию вверх или вниз."""
+def save_bookmark_folder_order(user_id, folder_ids):
+    """Сохраняет полный личный порядок подборок после перетаскивания."""
     user_id = _validated_user_id(user_id)
-    folder_id = _owned_folder_id(user_id, folder_id)
-    direction = str(direction or "").strip().casefold()
-    if direction not in {"up", "down"}:
-        raise ValueError("Неизвестное направление перемещения")
+    if not isinstance(folder_ids, list):
+        raise ValueError("Некорректный порядок подборок")
+    requested = []
+    for value in folder_ids:
+        try:
+            folder_id = int(value)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Некорректный порядок подборок") from error
+        if folder_id < 1 or folder_id in requested:
+            raise ValueError("Некорректный порядок подборок")
+        requested.append(folder_id)
     initialize_database()
     with STORAGE_LOCK, _connection() as connection:
-        rows = connection.execute(
-            """SELECT id, sort_order FROM bookmark_folders
-               WHERE user_id = ? ORDER BY sort_order, name COLLATE NOCASE, id""",
-            (user_id,),
-        ).fetchall()
-        current_index = next(
-            (index for index, row in enumerate(rows) if int(row["id"]) == folder_id),
-            None,
-        )
-        if current_index is None:
-            raise ValueError("Папка не найдена")
-        target_index = current_index + (-1 if direction == "up" else 1)
-        if target_index < 0 or target_index >= len(rows):
-            return list_bookmark_folders(user_id)
-        ordered_ids = [int(row["id"]) for row in rows]
-        ordered_ids[current_index], ordered_ids[target_index] = (
-            ordered_ids[target_index], ordered_ids[current_index]
-        )
+        owned = {
+            int(row["id"]) for row in connection.execute(
+                "SELECT id FROM bookmark_folders WHERE user_id = ?",
+                (user_id,),
+            ).fetchall()
+        }
+        if set(requested) != owned:
+            raise ValueError("Список подборок изменился. Обнови страницу")
         connection.executemany(
             "UPDATE bookmark_folders SET sort_order = ? WHERE id = ? AND user_id = ?",
-            [(position, item_id, user_id) for position, item_id in enumerate(ordered_ids)],
+            [(position, folder_id, user_id) for position, folder_id in enumerate(requested)],
         )
     return list_bookmark_folders(user_id)
 

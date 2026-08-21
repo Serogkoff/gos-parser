@@ -213,11 +213,19 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertEqual(note["url"], "https://example.com/fuel-report")
         page = client.get(f"/collections?folder={folder['id']}").get_data(as_text=True)
         self.assertIn("Читать полностью", page)
+        self.assertIn("data-note-toggle", page)
+        self.assertIn("Свернуть", page)
+        self.assertNotIn("<details", page)
         self.assertIn("Оригинал ↗", page)
         self.assertIn("Коммерсантъ", page)
         self.assertIn("2026-08-21", page)
         self.assertNotIn(note["updated_at"], page)
         self.assertNotIn("Добавить ссылку", page)
+        title_position = page.index(note["title"])
+        source_position = page.index("material-footer", title_position)
+        body_position = page.index("Абзац 1", title_position)
+        self.assertLess(title_position, source_position)
+        self.assertLess(source_position, body_position)
 
         found = client.get(
             f"/collections?folder={folder['id']}&q=Минэнерго"
@@ -238,13 +246,31 @@ class PersonalBookmarksTests(unittest.TestCase):
             [item["id"] for item in storage.list_bookmark_folders(self.first["id"])],
             [first["id"], second["id"], third["id"]],
         )
-        storage.move_bookmark_folder(self.first["id"], third["id"], "up")
-        storage.move_bookmark_folder(self.first["id"], third["id"], "up")
+        storage.save_bookmark_folder_order(
+            self.first["id"],
+            [third["id"], first["id"], second["id"]],
+        )
 
         self.assertEqual(
             [item["id"] for item in storage.list_bookmark_folders(self.first["id"])],
             [third["id"], first["id"], second["id"]],
         )
+        client = web_app.app.test_client()
+        token = self._login(client, self.first["id"])
+        response = client.post(
+            "/api/collection-order",
+            json={"folder_ids": [second["id"], third["id"], first["id"]]},
+            headers={"X-CSRF-Token": token},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["id"] for item in storage.list_bookmark_folders(self.first["id"])],
+            [second["id"], third["id"], first["id"]],
+        )
+        page = client.get("/collections").get_data(as_text=True)
+        self.assertIn("folder-order-toggle", page)
+        self.assertIn("data-folder-row", page)
+        self.assertNotIn("Поднять подборку", page)
 
     def test_collection_schema_migrates_without_losing_existing_notes(self):
         legacy_database = Path(self.temporary.name) / "legacy-collections.db"
