@@ -114,6 +114,7 @@ def run(role):
     writer = RotatingTextWriter(log_dir / f"{role}.log", max_bytes, backups)
     previous_stdout, previous_stderr = sys.stdout, sys.stderr
     previous_argv = sys.argv[:]
+    previous_sys_path = sys.path[:]
     previous_cwd = Path.cwd()
     os.environ["PYTHONIOENCODING"] = "utf-8"
     os.environ["PYTHONUTF8"] = "1"
@@ -123,6 +124,9 @@ def run(role):
         sys.stderr = writer
         sys.argv = [str(target)]
         os.chdir(PROJECT_DIR)
+        project_path = str(PROJECT_DIR)
+        if project_path not in sys.path:
+            sys.path.insert(0, project_path)
         print("\n" + "=" * 70)
         print(f"{datetime.now():%Y-%m-%d %H:%M:%S} | запуск Windows-задачи: {role}")
         print(f"Python: {sys.executable}")
@@ -133,6 +137,7 @@ def run(role):
         sys.stdout = previous_stdout
         sys.stderr = previous_stderr
         sys.argv = previous_argv
+        sys.path[:] = previous_sys_path
         os.chdir(previous_cwd)
         writer.close()
 

@@ -1,5 +1,7 @@
 import importlib.util
+import os
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 
@@ -54,6 +56,40 @@ class WindowsEntrypointTests(unittest.TestCase):
                 len(list(path.parent.glob("worker.log.*"))),
                 2,
             )
+
+    def test_role_can_import_modules_from_project_root(self):
+        module_name = "_windows_entrypoint_project_module"
+        with tempfile.TemporaryDirectory() as directory:
+            project_dir = Path(directory)
+            target = project_dir / "web_app.py"
+            (project_dir / f"{module_name}.py").write_text(
+                "VALUE = 'loaded'\n",
+                encoding="utf-8",
+            )
+            target.write_text(
+                f"from {module_name} import VALUE\n"
+                "assert VALUE == 'loaded'\n",
+                encoding="utf-8",
+            )
+
+            previous_project_dir = windows_entrypoint.PROJECT_DIR
+            previous_targets = windows_entrypoint.TARGETS
+            previous_log_dir = os.environ.get("GOS_PARSER_LOG_DIR")
+            try:
+                windows_entrypoint.PROJECT_DIR = project_dir
+                windows_entrypoint.TARGETS = {"web": target}
+                os.environ["GOS_PARSER_LOG_DIR"] = str(project_dir / "logs")
+                windows_entrypoint.run("web")
+            finally:
+                windows_entrypoint.PROJECT_DIR = previous_project_dir
+                windows_entrypoint.TARGETS = previous_targets
+                sys.modules.pop(module_name, None)
+                if previous_log_dir is None:
+                    os.environ.pop("GOS_PARSER_LOG_DIR", None)
+                else:
+                    os.environ["GOS_PARSER_LOG_DIR"] = previous_log_dir
+
+            self.assertNotIn(str(project_dir), sys.path)
 
 
 class WindowsDeployScriptTests(unittest.TestCase):
