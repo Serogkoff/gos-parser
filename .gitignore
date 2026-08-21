@@ -11,6 +11,7 @@ backups/
 .idea/
 parser_errors.log
 night_runs/
+runtime_logs/
 kyodo_build_id.txt
 .env
 .monitor_secret
