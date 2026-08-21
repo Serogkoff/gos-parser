@@ -159,6 +159,14 @@ class PersonalBookmarksTests(unittest.TestCase):
             storage.save_collection_note(
                 self.second["id"], folder["id"], "Чужая правка", "Нельзя"
             )
+        note_id = storage.list_collection_notes(
+            self.second["id"], folder["id"],
+        )[0]["id"]
+        with self.assertRaisesRegex(ValueError, "Папка не найдена"):
+            storage.update_collection_note(
+                self.second["id"], folder["id"], note_id,
+                "Чужая правка", "Нельзя",
+            )
 
     def test_private_collection_is_not_visible_to_another_user(self):
         folder = storage.create_bookmark_folder(self.first["id"], "Закрыто")
@@ -211,6 +219,10 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertEqual(note["source"], "Коммерсантъ")
         self.assertEqual(note["publication_date"], "2026-08-21")
         self.assertEqual(note["url"], "https://example.com/fuel-report")
+        prepared = web_app._prepare_collection_note(note)
+        self.assertIn("Абзац 1", prepared["body_preview"])
+        self.assertNotIn("Абзац 2", prepared["body_preview"])
+        self.assertIn("Абзац 2", prepared["body_remainder"])
         page = client.get(f"/collections?folder={folder['id']}").get_data(as_text=True)
         self.assertIn("Читать полностью", page)
         self.assertIn("data-note-toggle", page)
@@ -236,6 +248,37 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertIn(note["title"], found)
         self.assertNotIn(note["title"], missing)
         self.assertIn("Ничего не найдено", missing)
+
+        response = client.post(
+            f"/collections?folder={folder['id']}",
+            data={
+                "csrf_token": token,
+                "action": "update_note",
+                "folder_id": folder["id"],
+                "note_id": note["id"],
+                "url": "https://example.com/updated-report",
+                "source": "Forbes",
+                "publication_date": "2026-08-20",
+                "title": "Обновлённый заголовок",
+                "body": "Новый первый абзац.\n\nНовый второй абзац.",
+                "comment": "Комментарий обновлён",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        updated_notes = storage.list_collection_notes(
+            self.first["id"], folder["id"],
+        )
+        self.assertEqual(len(updated_notes), 1)
+        self.assertEqual(updated_notes[0]["id"], note["id"])
+        self.assertEqual(updated_notes[0]["title"], "Обновлённый заголовок")
+        self.assertEqual(updated_notes[0]["source"], "Forbes")
+        self.assertEqual(updated_notes[0]["publication_date"], "2026-08-20")
+        self.assertEqual(updated_notes[0]["comment"], "Комментарий обновлён")
+        updated_page = client.get(
+            f"/collections?folder={folder['id']}"
+        ).get_data(as_text=True)
+        self.assertIn("Сохранить изменения", updated_page)
+        self.assertIn("data-note-edit-toggle", updated_page)
 
     def test_user_can_change_collection_order(self):
         first = storage.create_bookmark_folder(self.first["id"], "Первая")

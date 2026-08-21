@@ -1296,11 +1296,9 @@ def save_external_bookmark(user_id, folder_id, url, title, note=""):
     )
 
 
-def save_collection_note(user_id, folder_id, title, body, url="", source="",
-                         publication_date="", comment=""):
-    """Добавляет в подборку заметку или вручную сохранённую статью."""
-    user_id = _validated_user_id(user_id)
-    folder_id = _owned_folder_id(user_id, folder_id)
+def _validated_collection_note_fields(title, body, url="", source="",
+                                      publication_date="", comment=""):
+    """Проверяет и нормализует редактируемые поля заметки."""
     title = " ".join(str(title or "").split())
     body = str(body or "").strip()
     raw_url = str(url or "").strip()
@@ -1321,19 +1319,53 @@ def save_collection_note(user_id, folder_id, title, body, url="", source="",
         raise ValueError("Заголовок заметки должен содержать от 1 до 200 символов")
     if len(body) > 20_000:
         raise ValueError("Текст заметки не должен превышать 20000 символов")
+    return title, body, normalized_url, source, publication_date, comment
+
+
+def save_collection_note(user_id, folder_id, title, body, url="", source="",
+                         publication_date="", comment=""):
+    """Добавляет в подборку заметку или вручную сохранённую статью."""
+    user_id = _validated_user_id(user_id)
+    folder_id = _owned_folder_id(user_id, folder_id)
+    fields = _validated_collection_note_fields(
+        title, body, url, source, publication_date, comment,
+    )
     now = datetime.now().isoformat(timespec="seconds")
     with STORAGE_LOCK, _connection() as connection:
         cursor = connection.execute(
             """INSERT INTO collection_notes(
                    folder_id, user_id, title, body, url, source,
                    publication_date, comment, created_at, updated_at
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                folder_id, user_id, title, body, normalized_url, source,
-                publication_date, comment, now, now,
-            ),
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (folder_id, user_id, *fields, now, now),
         )
     return cursor.lastrowid
+
+
+def update_collection_note(user_id, folder_id, note_id, title, body, url="",
+                           source="", publication_date="", comment=""):
+    """Обновляет существующую заметку владельца без создания дубликата."""
+    user_id = _validated_user_id(user_id)
+    folder_id = _owned_folder_id(user_id, folder_id)
+    try:
+        note_id = int(note_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Заметка не найдена") from error
+    fields = _validated_collection_note_fields(
+        title, body, url, source, publication_date, comment,
+    )
+    now = datetime.now().isoformat(timespec="seconds")
+    with STORAGE_LOCK, _connection() as connection:
+        cursor = connection.execute(
+            """UPDATE collection_notes
+               SET title = ?, body = ?, url = ?, source = ?,
+                   publication_date = ?, comment = ?, updated_at = ?
+               WHERE id = ? AND folder_id = ? AND user_id = ?""",
+            (*fields, now, note_id, folder_id, user_id),
+        )
+    if cursor.rowcount != 1:
+        raise ValueError("Заметка не найдена")
+    return note_id
 
 
 def list_collection_notes(user_id, folder_id):
