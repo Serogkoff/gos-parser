@@ -35,8 +35,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 ```powershell
 .\deploy\windows\status.ps1
-Get-Content .\runtime_logs\worker.log -Tail 40
-Get-Content .\runtime_logs\web.log -Tail 40
+Get-Content .\runtime_logs\worker.log -Tail 40 -Encoding UTF8
+Get-Content .\runtime_logs\web.log -Tail 40 -Encoding UTF8
 ```
 
 Сайт доступен только на самом компьютере:

@@ -10,6 +10,7 @@ if (-not $PythonExe) {
     $PythonExe = (Get-Command python -ErrorAction Stop).Source
 }
 $PythonExe = (Resolve-Path $PythonExe).Path
+$taskNames = @("GosParser-Worker", "GosParser-Web")
 
 Push-Location $ProjectDir
 try {
@@ -69,9 +70,11 @@ try {
 
     $tasksStopped = $false
     try {
-        Stop-ScheduledTask `
-            -TaskName "GosParser-Worker", "GosParser-Web" `
-            -ErrorAction SilentlyContinue
+        foreach ($taskName in $taskNames) {
+            Stop-ScheduledTask `
+                -TaskName $taskName `
+                -ErrorAction SilentlyContinue
+        }
         $tasksStopped = $true
 
         & $PythonExe -c `
@@ -86,8 +89,9 @@ try {
         }
     } finally {
         if ($tasksStopped) {
-            Start-ScheduledTask -TaskName "GosParser-Worker"
-            Start-ScheduledTask -TaskName "GosParser-Web"
+            foreach ($taskName in $taskNames) {
+                Start-ScheduledTask -TaskName $taskName
+            }
         }
     }
 

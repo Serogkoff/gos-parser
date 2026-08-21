@@ -124,6 +124,11 @@ class WindowsDeployScriptTests(unittest.TestCase):
         self.assertLess(test_position, stop_position)
         self.assertIn("git merge --ff-only origin/main", updater)
         self.assertIn("create_manual_backup", updater)
+        self.assertIn('$taskNames = @("GosParser-Worker", "GosParser-Web")', updater)
+        self.assertIn("foreach ($taskName in $taskNames)", updater)
+        self.assertNotIn(
+            '-TaskName "GosParser-Worker", "GosParser-Web"', updater,
+        )
         self.assertNotIn("git reset", updater)
 
 
