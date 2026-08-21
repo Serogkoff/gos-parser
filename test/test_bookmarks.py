@@ -1,6 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -247,7 +248,9 @@ class PersonalBookmarksTests(unittest.TestCase):
 
     def test_collection_schema_migrates_without_losing_existing_notes(self):
         legacy_database = Path(self.temporary.name) / "legacy-collections.db"
-        with sqlite3.connect(legacy_database) as connection:
+        # sqlite3.Connection как context manager фиксирует транзакцию, но сам
+        # дескриптор не закрывает. На Windows это блокирует TemporaryDirectory.
+        with closing(sqlite3.connect(legacy_database)) as connection:
             connection.executescript(
                 """
                 CREATE TABLE users (
