@@ -141,8 +141,22 @@ class SourceGroupPageTests(unittest.TestCase):
                 ],
             },
         }
+        self.finder_patcher = patch.object(
+            web_app,
+            "find_news_by_url",
+            side_effect=lambda url: next(
+                (
+                    item
+                    for item in self.files["all_news.json"]
+                    if item.get("url") == url
+                ),
+                None,
+            ),
+        )
+        self.finder_patcher.start()
 
     def tearDown(self):
+        self.finder_patcher.stop()
         web_app.app.config["AUTH_DISABLED"] = self.previous_auth_disabled
 
     def _load_json(self, filename, default):
@@ -303,6 +317,15 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn('id="brand-home"', html)
         self.assertIn("kyodo-easter-egg.webp", html)
         self.assertIn("if(brandClicks >= 5)", html)
+
+    def test_feed_prefetches_sections_and_keeps_return_url_for_articles(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get("/agencies?page=2")
+
+        html = response.get_data(as_text=True)
+        self.assertIn("function prefetchPage(link)", html)
+        self.assertIn(".site-section, .tab, .pagination a", html)
+        self.assertIn("back_url=%2Fagencies%3Fpage%3D2", html)
 
     def test_coverage_names_problem_sources(self):
         self.files["parser_status.json"]["sources"].extend(

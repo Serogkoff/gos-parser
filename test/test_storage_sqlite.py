@@ -375,6 +375,40 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual(reader.call_count, 1)
         self.assertIn("Сохранено локально".encode("utf-8"), second.data)
 
+    def test_web_article_uses_indexed_lookup_without_loading_full_feed(self):
+        item = {
+            "source": "МЧС",
+            "title": "Быстро найденный материал",
+            "url": "https://mchs.gov.ru/news/indexed-lookup",
+            "date": "2026-08-24",
+        }
+        article = {
+            "title": item["title"],
+            "paragraphs": ["Полный текст публикации."],
+            "error": "",
+        }
+
+        with (
+            patch.object(web_app, "find_news_by_url", return_value=item) as finder,
+            patch.object(
+                web_app,
+                "load_json",
+                side_effect=AssertionError("полная лента не должна загружаться"),
+            ),
+            patch.object(web_app, "extract_article", return_value=article),
+            patch.object(web_app, "load_cached_article", return_value=None),
+            patch.object(web_app, "save_cached_article", return_value=None),
+        ):
+            response = web_app.app.test_client().get(
+                "/article",
+                query_string={"url": item["url"], "back_url": "/agencies?page=2"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        finder.assert_called_once_with(item["url"])
+        self.assertIn('id="article-back"'.encode(), response.data)
+        self.assertIn("window.history.back()".encode(), response.data)
+
     def test_refresh_replaces_cached_text_and_keeps_old_copy_on_error(self):
         item = {
             "source": "МЧС",

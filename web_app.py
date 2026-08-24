@@ -99,6 +99,19 @@ app = Flask(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent
 NEWS_PER_PAGE = 20
 UNREAD_INDEX_LIMIT = 2000
+FAST_NAVIGATION_ENDPOINTS = {
+    "index",
+    "found_page",
+    "filter_source",
+    "agencies_page",
+    "agencies_found_page",
+    "agencies_filter_source",
+    "newspapers_page",
+    "newspapers_found_page",
+    "newspapers_filter_source",
+    "article_page",
+    "bookmarks_page",
+}
 
 
 def _enabled_setting(name):
@@ -1019,7 +1032,7 @@ HTML = """
                         </a>
                     </h3>
                     {% else %}
-                    <h3><a href="/article?url={{item.url|urlencode}}" data-read-url="{{item.url}}">{{item.title}}</a></h3>
+                    <h3><a href="/article?url={{item.url|urlencode}}&back_url={{current_url|urlencode}}" data-read-url="{{item.url}}">{{item.title}}</a></h3>
                     {% endif %}
                     {% if item.keywords %}
                     <div class="chips">{% for keyword in item.keywords %}<span>{{keyword}}</span>{% endfor %}</div>
@@ -1163,6 +1176,37 @@ HTML = """
     let brandClicks = 0;
     let brandClickTimer = null;
     let brandHideTimer = null;
+
+    const prefetchedPages = new Set();
+    function prefetchPage(link){
+        let target;
+        try{
+            target = new URL(link.href, window.location.href);
+        }catch(error){
+            return;
+        }
+        if(
+            target.origin !== window.location.origin ||
+            target.href === window.location.href ||
+            prefetchedPages.has(target.href)
+        ) return;
+        prefetchedPages.add(target.href);
+        fetch(target.href, {
+            method:'GET',
+            credentials:'same-origin',
+            cache:'default',
+            headers:{'X-Monitor-Prefetch':'1'}
+        }).catch(() => prefetchedPages.delete(target.href));
+    }
+    document.querySelectorAll('.site-section, .tab, .pagination a, .tool-button[href]').forEach(link => {
+        let timer = null;
+        link.addEventListener('mouseenter', () => {
+            timer = window.setTimeout(() => prefetchPage(link), 90);
+        }, {passive:true});
+        link.addEventListener('mouseleave', () => window.clearTimeout(timer), {passive:true});
+        link.addEventListener('focus', () => prefetchPage(link), {passive:true});
+        link.addEventListener('touchstart', () => prefetchPage(link), {passive:true, once:true});
+    });
 
     brandHome.addEventListener('click', event => {
         if(
@@ -1548,7 +1592,7 @@ ARTICLE_HTML = """
     </style>
 </head>
 <body><main class="shell">
-    <a class="back" href="{{back_url}}">← Вернуться к ленте</a>
+    <a class="back" id="article-back" href="{{back_url}}">← Вернуться к ленте</a>
     <article>
         <div class="meta"><span>{{item.source}}</span><span>•</span><time>{{item.date or item.parsed_date or ''}}</time></div>
         <h1>{{article.title or item.title}}</h1>
@@ -1571,7 +1615,24 @@ ARTICLE_HTML = """
             {% if article.cached_at %}<span class="cache-note">Сохранено локально {{article.cached_at.replace('T', ' ')}}</span>{% endif %}
         </div>
     </article>
-</main></body></html>
+</main>
+<script>
+    const articleBack = document.getElementById('article-back');
+    articleBack.addEventListener('click', event => {
+        if(
+            event.button !== 0 || event.ctrlKey || event.metaKey ||
+            event.shiftKey || event.altKey || window.history.length < 2
+        ) return;
+        try{
+            if(!document.referrer || new URL(document.referrer).origin !== window.location.origin) return;
+        }catch(error){
+            return;
+        }
+        event.preventDefault();
+        window.history.back();
+    });
+</script>
+</body></html>
 """
 
 
@@ -1760,7 +1821,22 @@ def add_security_headers(response):
         "style-src 'self' 'unsafe-inline'",
     )
     if request.endpoint != "static":
-        response.headers.setdefault("Cache-Control", "no-store")
+        fast_navigation_response = (
+            request.method == "GET"
+            and request.endpoint in FAST_NAVIGATION_ENDPOINTS
+            and response.status_code == 200
+        )
+        if fast_navigation_response:
+            # Это только приватный кэш конкретного браузера. Короткое окно
+            # убирает повторную загрузку после статьи и позволяет безопасно
+            # подогреть соседний раздел, не кэшируя вход и админские формы.
+            response.headers.setdefault(
+                "Cache-Control",
+                "private, max-age=30, must-revalidate",
+            )
+            response.vary.add("Cookie")
+        else:
+            response.headers.setdefault("Cache-Control", "no-store")
     if app.config.get("SESSION_COOKIE_SECURE") and request.is_secure:
         response.headers.setdefault(
             "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
@@ -1871,7 +1947,11 @@ def logout():
     if not csrf_is_valid():
         abort(400)
     session.clear()
-    return redirect(url_for("login"))
+    response = redirect(url_for("login"))
+    # Приватный кэш ускоряет навигацию только внутри активной сессии.
+    # При выходе браузеру явно поручается удалить сохранённые страницы.
+    response.headers["Clear-Site-Data"] = '"cache"'
+    return response
 
 
 @app.route("/account", methods=["GET", "POST"])
@@ -2775,6 +2855,7 @@ def render_news_page(
         problem_sources=problem_sources,
         status_time=status.get("generated_at", ""),
         current_path=request.path,
+        current_url=request.full_path.rstrip("?"),
         search_query=search_query,
         page=page,
         page_count=page_count,
@@ -2884,10 +2965,18 @@ def article_page():
     if request.method == "POST" and not csrf_is_valid():
         abort(400)
     url = request.values.get("url", "").strip()
-    item = next(
-        (news for news in load_json("all_news.json", []) if news.get("url") == url),
-        None,
-    )
+    item = find_news_by_url(url)
+    if item is None:
+        # Совместимость со старыми тестовыми/JSON-наборами; рабочая SQLite-база
+        # находит публикацию индексом и не загружает десятки тысяч записей.
+        item = next(
+            (
+                news
+                for news in load_json("all_news.json", [])
+                if news.get("url") == url
+            ),
+            None,
+        )
     if item is None:
         abort(404)
     force_refresh = request.method == "POST"

@@ -109,6 +109,23 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(response.headers["X-Frame-Options"], "DENY")
         self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
 
+    def test_feed_uses_short_private_cache_but_account_stays_no_store(self):
+        self._create_first_admin()
+        with patch.object(
+            web_app,
+            "load_json",
+            side_effect=self._empty_app_data,
+        ):
+            feed = self.client.get("/")
+        account = self.client.get("/account")
+
+        self.assertEqual(
+            feed.headers["Cache-Control"],
+            "private, max-age=30, must-revalidate",
+        )
+        self.assertIn("Cookie", feed.headers["Vary"])
+        self.assertEqual(account.headers["Cache-Control"], "no-store")
+
     def test_public_mode_rejects_unknown_host_and_remote_setup(self):
         web_app.app.config["ALLOWED_HOSTS"] = {"news-monitor.ru"}
 
@@ -172,6 +189,7 @@ class AuthenticationTests(unittest.TestCase):
         )
         self.assertEqual(logout.status_code, 302)
         self.assertTrue(logout.headers["Location"].endswith("/login"))
+        self.assertEqual(logout.headers["Clear-Site-Data"], '"cache"')
         self.assertTrue(self.client.get("/").headers["Location"].startswith("/login"))
 
         login_page = self.client.get("/login?next=/newspapers")
