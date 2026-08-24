@@ -121,7 +121,7 @@ class AuthenticationTests(unittest.TestCase):
 
         self.assertEqual(
             feed.headers["Cache-Control"],
-            "private, max-age=30, must-revalidate",
+            "private, max-age=60, stale-while-revalidate=120",
         )
         self.assertIn("Cookie", feed.headers["Vary"])
         self.assertEqual(account.headers["Cache-Control"], "no-store")
