@@ -24,13 +24,25 @@ class AuthenticationTests(unittest.TestCase):
         for patcher in self.patchers:
             patcher.start()
         self.previous_auth_disabled = web_app.app.config["AUTH_DISABLED"]
+        self.previous_allowed_hosts = web_app.app.config["ALLOWED_HOSTS"]
+        self.previous_cookie_secure = web_app.app.config["SESSION_COOKIE_SECURE"]
         web_app.app.config["AUTH_DISABLED"] = False
+        web_app.app.config["ALLOWED_HOSTS"] = set()
+        web_app.app.config["SESSION_COOKIE_SECURE"] = False
         web_app.app.config["TESTING"] = True
+        web_app.LOGIN_PAIR_LIMITER.reset()
+        web_app.LOGIN_ACCOUNT_LIMITER.reset()
+        web_app.LOGIN_IP_LIMITER.reset()
         self.client = web_app.app.test_client()
 
     def tearDown(self):
         web_app.app.config["AUTH_DISABLED"] = self.previous_auth_disabled
+        web_app.app.config["ALLOWED_HOSTS"] = self.previous_allowed_hosts
+        web_app.app.config["SESSION_COOKIE_SECURE"] = self.previous_cookie_secure
         web_app.app.config["TESTING"] = False
+        web_app.LOGIN_PAIR_LIMITER.reset()
+        web_app.LOGIN_ACCOUNT_LIMITER.reset()
+        web_app.LOGIN_IP_LIMITER.reset()
         self.client = None
         for patcher in reversed(self.patchers):
             patcher.stop()
@@ -92,7 +104,55 @@ class AuthenticationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["status"], "ok")
-        self.assertIn("version", response.get_json())
+        self.assertNotIn("version", response.get_json())
+        self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(response.headers["X-Frame-Options"], "DENY")
+        self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
+
+    def test_public_mode_rejects_unknown_host_and_remote_setup(self):
+        web_app.app.config["ALLOWED_HOSTS"] = {"news-monitor.ru"}
+
+        unknown = self.client.get(
+            "/healthz", headers={"Host": "untrusted.example"}
+        )
+        known = self.client.get(
+            "/healthz", headers={"Host": "news-monitor.ru"}
+        )
+        setup = self.client.get(
+            "/setup", headers={"Host": "news-monitor.ru"}
+        )
+
+        self.assertEqual(unknown.status_code, 400)
+        self.assertEqual(known.status_code, 200)
+        self.assertEqual(setup.status_code, 403)
+
+    def test_repeated_bad_password_temporarily_blocks_login(self):
+        storage.create_user("limited-user", "limited-secret-2026", role="user")
+        login_page = self.client.get("/login")
+        token = self._csrf(login_page)
+
+        for attempt in range(5):
+            response = self.client.post(
+                "/login",
+                data={
+                    "csrf_token": token,
+                    "username": "limited-user",
+                    "password": "wrong-password",
+                },
+            )
+            expected = 429 if attempt == 4 else 200
+            self.assertEqual(response.status_code, expected)
+
+        blocked = self.client.post(
+            "/login",
+            data={
+                "csrf_token": token,
+                "username": "limited-user",
+                "password": "limited-secret-2026",
+            },
+        )
+        self.assertEqual(blocked.status_code, 429)
+        self.assertGreater(int(blocked.headers["Retry-After"]), 0)
 
     def test_login_logout_and_protected_pages(self):
         self._create_first_admin()

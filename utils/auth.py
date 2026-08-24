@@ -6,9 +6,32 @@ from pathlib import Path
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
+ENV_FILE = PROJECT_DIR / ".env"
 SECRET_FILE = Path(
     os.environ.get("MONITOR_SECRET_FILE", PROJECT_DIR / ".monitor_secret")
 )
+
+
+def environment_value(name, default=""):
+    """Читает настройку из окружения или локального закрытого `.env`."""
+    configured = os.environ.get(name)
+    if configured is not None:
+        return configured.strip()
+    try:
+        lines = ENV_FILE.read_text(encoding="utf-8-sig").splitlines()
+    except OSError:
+        return default
+    prefix = f"{name}="
+    result = None
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or not line.startswith(prefix):
+            continue
+        value = line[len(prefix):].strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        result = value
+    return default if result is None else result
 
 
 def load_secret_key():
@@ -18,7 +41,7 @@ def load_secret_key():
     На сервере его можно передать через MONITOR_SECRET_KEY. Для локального
     запуска ключ один раз создаётся рядом с проектом и не попадает в Git.
     """
-    configured = os.environ.get("MONITOR_SECRET_KEY", "").strip()
+    configured = environment_value("MONITOR_SECRET_KEY")
     if configured:
         return configured
 

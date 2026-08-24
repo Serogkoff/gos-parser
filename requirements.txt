@@ -7,3 +7,4 @@ psutil>=6.0,<8
 PySocks>=1.7,<2
 requests>=2.31,<3
 urllib3>=2.0,<3
+waitress>=3.0.2,<4

@@ -1,5 +1,4 @@
 import json
-import os
 import re
 import secrets
 from collections import Counter
@@ -20,7 +19,7 @@ from flask import (
     url_for,
 )
 from config import PROJECT_VERSION
-from utils.auth import load_secret_key
+from utils.auth import environment_value, load_secret_key
 from utils.article_reader import extract_article, yahoo_article_is_polluted
 from utils.diagnostics import alert_summary, source_alerts, system_alerts
 from utils.keywords import (
@@ -29,9 +28,10 @@ from utils.keywords import (
     rebuild_found_news,
     remove_keyword,
 )
-from utils.logger import error_log_stats, read_recent_errors
+from utils.logger import error_log_stats, get_logger, read_recent_errors
 from utils.news import sort_news_by_publication
 from utils.proxy import kyodo_proxy_status
+from utils.security import AttemptLimiter
 from utils.source_groups import (
     AGENCIES_GROUP,
     AGENCY_SOURCES,
@@ -99,14 +99,36 @@ app = Flask(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent
 NEWS_PER_PAGE = 20
 UNREAD_INDEX_LIMIT = 2000
+
+
+def _enabled_setting(name):
+    return environment_value(name).casefold() in {"1", "true", "yes", "on"}
+
+
+def _allowed_hosts():
+    configured = environment_value("MONITOR_ALLOWED_HOSTS")
+    return {
+        host.strip().casefold().rstrip(".")
+        for host in configured.split(",")
+        if host.strip()
+    }
+
+
 app.config.update(
     SECRET_KEY=load_secret_key(),
     PERMANENT_SESSION_LIFETIME=timedelta(days=14),
+    MAX_CONTENT_LENGTH=1_000_000,
+    SESSION_COOKIE_NAME="news_monitor_session",
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=os.environ.get("MONITOR_HTTPS") == "1",
-    AUTH_DISABLED=os.environ.get("MONITOR_AUTH_DISABLED") == "1",
+    SESSION_COOKIE_SECURE=_enabled_setting("MONITOR_HTTPS"),
+    AUTH_DISABLED=_enabled_setting("MONITOR_AUTH_DISABLED"),
+    ALLOWED_HOSTS=_allowed_hosts(),
 )
+security_logger = get_logger("web_security")
+LOGIN_PAIR_LIMITER = AttemptLimiter(5, 15 * 60, 15 * 60)
+LOGIN_ACCOUNT_LIMITER = AttemptLimiter(10, 15 * 60, 30 * 60)
+LOGIN_IP_LIMITER = AttemptLimiter(20, 15 * 60, 30 * 60)
 
 
 AUTH_HTML = """
@@ -1620,6 +1642,55 @@ def safe_next_url(value):
     return "/"
 
 
+def _request_host():
+    """Возвращает имя узла без порта для строгой проверки Host."""
+    host = str(request.host or "").strip().casefold().rstrip(".")
+    if host.startswith("["):
+        return host.partition("]")[0] + "]"
+    return host.rsplit(":", 1)[0] if ":" in host else host
+
+
+def _client_address():
+    return str(request.remote_addr or "unknown")[:80]
+
+
+def _login_limit_keys(username):
+    address = _client_address()
+    account = " ".join(str(username or "").split()).casefold()[:80]
+    return (
+        (LOGIN_PAIR_LIMITER, f"{address}|{account}"),
+        (LOGIN_ACCOUNT_LIMITER, account),
+        (LOGIN_IP_LIMITER, address),
+    )
+
+
+def _login_retry_after(username):
+    return max(
+        limiter.retry_after(key)
+        for limiter, key in _login_limit_keys(username)
+    )
+
+
+def _register_login_failure(username):
+    return max(
+        limiter.register_failure(key)
+        for limiter, key in _login_limit_keys(username)
+    )
+
+
+def _clear_login_failures(username):
+    for limiter, key in _login_limit_keys(username):
+        limiter.clear(key)
+
+
+@app.before_request
+def validate_request_host():
+    """Отклоняет подменённый Host после включения публичного режима."""
+    allowed = app.config.get("ALLOWED_HOSTS") or set()
+    if allowed and _request_host() not in allowed | {"127.0.0.1", "localhost"}:
+        abort(400)
+
+
 @app.before_request
 def load_current_user():
     """Загружает сессию и закрывает приложение от анонимного доступа."""
@@ -1645,6 +1716,10 @@ def load_current_user():
 
     users_exist = count_users() > 0
     if not users_exist:
+        if app.config.get("ALLOWED_HOSTS") and not _enabled_setting(
+            "MONITOR_ALLOW_REMOTE_SETUP"
+        ):
+            abort(403)
         if endpoint != "setup":
             return redirect(url_for("setup"))
         return None
@@ -1662,10 +1737,41 @@ def load_current_user():
     return None
 
 
+@app.after_request
+def add_security_headers(response):
+    """Добавляет безопасные браузерные настройки ко всем ответам."""
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=(), payment=()",
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "base-uri 'self'; "
+        "connect-src 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'; "
+        "img-src 'self' data:; "
+        "object-src 'none'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'",
+    )
+    if request.endpoint != "static":
+        response.headers.setdefault("Cache-Control", "no-store")
+    if app.config.get("SESSION_COOKIE_SECURE") and request.is_secure:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return response
+
+
 @app.get("/healthz")
 def healthz():
     """Лёгкая проверка для Nginx и systemd без раскрытия данных проекта."""
-    return jsonify(status="ok", version=PROJECT_VERSION)
+    return jsonify(status="ok")
 
 
 @app.route("/setup", methods=["GET", "POST"])
@@ -1705,21 +1811,48 @@ def setup():
 def login():
     """Открывает защищённую сессию после проверки логина и пароля."""
     error = ""
+    retry_after = 0
     username = str(request.form.get("username", "")).strip()
     next_url = safe_next_url(request.values.get("next", "/"))
     if request.method == "POST":
         if not csrf_is_valid():
             abort(400)
-        user = authenticate_user(username, request.form.get("password", ""))
-        if user is None:
-            error = "Неверный логин или пароль"
+        retry_after = _login_retry_after(username)
+        if retry_after:
+            error = "Слишком много попыток. Попробуйте немного позже."
         else:
-            session.clear()
-            session.permanent = True
-            session["user_id"] = user["id"]
-            csrf_token()
-            return redirect(next_url)
-    return render_template_string(
+            user = authenticate_user(username, request.form.get("password", ""))
+            if user is None:
+                retry_after = _register_login_failure(username)
+                error = (
+                    "Слишком много попыток. Попробуйте немного позже."
+                    if retry_after
+                    else "Неверный логин или пароль"
+                )
+                security_logger.info(
+                    "Неудачный вход: пользователь=%r адрес=%s",
+                    " ".join(username.split())[:80],
+                    _client_address(),
+                )
+                if retry_after:
+                    security_logger.warning(
+                        "Временная блокировка входа: пользователь=%r адрес=%s",
+                        " ".join(username.split())[:80],
+                        _client_address(),
+                    )
+            else:
+                _clear_login_failures(username)
+                security_logger.info(
+                    "Успешный вход: пользователь=%r адрес=%s",
+                    user["username"],
+                    _client_address(),
+                )
+                session.clear()
+                session.permanent = True
+                session["user_id"] = user["id"]
+                csrf_token()
+                return redirect(next_url)
+    rendered = render_template_string(
         AUTH_HTML,
         mode="login",
         error=error,
@@ -1727,6 +1860,9 @@ def login():
         csrf_token=csrf_token(),
         next_url=next_url,
     )
+    if retry_after:
+        return rendered, 429, {"Retry-After": str(retry_after)}
+    return rendered
 
 
 @app.post("/logout")
@@ -2974,6 +3110,37 @@ def collection_note_read_api():
 
 
 if __name__ == "__main__":
-    print("🌐 http://127.0.0.1:5000")
-    debug = os.environ.get("FLASK_DEBUG") == "1"
-    app.run(debug=debug, port=5000)
+    host = "127.0.0.1"
+    try:
+        port = int(environment_value("MONITOR_PORT", "5000"))
+    except ValueError:
+        port = 5000
+    print(f"🌐 http://{host}:{port}")
+    if _enabled_setting("FLASK_DEBUG"):
+        app.run(debug=True, host=host, port=port)
+    else:
+        from waitress import serve
+
+        options = {
+            "host": host,
+            "port": port,
+            "threads": 4,
+            "ident": "NewsMonitor",
+            "expose_tracebacks": False,
+            "clear_untrusted_proxy_headers": True,
+            "max_request_body_size": 1_000_000,
+            "max_request_header_size": 32_768,
+            "channel_timeout": 60,
+        }
+        if _enabled_setting("MONITOR_TRUST_PROXY"):
+            options.update(
+                trusted_proxy="127.0.0.1",
+                trusted_proxy_count=1,
+                trusted_proxy_headers={
+                    "x-forwarded-for",
+                    "x-forwarded-host",
+                    "x-forwarded-port",
+                    "x-forwarded-proto",
+                },
+            )
+        serve(app, **options)

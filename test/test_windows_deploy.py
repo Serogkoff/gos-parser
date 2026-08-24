@@ -93,6 +93,17 @@ class WindowsEntrypointTests(unittest.TestCase):
 
 
 class WindowsDeployScriptTests(unittest.TestCase):
+    def test_windows_web_runtime_uses_waitress(self):
+        requirements = (PROJECT_DIR / "requirements.txt").read_text(
+            encoding="utf-8"
+        )
+        web_app = (PROJECT_DIR / "web_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("waitress>=3.0.2,<4", requirements)
+        self.assertIn("from waitress import serve", web_app)
+        self.assertIn('"host": host', web_app)
+        self.assertIn('trusted_proxy="127.0.0.1"', web_app)
+
     def test_installer_uses_logon_tasks_with_restart_and_no_secrets(self):
         installer = (WINDOWS_DEPLOY_DIR / "install.ps1").read_text(
             encoding="utf-8"

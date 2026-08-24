@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 from unittest.mock import patch
 
 from bs4 import BeautifulSoup
@@ -15,6 +16,15 @@ from parsers.sites.minstroy import _is_article_url as is_minstroy_article
 from parsers.sites.mintrans import _is_article_url as is_mintrans_article
 from parsers.sites.minvostok import _is_article_url as is_minvr_article
 from utils.parser_links import find_article_url
+
+
+class FixedJulyDateTime(datetime):
+    """Фиксирует свежесть карточек, чтобы тесты не зависели от даты запуска."""
+
+    @classmethod
+    def now(cls, tz=None):
+        value = cls(2026, 7, 29, 12, 0, 0)
+        return value if tz is None else value.replace(tzinfo=tz)
 
 
 class SourceArticleUrlTests(unittest.TestCase):
@@ -193,7 +203,10 @@ class ParserCardTests(unittest.TestCase):
             """,
             "html.parser",
         )
-        with patch.object(mintsifry, "fetch_soup_js", return_value=soup):
+        with (
+            patch.object(mintsifry, "fetch_soup_js", return_value=soup),
+            patch.object(mintsifry, "datetime", FixedJulyDateTime),
+        ):
             news = mintsifry.parse()
 
         self.assertEqual(len(news), 2)
@@ -217,7 +230,10 @@ class ParserCardTests(unittest.TestCase):
             """,
             "html.parser",
         )
-        with patch.object(mintsifry, "fetch_soup_js", return_value=soup):
+        with (
+            patch.object(mintsifry, "fetch_soup_js", return_value=soup),
+            patch.object(mintsifry, "datetime", FixedJulyDateTime),
+        ):
             news = mintsifry.parse()
 
         self.assertEqual(len(news), 1)
@@ -240,6 +256,7 @@ class ParserCardTests(unittest.TestCase):
         with (
             patch.object(mintsifry, "fetch_soup_js", return_value=None),
             patch.object(mintsifry, "fetch_soup", return_value=soup),
+            patch.object(mintsifry, "datetime", FixedJulyDateTime),
         ):
             news = mintsifry.parse()
 
