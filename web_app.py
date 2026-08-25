@@ -1177,7 +1177,7 @@ HTML = """
     let brandClickTimer = null;
     let brandHideTimer = null;
 
-    const prefetchedPages = new Map();
+    const prefetchedPages = new Set();
     function prefetchPage(link){
         let target;
         try{
@@ -1189,50 +1189,24 @@ HTML = """
             target.origin !== window.location.origin ||
             target.href === window.location.href ||
             prefetchedPages.has(target.href)
-        ) return prefetchedPages.get(target.href);
-        const pageRequest = fetch(target.href, {
+        ) return;
+        prefetchedPages.add(target.href);
+        fetch(target.href, {
             method:'GET',
             credentials:'same-origin',
             cache:'default',
             headers:{'X-Monitor-Prefetch':'1'}
-        }).then(response => {
-            if(!response.ok) throw new Error(`HTTP ${response.status}`);
-            // Fetch завершается уже после заголовков. Дочитываем HTML целиком,
-            // чтобы браузер действительно положил страницу в HTTP-кэш.
-            return response.text();
-        }).catch(() => {
-            prefetchedPages.delete(target.href);
-            return null;
-        });
-        prefetchedPages.set(target.href, pageRequest);
-        return pageRequest;
+        }).catch(() => prefetchedPages.delete(target.href));
     }
-    const fastNavigationLinks = [
-        ...document.querySelectorAll('.site-section, .tab, .pagination a, .tool-button[href]')
-    ];
-    fastNavigationLinks.forEach(link => {
+    document.querySelectorAll('.site-section, .tab, .pagination a, .tool-button[href]').forEach(link => {
         let timer = null;
         link.addEventListener('mouseenter', () => {
-            timer = window.setTimeout(() => prefetchPage(link), 40);
+            timer = window.setTimeout(() => prefetchPage(link), 90);
         }, {passive:true});
         link.addEventListener('mouseleave', () => window.clearTimeout(timer), {passive:true});
         link.addEventListener('focus', () => prefetchPage(link), {passive:true});
         link.addEventListener('touchstart', () => prefetchPage(link), {passive:true, once:true});
     });
-
-    function warmPrimarySections(){
-        const primaryLinks = fastNavigationLinks.filter(link =>
-            link.matches('.site-section, .tab') && !link.classList.contains('active')
-        );
-        primaryLinks.forEach((link, index) => {
-            window.setTimeout(() => prefetchPage(link), index * 120);
-        });
-    }
-    if('requestIdleCallback' in window){
-        window.requestIdleCallback(warmPrimarySections, {timeout:350});
-    }else{
-        window.setTimeout(warmPrimarySections, 180);
-    }
 
     brandHome.addEventListener('click', event => {
         if(
@@ -1858,7 +1832,7 @@ def add_security_headers(response):
             # подогреть соседний раздел, не кэшируя вход и админские формы.
             response.headers.setdefault(
                 "Cache-Control",
-                "private, max-age=60, stale-while-revalidate=120",
+                "private, max-age=30, must-revalidate",
             )
             response.vary.add("Cookie")
         else:

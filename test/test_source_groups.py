@@ -325,9 +325,6 @@ class SourceGroupPageTests(unittest.TestCase):
         html = response.get_data(as_text=True)
         self.assertIn("function prefetchPage(link)", html)
         self.assertIn(".site-section, .tab, .pagination a", html)
-        self.assertIn("return response.text()", html)
-        self.assertIn("function warmPrimarySections()", html)
-        self.assertIn("requestIdleCallback", html)
         self.assertIn("back_url=%2Fagencies%3Fpage%3D2", html)
 
     def test_coverage_names_problem_sources(self):
