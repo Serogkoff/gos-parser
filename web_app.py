@@ -1,4 +1,3 @@
-import gzip
 import json
 import re
 import secrets
@@ -507,7 +506,7 @@ BOOKMARKS_HTML = """
                 {% for bookmark in bookmarks %}
                 <article class="bookmark">
                     <div class="meta">{% if bookmark.date %}<time>{{bookmark.date}}</time>{% endif %}{% if bookmark.folder_name %}<span>•</span><span>{{bookmark.folder_name}}</span>{% endif %}</div>
-                    <h3><a href="/article?url={{bookmark.url|urlencode}}" target="_blank" rel="noopener">{{bookmark.title}}</a></h3>
+                    <h3><a href="/article?url={{bookmark.url|urlencode}}">{{bookmark.title}}</a></h3>
                     <div class="material-footer"><span>{{bookmark.source or 'Источник не указан'}}</span><a class="original" href="{{bookmark.url}}" target="_blank" rel="noopener">Оригинал ↗</a></div>{% if bookmark.note %}<div class="comment">{{bookmark.note}}</div>{% endif %}
                     {% if selected_folder_data is none or selected_folder_data.can_edit %}<form class="edit" method="post">
                         <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="update_bookmark"><input type="hidden" name="bookmark_url" value="{{bookmark.url}}">
@@ -1033,7 +1032,7 @@ HTML = """
                         </a>
                     </h3>
                     {% else %}
-                    <h3><a href="/article?url={{item.url|urlencode}}&back_url={{current_url|urlencode}}" target="_blank" rel="noopener" data-read-url="{{item.url}}">{{item.title}}</a></h3>
+                    <h3><a href="/article?url={{item.url|urlencode}}&back_url={{current_url|urlencode}}" data-read-url="{{item.url}}">{{item.title}}</a></h3>
                     {% endif %}
                     {% if item.keywords %}
                     <div class="chips">{% for keyword in item.keywords %}<span>{{keyword}}</span>{% endfor %}</div>
@@ -1178,7 +1177,7 @@ HTML = """
     let brandClickTimer = null;
     let brandHideTimer = null;
 
-    const prefetchedPages = new Map();
+    const prefetchedPages = new Set();
     function prefetchPage(link){
         let target;
         try{
@@ -1190,28 +1189,19 @@ HTML = """
             target.origin !== window.location.origin ||
             target.href === window.location.href ||
             prefetchedPages.has(target.href)
-        ) return prefetchedPages.get(target.href);
-        const pageRequest = fetch(target.href, {
+        ) return;
+        prefetchedPages.add(target.href);
+        fetch(target.href, {
             method:'GET',
             credentials:'same-origin',
             cache:'default',
             headers:{'X-Monitor-Prefetch':'1'}
-        }).then(response => {
-            if(!response.ok) throw new Error(`HTTP ${response.status}`);
-            // Fetch завершается после получения заголовков. Дочитываем HTML,
-            // чтобы выбранная пользователем страница попала в HTTP-кэш.
-            return response.text();
-        }).catch(() => {
-            prefetchedPages.delete(target.href);
-            return null;
-        });
-        prefetchedPages.set(target.href, pageRequest);
-        return pageRequest;
+        }).catch(() => prefetchedPages.delete(target.href));
     }
     document.querySelectorAll('.site-section, .tab, .pagination a, .tool-button[href]').forEach(link => {
         let timer = null;
         link.addEventListener('mouseenter', () => {
-            timer = window.setTimeout(() => prefetchPage(link), 60);
+            timer = window.setTimeout(() => prefetchPage(link), 90);
         }, {passive:true});
         link.addEventListener('mouseleave', () => window.clearTimeout(timer), {passive:true});
         link.addEventListener('focus', () => prefetchPage(link), {passive:true});
@@ -1851,23 +1841,6 @@ def add_security_headers(response):
         response.headers.setdefault(
             "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
         )
-    should_compress = (
-        request.method == "GET"
-        and response.status_code == 200
-        and response.mimetype == "text/html"
-        and not response.direct_passthrough
-        and not response.headers.get("Content-Encoding")
-        and request.accept_encodings["gzip"] > 0
-    )
-    if should_compress:
-        payload = response.get_data()
-        if len(payload) >= 1024:
-            compressed = gzip.compress(payload, compresslevel=5, mtime=0)
-            if len(compressed) < len(payload):
-                response.set_data(compressed)
-                response.headers["Content-Encoding"] = "gzip"
-                response.headers["Content-Length"] = str(len(compressed))
-                response.vary.add("Accept-Encoding")
     return response
 
 
