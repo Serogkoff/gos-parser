@@ -174,6 +174,10 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Материал ТАСС", html)
         self.assertIn("Материал Интерфакса", html)
         self.assertIn("Yahoo! JAPANのニュース", html)
+        self.assertIn(
+            'target="_blank" rel="noopener" data-read-url="https://tass.ru/politika/123456"',
+            html,
+        )
         self.assertIn('id="yahoo-source-toggle"', html)
         self.assertIn('aria-expanded="false"', html)
         self.assertIn("<span>Yahoo! JAPAN</span>", html)
@@ -325,6 +329,8 @@ class SourceGroupPageTests(unittest.TestCase):
         html = response.get_data(as_text=True)
         self.assertIn("function prefetchPage(link)", html)
         self.assertIn(".site-section, .tab, .pagination a", html)
+        self.assertIn("return response.text()", html)
+        self.assertNotIn("warmPrimarySections", html)
         self.assertIn("back_url=%2Fagencies%3Fpage%3D2", html)
 
     def test_coverage_names_problem_sources(self):

@@ -93,7 +93,12 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertEqual(saved.status_code, 200)
         self.assertEqual(saved.get_json()["count"], 1)
         page = first_client.get("/bookmarks")
-        self.assertIn(self.item["title"], page.get_data(as_text=True))
+        page_html = page.get_data(as_text=True)
+        self.assertIn(self.item["title"], page_html)
+        self.assertIn(
+            'target="_blank" rel="noopener">Материал для личных закладок</a>',
+            page_html,
+        )
 
         second_client = web_app.app.test_client()
         self._login(second_client, self.second["id"])

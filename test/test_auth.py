@@ -1,4 +1,5 @@
 import gc
+import gzip
 import re
 import sqlite3
 import tempfile
@@ -125,6 +126,25 @@ class AuthenticationTests(unittest.TestCase):
         )
         self.assertIn("Cookie", feed.headers["Vary"])
         self.assertEqual(account.headers["Cache-Control"], "no-store")
+
+    def test_feed_html_is_compressed_for_supported_browser(self):
+        self._create_first_admin()
+        with patch.object(
+            web_app,
+            "load_json",
+            side_effect=self._empty_app_data,
+        ):
+            plain = self.client.get("/")
+            compressed = self.client.get(
+                "/",
+                headers={"Accept-Encoding": "gzip"},
+            )
+
+        self.assertNotIn("Content-Encoding", plain.headers)
+        self.assertEqual(compressed.headers["Content-Encoding"], "gzip")
+        self.assertIn("Accept-Encoding", compressed.headers["Vary"])
+        self.assertLess(len(compressed.data), len(plain.data))
+        self.assertIn(b"<!DOCTYPE html>", gzip.decompress(compressed.data))
 
     def test_public_mode_rejects_unknown_host_and_remote_setup(self):
         web_app.app.config["ALLOWED_HOSTS"] = {"news-monitor.ru"}
