@@ -15,6 +15,8 @@ from utils.source_groups import GOVERNMENT_GROUP, source_group
 
 ARTICLE_ID = "8563d99d-64cb-4375-96a9-b5b5e51e2ecd"
 ARTICLE_URL = f"https://z.mil.ru/news/{ARTICLE_ID}"
+NEW_ARTICLE_ID = "557bf1ff-4edd-46ad-8bd8-f992df4d950b"
+NEW_ARTICLE_URL = f"https://mil.ru/news/{NEW_ARTICLE_ID}"
 TITLE = "Министр обороны России проинспектировал группировку войск"
 
 
@@ -100,9 +102,118 @@ class MinoboronyParserTests(unittest.TestCase):
 
     def test_accepts_only_uuid_articles_on_official_host(self):
         self.assertTrue(_is_article_url(ARTICLE_URL))
+        self.assertTrue(_is_article_url(NEW_ARTICLE_URL))
         self.assertFalse(_is_article_url("https://z.mil.ru/news"))
+        self.assertFalse(_is_article_url("https://mil.ru/news"))
         self.assertFalse(
             _is_article_url(f"https://example.com/news/{ARTICLE_ID}")
+        )
+
+    def test_reads_relative_article_from_new_domain(self):
+        soup = BeautifulSoup(
+            f"""
+            <article class="news-card">
+              <time>25 августа 2026 10:30</time>
+              <a href="/news/{NEW_ARTICLE_ID}">
+                <h3>Новая публикация Министерства обороны России</h3>
+              </a>
+            </article>
+            """,
+            "html.parser",
+        )
+
+        result = _parse_news_page(
+            soup,
+            now=datetime(2026, 8, 25, 12, 0),
+            base_url="https://mil.ru/news",
+        )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["url"], NEW_ARTICLE_URL)
+        self.assertEqual(result[0]["date"], "2026-08-25")
+
+    def test_combines_old_and_new_feeds_without_duplicate_uuid(self):
+        legacy_soup = BeautifulSoup(
+            f"""
+            <article>
+              <time>25 августа 2026 10:30</time>
+              <a href="/news/{NEW_ARTICLE_ID}">
+                <h3>Общая публикация Министерства обороны России</h3>
+              </a>
+            </article>
+            """,
+            "html.parser",
+        )
+        new_soup = BeautifulSoup(
+            f"""
+            <article>
+              <time>25 августа 2026 10:30</time>
+              <a href="https://mil.ru/news/{NEW_ARTICLE_ID}">
+                <h3>Общая публикация Министерства обороны России</h3>
+              </a>
+            </article>
+            <article>
+              <time>25 августа 2026 11:00</time>
+              <a href="/news/{ARTICLE_ID}">
+                <h3>Отдельная публикация на новом домене Минобороны</h3>
+              </a>
+            </article>
+            """,
+            "html.parser",
+        )
+
+        def fetch(url, *_args, **_kwargs):
+            if url == "https://z.mil.ru/news":
+                return legacy_soup
+            if url == "https://mil.ru/news":
+                return new_soup
+            return None
+
+        with mock.patch.object(minoborony, "fetch_soup", side_effect=fetch), mock.patch.object(
+            minoborony,
+            "fetch_soup_js",
+        ) as fetch_js:
+            result = minoborony.parse()
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(
+            [item["url"] for item in result],
+            [
+                f"https://z.mil.ru/news/{NEW_ARTICLE_ID}",
+                f"https://mil.ru/news/{ARTICLE_ID}",
+            ],
+        )
+        fetch_js.assert_not_called()
+
+    def test_browser_falls_back_from_old_feed_to_new_feed(self):
+        new_soup = BeautifulSoup(
+            f"""
+            <article>
+              <time>25 августа 2026 11:00</time>
+              <a href="/news/{NEW_ARTICLE_ID}">
+                <h3>Военнослужащие выполнили поставленные учебные задачи</h3>
+              </a>
+            </article>
+            """,
+            "html.parser",
+        )
+
+        def fetch_js(url, *_args, **_kwargs):
+            if url == "https://mil.ru/news":
+                return new_soup
+            return None
+
+        with mock.patch.object(minoborony, "fetch_soup", return_value=None), mock.patch.object(
+            minoborony,
+            "fetch_soup_js",
+            side_effect=fetch_js,
+        ) as browser_fetch:
+            result = minoborony.parse()
+
+        self.assertEqual([item["url"] for item in result], [NEW_ARTICLE_URL])
+        self.assertEqual(
+            [call.args[0] for call in browser_fetch.call_args_list],
+            ["https://z.mil.ru/news", "https://mil.ru/news"],
         )
 
     def test_registered_as_government_source(self):
@@ -140,6 +251,29 @@ class MinoboronyParserTests(unittest.TestCase):
         self.assertEqual(article["title"], TITLE)
         self.assertEqual(len(article["paragraphs"]), 2)
         self.assertNotIn("Структура Министерства", " ".join(article["paragraphs"]))
+
+    def test_internal_reader_accepts_new_domain(self):
+        soup = BeautifulSoup(
+            f"""
+            <article itemprop="articleBody">
+              <h1>{TITLE}</h1>
+              <p>Министерство обороны опубликовало новый официальный материал.</p>
+            </article>
+            """,
+            "html.parser",
+        )
+
+        with mock.patch(
+            "utils.article_reader.fetch_soup_js",
+            return_value=soup,
+        ):
+            article = extract_article(NEW_ARTICLE_URL, TITLE)
+
+        self.assertFalse(article["error"])
+        self.assertEqual(
+            article["paragraphs"],
+            ["Министерство обороны опубликовало новый официальный материал."],
+        )
 
     def test_web_page_uses_card_summary_when_article_has_no_body(self):
         summary = (

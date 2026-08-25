@@ -63,7 +63,7 @@ TRAILING_SLASH_ARTICLE_RULES = (
 
 SOURCE_ARTICLE_RULES = {
     "Минобороны РФ": (
-        "z.mil.ru",
+        ("z.mil.ru", "mil.ru"),
         re.compile(
             r"^/news/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/?$",
             re.IGNORECASE,
@@ -221,13 +221,16 @@ def is_valid_news_item(item):
         )
 
     if source in SOURCE_ARTICLE_RULES:
-        required_host, article_path = SOURCE_ARTICLE_RULES[source]
+        required_hosts, article_path = SOURCE_ARTICLE_RULES[source]
+        if isinstance(required_hosts, str):
+            required_hosts = (required_hosts,)
         parts = urlsplit(url)
         hostname = (parts.hostname or "").casefold()
         return (
-            (
+            any(
                 hostname == required_host
                 or hostname.endswith(f".{required_host}")
+                for required_host in required_hosts
             )
             and article_path.fullmatch(parts.path) is not None
         )
@@ -281,6 +284,22 @@ def _identity_keys(item):
 
     if normalized_url:
         keys.append(("url", normalized_url))
+
+        # Один материал Минобороны может одновременно приходить с адресов
+        # z.mil.ru и mil.ru. UUID в пути у них общий и надёжно убирает дубль,
+        # не заставляя переписывать старые сохранённые ссылки.
+        if source == "минобороны рф":
+            parts = urlsplit(normalized_url)
+            hostname = (parts.hostname or "").casefold()
+            article_match = SOURCE_ARTICLE_RULES["Минобороны РФ"][1].fullmatch(
+                parts.path
+            )
+            if (
+                article_match is not None
+                and hostname in {"mil.ru", "z.mil.ru"}
+            ):
+                article_id = parts.path.rstrip("/").rsplit("/", 1)[-1]
+                keys.append(("minoborony-uuid", article_id.casefold()))
 
     if source in TITLE_DEDUP_SOURCES and title:
         keys.append(("source-title", source, title))

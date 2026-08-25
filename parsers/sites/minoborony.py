@@ -16,6 +16,10 @@ from utils.news import deduplicate_news
 
 SOURCE_NAME = "Минобороны РФ"
 NEWS_URL = "https://z.mil.ru/news"
+NEWS_URLS = (
+    NEWS_URL,
+    "https://mil.ru/news",
+)
 MAX_AGE_DAYS = 30
 MAX_ITEMS = 60
 ARTICLE_PATH = re.compile(
@@ -25,34 +29,65 @@ ARTICLE_PATH = re.compile(
 
 
 def parse():
-    soup = fetch_soup(
-        NEWS_URL,
-        SOURCE_NAME,
-        timeout=45,
-        verify=False,
-    )
-    news = _parse_news_page(soup) if soup is not None else []
+    news = []
+    empty_urls = []
 
-    # Новый сайт Минобороны может отдавать обычному запросу только оболочку,
-    # а карточки добавлять JavaScript. В таком случае открываем страницу
-    # браузером и разбираем уже готовый DOM.
-    if not news:
-        print("  ℹ️ Обычная страница пуста — пробую Минобороны через браузер")
-        soup = fetch_soup_js(
-            NEWS_URL,
+    # Минобороны публикует материалы одновременно через старый поддомен
+    # z.mil.ru и новый корневой домен mil.ru. Обе ленты нужны: наборы
+    # карточек могут временно различаться во время обновления сайта.
+    for news_url in NEWS_URLS:
+        soup = fetch_soup(
+            news_url,
             SOURCE_NAME,
-            wait_ms=2500,
-            timeout_ms=60000,
-            wait_until="domcontentloaded",
-            use_partial_on_timeout=True,
+            timeout=45,
+            verify=False,
         )
-        news = _parse_news_page(soup) if soup is not None else []
+        page_news = (
+            _parse_news_page(soup, base_url=news_url)
+            if soup is not None
+            else []
+        )
+
+        if not page_news:
+            empty_urls.append(news_url)
+
+        news.extend(page_news)
+
+    # Если обе обычные страницы оказались пустыми, пробуем адреса браузером
+    # по очереди и останавливаемся на первом рабочем. Это сохраняет резервный
+    # домен, но не запускает два тяжёлых браузера на каждом цикле.
+    if not news:
+        for news_url in empty_urls:
+            print(
+                "  ℹ️ Лента Минобороны пуста — "
+                f"пробую через браузер: {news_url}"
+            )
+            soup = fetch_soup_js(
+                news_url,
+                SOURCE_NAME,
+                wait_ms=2500,
+                timeout_ms=60000,
+                wait_until="domcontentloaded",
+                use_partial_on_timeout=True,
+            )
+            page_news = (
+                _parse_news_page(soup, base_url=news_url)
+                if soup is not None
+                else []
+            )
+            if page_news:
+                news.extend(page_news)
+                break
+
+    # Старую ленту разбираем первой, поэтому при наличии одной публикации
+    # на обоих доменах сохраняется прежняя ссылка z.mil.ru.
+    news = deduplicate_news(news)
 
     print(f"  ✅ {len(news)}")
     return news
 
 
-def _parse_news_page(soup, now=None):
+def _parse_news_page(soup, now=None, base_url=NEWS_URL):
     if soup is None:
         return []
 
@@ -61,7 +96,7 @@ def _parse_news_page(soup, now=None):
     items = []
 
     for link in soup.select("a[href]"):
-        full_url = urljoin(NEWS_URL, link.get("href", ""))
+        full_url = urljoin(base_url, link.get("href", ""))
         if not _is_article_url(full_url):
             continue
 
@@ -69,7 +104,11 @@ def _parse_news_page(soup, now=None):
         if len(title) < 15 or is_junk(title):
             continue
 
-        publication_date = _date_from_minoborony_card(link, now=now)
+        publication_date = _date_from_minoborony_card(
+            link,
+            now=now,
+            base_url=base_url,
+        )
         if not publication_date:
             publication_date = date_from_news_card(
                 link,
@@ -82,7 +121,11 @@ def _parse_news_page(soup, now=None):
             if parsed < cutoff:
                 continue
 
-        summary = _summary_from_minoborony_card(link, title)
+        summary = _summary_from_minoborony_card(
+            link,
+            title,
+            base_url=base_url,
+        )
 
         item = {
             "source": SOURCE_NAME,
@@ -96,7 +139,7 @@ def _parse_news_page(soup, now=None):
 
     # Некоторые сборки сайта хранят карточки в JSON-состоянии страницы.
     # Этот путь помогает, даже если ссылки ещё не появились в DOM.
-    items.extend(_news_from_embedded_json(soup, cutoff, now))
+    items.extend(_news_from_embedded_json(soup, cutoff, now, base_url=base_url))
     return deduplicate_news(items)[:MAX_ITEMS]
 
 
@@ -127,7 +170,7 @@ def _title_from_link(link):
     return max(cleaned, key=len, default="")
 
 
-def _date_from_minoborony_card(link, now=None):
+def _date_from_minoborony_card(link, now=None, base_url=NEWS_URL):
     """Читает дату из безымянного CSS-блока карточки нового сайта mil.ru."""
     date_line = re.compile(
         r"^\s*\d{1,2}\s+"
@@ -144,9 +187,9 @@ def _date_from_minoborony_card(link, now=None):
             break
 
         article_urls = {
-            urljoin(NEWS_URL, node.get("href", ""))
+            urljoin(base_url, node.get("href", ""))
             for node in current.select("a[href]")
-            if _is_article_url(urljoin(NEWS_URL, node.get("href", "")))
+            if _is_article_url(urljoin(base_url, node.get("href", "")))
         }
         if len(article_urls) > 1:
             break
@@ -167,7 +210,7 @@ def _date_from_minoborony_card(link, now=None):
     return ""
 
 
-def _summary_from_minoborony_card(link, title):
+def _summary_from_minoborony_card(link, title, base_url=NEWS_URL):
     """Берёт анонс из карточки, если отдельная страница не содержит текста."""
     current = link
 
@@ -177,9 +220,9 @@ def _summary_from_minoborony_card(link, title):
             break
 
         article_urls = {
-            urljoin(NEWS_URL, node.get("href", ""))
+            urljoin(base_url, node.get("href", ""))
             for node in current.select("a[href]")
-            if _is_article_url(urljoin(NEWS_URL, node.get("href", "")))
+            if _is_article_url(urljoin(base_url, node.get("href", "")))
         }
         if len(article_urls) > 1:
             break
@@ -209,7 +252,7 @@ def _summary_from_minoborony_card(link, title):
     return ""
 
 
-def _news_from_embedded_json(soup, cutoff, now):
+def _news_from_embedded_json(soup, cutoff, now, base_url=NEWS_URL):
     result = []
     selectors = (
         "script[type='application/json'], "
@@ -228,7 +271,7 @@ def _news_from_embedded_json(soup, cutoff, now):
 
         for value in _walk_json(payload):
             raw_url = value.get("url") or value.get("href") or ""
-            full_url = urljoin(NEWS_URL, str(raw_url))
+            full_url = urljoin(base_url, str(raw_url))
             if not _is_article_url(full_url):
                 continue
 
@@ -294,6 +337,9 @@ def _is_article_url(url):
     parts = urlsplit(str(url))
     hostname = (parts.hostname or "").casefold()
     return (
-        (hostname == "z.mil.ru" or hostname.endswith(".z.mil.ru"))
+        (
+            hostname in {"mil.ru", "z.mil.ru"}
+            or hostname.endswith(".z.mil.ru")
+        )
         and ARTICLE_PATH.fullmatch(parts.path) is not None
     )

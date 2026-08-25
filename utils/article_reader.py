@@ -114,6 +114,16 @@ VERIFIED_ARTICLE_SELECTORS = {
         "[class*='news'][class*='content']",
         "[class*='article'][class*='content']",
     ),
+    "mil.ru": (
+        "[itemprop='articleBody']",
+        "article",
+        ".news-detail__content",
+        ".news-detail",
+        ".article__body",
+        ".article__content",
+        "[class*='news'][class*='content']",
+        "[class*='article'][class*='content']",
+    ),
     "interfax.ru": (
         "article[itemprop='articleBody']",
         "[itemprop='articleBody']",
@@ -510,7 +520,10 @@ def _is_mnr_url(url):
 
 def _is_minoborony_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
-    return hostname == "z.mil.ru" or hostname.endswith(".z.mil.ru")
+    return (
+        hostname in {"mil.ru", "z.mil.ru"}
+        or hostname.endswith(".z.mil.ru")
+    )
 
 
 def _is_mvd_url(url):
