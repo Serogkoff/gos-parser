@@ -1,7 +1,6 @@
 import json
 import re
 import secrets
-from collections import Counter
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import quote, urlencode
@@ -29,7 +28,6 @@ from utils.keywords import (
     remove_keyword,
 )
 from utils.logger import error_log_stats, get_logger, read_recent_errors
-from utils.news import sort_news_by_publication
 from utils.proxy import kyodo_proxy_status
 from utils.security import AttemptLimiter
 from utils.source_groups import (
@@ -39,7 +37,6 @@ from utils.source_groups import (
     GOVERNMENT_SOURCES,
     NEWSPAPERS_GROUP,
     NEWSPAPER_SOURCES,
-    filter_news_by_group,
     is_yahoo_source,
     source_group as get_source_group,
 )
@@ -64,6 +61,8 @@ from utils.storage import (
     list_collection_bookmarks,
     list_collection_note_read_ids,
     list_collection_notes,
+    list_news_index,
+    list_news_page,
     list_shared_collections,
     load_collection,
     load_source_order,
@@ -87,6 +86,8 @@ from utils.storage import (
     set_user_role,
     update_collection,
     update_collection_note,
+    news_group_counts,
+    news_source_counts,
     source_news_statistics,
     source_incident_statistics,
     source_reliability_statistics,
@@ -506,7 +507,7 @@ BOOKMARKS_HTML = """
                 {% for bookmark in bookmarks %}
                 <article class="bookmark">
                     <div class="meta">{% if bookmark.date %}<time>{{bookmark.date}}</time>{% endif %}{% if bookmark.folder_name %}<span>•</span><span>{{bookmark.folder_name}}</span>{% endif %}</div>
-                    <h3><a href="/article?url={{bookmark.url|urlencode}}">{{bookmark.title}}</a></h3>
+                    <h3><a href="/article?url={{bookmark.url|urlencode}}" target="_blank" rel="noopener">{{bookmark.title}}</a></h3>
                     <div class="material-footer"><span>{{bookmark.source or 'Источник не указан'}}</span><a class="original" href="{{bookmark.url}}" target="_blank" rel="noopener">Оригинал ↗</a></div>{% if bookmark.note %}<div class="comment">{{bookmark.note}}</div>{% endif %}
                     {% if selected_folder_data is none or selected_folder_data.can_edit %}<form class="edit" method="post">
                         <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="update_bookmark"><input type="hidden" name="bookmark_url" value="{{bookmark.url}}">
@@ -1032,7 +1033,7 @@ HTML = """
                         </a>
                     </h3>
                     {% else %}
-                    <h3><a href="/article?url={{item.url|urlencode}}&back_url={{current_url|urlencode}}" data-read-url="{{item.url}}">{{item.title}}</a></h3>
+                    <h3><a href="/article?url={{item.url|urlencode}}&back_url={{current_url|urlencode}}" target="_blank" rel="noopener" data-read-url="{{item.url}}">{{item.title}}</a></h3>
                     {% endif %}
                     {% if item.keywords %}
                     <div class="chips">{% for keyword in item.keywords %}<span>{{keyword}}</span>{% endfor %}</div>
@@ -1165,7 +1166,7 @@ HTML = """
     const emptyState = document.getElementById('empty-state');
     const savedCount = document.getElementById('saved-count');
     const brandHome = document.getElementById('brand-home');
-    const newsIndex = {{news_index|tojson}};
+    let newsIndex = {{news_index|tojson}};
     const sourceFilterHome = {{filter_home|tojson}};
     const selectedSources = new Set({{source_filters|tojson}});
     const currentSourceGroup = {{source_group|tojson}};
@@ -1176,37 +1177,6 @@ HTML = """
     let brandClicks = 0;
     let brandClickTimer = null;
     let brandHideTimer = null;
-
-    const prefetchedPages = new Set();
-    function prefetchPage(link){
-        let target;
-        try{
-            target = new URL(link.href, window.location.href);
-        }catch(error){
-            return;
-        }
-        if(
-            target.origin !== window.location.origin ||
-            target.href === window.location.href ||
-            prefetchedPages.has(target.href)
-        ) return;
-        prefetchedPages.add(target.href);
-        fetch(target.href, {
-            method:'GET',
-            credentials:'same-origin',
-            cache:'default',
-            headers:{'X-Monitor-Prefetch':'1'}
-        }).catch(() => prefetchedPages.delete(target.href));
-    }
-    document.querySelectorAll('.site-section, .tab, .pagination a, .tool-button[href]').forEach(link => {
-        let timer = null;
-        link.addEventListener('mouseenter', () => {
-            timer = window.setTimeout(() => prefetchPage(link), 90);
-        }, {passive:true});
-        link.addEventListener('mouseleave', () => window.clearTimeout(timer), {passive:true});
-        link.addEventListener('focus', () => prefetchPage(link), {passive:true});
-        link.addEventListener('touchstart', () => prefetchPage(link), {passive:true, once:true});
-    });
 
     brandHome.addEventListener('click', event => {
         if(
@@ -1241,30 +1211,47 @@ HTML = """
         }, 650);
     });
 
-    try{
-        unreadState = JSON.parse(localStorage.getItem(unreadStorageKey) || 'null');
-    }catch(error){
-        unreadState = null;
-    }
+    let unread = new Set();
 
-    if(!unreadState || !Array.isArray(unreadState.known) || !Array.isArray(unreadState.unread)){
-        // Первый запуск: существующие материалы считаются уже прочитанными.
-        unreadState = {known: newsIndex.map(item => item.url), unread: []};
-    }else{
-        const known = new Set(unreadState.known);
-        const unreadNews = new Set(unreadState.unread);
-        newsIndex.forEach(item => {
-            if(item.url && !known.has(item.url)){
-                known.add(item.url);
-                unreadNews.add(item.url);
+    async function initializeUnread(){
+        try{
+            const response = await fetch(
+                '/api/news-index?group=' + encodeURIComponent(currentSourceGroup),
+                {credentials:'same-origin'}
+            );
+            if(response.ok){
+                const data = await response.json();
+                if(Array.isArray(data.items)) newsIndex = data.items;
             }
-        });
-        unreadState = {known: [...known], unread: [...unreadNews]};
+        }catch(error){
+            // Карточки уже доступны; счётчики обновятся при следующем открытии.
+        }
+        try{
+            unreadState = JSON.parse(localStorage.getItem(unreadStorageKey) || 'null');
+        }catch(error){
+            unreadState = null;
+        }
+        if(!unreadState || !Array.isArray(unreadState.known) || !Array.isArray(unreadState.unread)){
+            // Первый запуск: существующие материалы считаются уже прочитанными.
+            unreadState = {known: newsIndex.map(item => item.url), unread: []};
+        }else{
+            const known = new Set(unreadState.known);
+            const unreadNews = new Set(unreadState.unread);
+            newsIndex.forEach(item => {
+                if(item.url && !known.has(item.url)){
+                    known.add(item.url);
+                    unreadNews.add(item.url);
+                }
+            });
+            unreadState = {known: [...known], unread: [...unreadNews]};
+        }
+        localStorage.setItem(unreadStorageKey, JSON.stringify(unreadState));
+        unread = new Set(unreadState.unread);
+        refreshUnread();
     }
-    localStorage.setItem(unreadStorageKey, JSON.stringify(unreadState));
-    let unread = new Set(unreadState.unread);
 
     function saveUnread(){
+        if(!unreadState) return;
         unreadState.unread = [...unread];
         localStorage.setItem(unreadStorageKey, JSON.stringify(unreadState));
     }
@@ -1384,6 +1371,7 @@ HTML = """
         saveUnread();
         refreshUnread();
     });
+    initializeUnread();
     search.addEventListener('input', applyFilters);
     document.getElementById('collapse-sources').addEventListener('click', event => {
         const list = document.getElementById('source-list');
@@ -2610,7 +2598,6 @@ def apply_source_order(sources, preferred_names):
 
 
 def render_news_page(
-    news,
     mode="all",
     source_filters=None,
     source_group=GOVERNMENT_GROUP,
@@ -2622,23 +2609,9 @@ def render_news_page(
     else:
         user_saved_urls = []
         user_bookmark_count = 0
-    all_news = load_json("all_news.json", [])
-    found_news = load_json("found_news.json", [])
     status = load_json("parser_status.json", {})
-
-    group_news = filter_news_by_group(all_news, source_group)
-    group_found_news = filter_news_by_group(found_news, source_group)
-    if news is all_news:
-        news = group_news
-    elif news is found_news:
-        news = group_found_news
-    else:
-        news = filter_news_by_group(news, source_group)
-
-    counts = Counter(
-        item.get("source", "Неизвестный источник")
-        for item in group_news
-    )
+    total, found_count = news_group_counts(source_group)
+    counts = news_source_counts(source_group)
     sources = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     requested_sources = (
         list(source_filters)
@@ -2651,12 +2624,6 @@ def render_news_page(
         source = str(source or "").strip()
         if source in available_names and source not in source_filters:
             source_filters.append(source)
-    if source_filters:
-        selected_sources = set(source_filters)
-        news = [
-            item for item in news
-            if item.get("source", "Неизвестный источник") in selected_sources
-        ]
     if user["id"]:
         sources = apply_source_order(
             sources,
@@ -2748,34 +2715,32 @@ def render_news_page(
     else:
         feed_title = "Последние публикации"
 
-    sorted_news = sort_news_by_publication(news)
-    unread_index_news = sort_news_by_publication(group_news)
     search_query = request.args.get("q", "").strip()
-    if search_query:
-        needle = search_query.casefold()
-        sorted_news = [
-            item
-            for item in sorted_news
-            if needle in " ".join(
-                [
-                    str(item.get("title", "")),
-                    str(item.get("source", "")),
-                    str(item.get("section", "")),
-                    str(item.get("summary", "")),
-                    " ".join(item.get("keywords", []) or []),
-                ]
-            ).casefold()
-        ]
-
     try:
         page = max(1, int(request.args.get("page", "1")))
     except (TypeError, ValueError):
         page = 1
-    page_total = len(sorted_news)
-    page_count = max(1, (page_total + NEWS_PER_PAGE - 1) // NEWS_PER_PAGE)
-    page = min(page, page_count)
     page_offset = (page - 1) * NEWS_PER_PAGE
-    page_news = sorted_news[page_offset:page_offset + NEWS_PER_PAGE]
+    page_news, page_total = list_news_page(
+        source_group,
+        found_only=mode == "found",
+        sources=source_filters,
+        search_query=search_query,
+        limit=NEWS_PER_PAGE,
+        offset=page_offset,
+    )
+    page_count = max(1, (page_total + NEWS_PER_PAGE - 1) // NEWS_PER_PAGE)
+    if page > page_count:
+        page = page_count
+        page_offset = (page - 1) * NEWS_PER_PAGE
+        page_news, page_total = list_news_page(
+            source_group,
+            found_only=mode == "found",
+            sources=source_filters,
+            search_query=search_query,
+            limit=NEWS_PER_PAGE,
+            offset=page_offset,
+        )
     page_start = page_offset + 1 if page_news else 0
     page_end = page_offset + len(page_news)
     page_label = (
@@ -2814,8 +2779,8 @@ def render_news_page(
     return render_template_string(
         HTML,
         news=page_news,
-        total=len(group_news),
-        found_count=len(group_found_news),
+        total=total,
+        found_count=found_count,
         sources=sources,
         sidebar_sources=sidebar_sources,
         yahoo_sources=yahoo_sources,
@@ -2827,7 +2792,7 @@ def render_news_page(
                 "url": item.get("url", ""),
                 "source": item.get("source", "Неизвестный источник"),
             }
-            for item in unread_index_news[:UNREAD_INDEX_LIMIT]
+            for item in page_news
             if item.get("url")
         ],
         source_filters=source_filters,
@@ -2879,7 +2844,6 @@ def urlencode_filter(value):
 @app.route("/")
 def index():
     return render_news_page(
-        load_json("all_news.json", []),
         source_group=GOVERNMENT_GROUP,
     )
 
@@ -2887,7 +2851,6 @@ def index():
 @app.route("/found")
 def found_page():
     return render_news_page(
-        load_json("found_news.json", []),
         mode="found",
         source_group=GOVERNMENT_GROUP,
     )
@@ -2895,10 +2858,7 @@ def found_page():
 
 @app.route("/filter/<path:source>")
 def filter_source(source):
-    all_news = load_json("all_news.json", [])
-    news = [item for item in all_news if item.get("source") == source]
     return render_news_page(
-        news,
         source_filters=[source],
         source_group=get_source_group(source),
     )
@@ -2907,7 +2867,6 @@ def filter_source(source):
 @app.route("/agencies")
 def agencies_page():
     return render_news_page(
-        load_json("all_news.json", []),
         source_group=AGENCIES_GROUP,
     )
 
@@ -2915,7 +2874,6 @@ def agencies_page():
 @app.route("/agencies/found")
 def agencies_found_page():
     return render_news_page(
-        load_json("found_news.json", []),
         mode="found",
         source_group=AGENCIES_GROUP,
     )
@@ -2923,10 +2881,7 @@ def agencies_found_page():
 
 @app.route("/agencies/filter/<path:source>")
 def agencies_filter_source(source):
-    all_news = load_json("all_news.json", [])
-    news = [item for item in all_news if item.get("source") == source]
     return render_news_page(
-        news,
         source_filters=[source],
         source_group=AGENCIES_GROUP,
     )
@@ -2935,7 +2890,6 @@ def agencies_filter_source(source):
 @app.route("/newspapers")
 def newspapers_page():
     return render_news_page(
-        load_json("all_news.json", []),
         source_group=NEWSPAPERS_GROUP,
     )
 
@@ -2943,7 +2897,6 @@ def newspapers_page():
 @app.route("/newspapers/found")
 def newspapers_found_page():
     return render_news_page(
-        load_json("found_news.json", []),
         mode="found",
         source_group=NEWSPAPERS_GROUP,
     )
@@ -2951,10 +2904,7 @@ def newspapers_found_page():
 
 @app.route("/newspapers/filter/<path:source>")
 def newspapers_filter_source(source):
-    all_news = load_json("all_news.json", [])
-    news = [item for item in all_news if item.get("source") == source]
     return render_news_page(
-        news,
         source_filters=[source],
         source_group=NEWSPAPERS_GROUP,
     )
@@ -3130,6 +3080,19 @@ def bookmarks_api():
     )
 
 
+@app.get("/api/news-index")
+def news_index_api():
+    """Подгружает лёгкий индекс непрочитанного после показа самой страницы."""
+    source_group = str(request.args.get("group", "")).strip().casefold()
+    if source_group not in {
+        GOVERNMENT_GROUP,
+        AGENCIES_GROUP,
+        NEWSPAPERS_GROUP,
+    }:
+        return jsonify(error="Неизвестный раздел источников"), 400
+    return jsonify(items=list_news_index(source_group, UNREAD_INDEX_LIMIT))
+
+
 @app.post("/api/source-order")
 def source_order_api():
     """Сохраняет личный порядок правой панели для выбранного раздела."""
@@ -3148,11 +3111,7 @@ def source_order_api():
     if not isinstance(requested, list):
         return jsonify(error="Некорректный порядок источников"), 400
 
-    group_news = filter_news_by_group(load_json("all_news.json", []), source_group)
-    counts = Counter(
-        item.get("source", "Неизвестный источник")
-        for item in group_news
-    )
+    counts = news_source_counts(source_group)
     available = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     final_order = [name for name, _ in apply_source_order(available, requested)]
     try:

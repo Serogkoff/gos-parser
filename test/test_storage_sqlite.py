@@ -86,6 +86,84 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertIs(first, second)
         loader.assert_called_once_with()
 
+    def test_sql_news_page_filters_counts_and_decodes_only_20_items(self):
+        items = [
+            {
+                "source": "Коммерсантъ",
+                "title": f"Газетный материал {number:02d}",
+                "url": f"https://www.kommersant.ru/doc/{number}",
+                "date": f"2026-08-{(number % 25) + 1:02d}",
+                "summary": "Особая тема" if number == 42 else "Обычная тема",
+            }
+            for number in range(55)
+        ]
+        self._write_json(self.all_json, items)
+        self._write_json(self.found_json, items[:7])
+
+        page, total = storage.list_news_page(
+            "newspapers",
+            limit=20,
+            offset=20,
+        )
+        found_page, found_total = storage.list_news_page(
+            "newspapers",
+            found_only=True,
+            limit=20,
+        )
+        search_page, search_total = storage.list_news_page(
+            "newspapers",
+            search_query="ОСОБАЯ ТЕМА",
+            limit=20,
+        )
+
+        self.assertEqual(total, 55)
+        self.assertEqual(len(page), 20)
+        self.assertEqual(found_total, 7)
+        self.assertEqual(len(found_page), 7)
+        self.assertEqual(search_total, 1)
+        self.assertEqual(search_page[0]["title"], "Газетный материал 42")
+
+        total_count, found_count = storage.news_group_counts("newspapers")
+        self.assertEqual((total_count, found_count), (55, 7))
+        self.assertEqual(
+            storage.news_source_counts("newspapers"),
+            {"Коммерсантъ": 55},
+        )
+
+    def test_feed_route_does_not_load_complete_news_collections(self):
+        items = [
+            {
+                "source": "Коммерсантъ",
+                "title": f"Материал {number:02d}",
+                "url": f"https://www.kommersant.ru/doc/{number}",
+                "date": "2026-08-17",
+            }
+            for number in range(45)
+        ]
+        self._write_json(self.all_json, items)
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+
+        with (
+            patch.object(web_app, "load_json", return_value={}),
+            patch.object(
+                web_app,
+                "load_all_news",
+                side_effect=AssertionError("полная лента не должна загружаться"),
+            ),
+            patch.object(
+                web_app,
+                "load_found_news",
+                side_effect=AssertionError("совпадения не должны загружаться"),
+            ),
+        ):
+            response = web_app.app.test_client().get("/newspapers?page=2")
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(html.count('class="news-card '), 20)
+        self.assertIn("21–40 из 45", html)
+
     def _write_json(self, path, value):
         path.write_text(
             json.dumps(value, ensure_ascii=False),

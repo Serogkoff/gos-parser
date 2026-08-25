@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import config
 import web_app
+from utils.news import sort_news_by_publication
 from utils.source_groups import (
     AGENCIES_GROUP,
     GOVERNMENT_GROUP,
@@ -154,13 +155,94 @@ class SourceGroupPageTests(unittest.TestCase):
             ),
         )
         self.finder_patcher.start()
+        self.feed_patchers = (
+            patch.object(
+                web_app,
+                "news_group_counts",
+                side_effect=self._news_group_counts,
+            ),
+            patch.object(
+                web_app,
+                "news_source_counts",
+                side_effect=self._news_source_counts,
+            ),
+            patch.object(
+                web_app,
+                "list_news_page",
+                side_effect=self._list_news_page,
+            ),
+            patch.object(
+                web_app,
+                "list_news_index",
+                side_effect=self._list_news_index,
+            ),
+        )
+        for patcher in self.feed_patchers:
+            patcher.start()
 
     def tearDown(self):
+        for patcher in reversed(self.feed_patchers):
+            patcher.stop()
         self.finder_patcher.stop()
         web_app.app.config["AUTH_DISABLED"] = self.previous_auth_disabled
 
     def _load_json(self, filename, default):
         return self.files.get(filename, default)
+
+    def _group_items(self, source_group, found_only=False):
+        filename = "found_news.json" if found_only else "all_news.json"
+        return filter_news_by_group(self.files[filename], source_group)
+
+    def _news_group_counts(self, source_group):
+        return (
+            len(self._group_items(source_group)),
+            len(self._group_items(source_group, found_only=True)),
+        )
+
+    def _news_source_counts(self, source_group):
+        counts = {}
+        for item in self._group_items(source_group):
+            source = item.get("source", "Неизвестный источник")
+            counts[source] = counts.get(source, 0) + 1
+        return counts
+
+    def _list_news_page(self, source_group, *, found_only=False, sources=None,
+                        search_query="", limit=20, offset=0):
+        items = self._group_items(source_group, found_only=found_only)
+        selected_sources = set(sources or [])
+        if selected_sources:
+            items = [
+                item for item in items
+                if item.get("source", "Неизвестный источник") in selected_sources
+            ]
+        if search_query:
+            needle = search_query.casefold()
+            items = [
+                item for item in items
+                if needle in " ".join(
+                    [
+                        str(item.get("title", "")),
+                        str(item.get("source", "")),
+                        str(item.get("section", "")),
+                        str(item.get("summary", "")),
+                        " ".join(item.get("keywords", []) or []),
+                    ]
+                ).casefold()
+            ]
+        items = sort_news_by_publication(items)
+        return items[offset:offset + limit], len(items)
+
+    def _list_news_index(self, source_group, limit=2000):
+        return [
+            {
+                "url": item.get("url", ""),
+                "source": item.get("source", "Неизвестный источник"),
+            }
+            for item in sort_news_by_publication(
+                self._group_items(source_group)
+            )[:limit]
+            if item.get("url")
+        ]
 
     def test_agency_page_contains_only_agency_sources(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
@@ -318,13 +400,13 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("kyodo-easter-egg.webp", html)
         self.assertIn("if(brandClicks >= 5)", html)
 
-    def test_feed_prefetches_sections_and_keeps_return_url_for_articles(self):
+    def test_feed_does_not_prefetch_and_opens_articles_in_new_tab(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
             response = web_app.app.test_client().get("/agencies?page=2")
 
         html = response.get_data(as_text=True)
-        self.assertIn("function prefetchPage(link)", html)
-        self.assertIn(".site-section, .tab, .pagination a", html)
+        self.assertNotIn("function prefetchPage(link)", html)
+        self.assertIn('target="_blank" rel="noopener"', html)
         self.assertIn("back_url=%2Fagencies%3Fpage%3D2", html)
 
     def test_coverage_names_problem_sources(self):

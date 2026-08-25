@@ -14,6 +14,13 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from utils.logger import get_logger
 from utils.news import deduplicate_news, merge_news, normalize_url
+from utils.source_groups import (
+    AGENCIES_GROUP,
+    AGENCY_SOURCES,
+    GOVERNMENT_GROUP,
+    NEWSPAPERS_GROUP,
+    NEWSPAPER_SOURCES,
+)
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -88,6 +95,12 @@ def _connect():
     DATABASE_FILE.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DATABASE_FILE, timeout=30)
     connection.row_factory = sqlite3.Row
+    connection.create_function(
+        "CASEFOLD",
+        1,
+        lambda value: str(value or "").casefold(),
+        deterministic=True,
+    )
     connection.execute("PRAGMA busy_timeout = 30000")
     connection.execute("PRAGMA foreign_keys = ON")
     return connection
@@ -266,6 +279,8 @@ def _create_schema(connection):
             ON news_items(source);
         CREATE INDEX IF NOT EXISTS idx_news_publication_date
             ON news_items(publication_date DESC, parsed_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_news_source_publication
+            ON news_items(source, publication_date DESC, parsed_date DESC);
         CREATE INDEX IF NOT EXISTS idx_news_normalized_url
             ON news_items(normalized_url);
         CREATE INDEX IF NOT EXISTS idx_users_role
@@ -776,6 +791,183 @@ def source_news_statistics():
         }
         for row in rows
     }
+
+
+def _news_group_condition(source_group, source_column="n.source"):
+    """Строит параметризованное SQL-условие для одного раздела ленты."""
+    source_group = str(source_group or "").strip().casefold()
+    if source_group not in {
+        GOVERNMENT_GROUP,
+        AGENCIES_GROUP,
+        NEWSPAPERS_GROUP,
+    }:
+        raise ValueError("Неизвестный раздел источников")
+
+    agency_sources = tuple(sorted(AGENCY_SOURCES))
+    newspaper_sources = tuple(sorted(NEWSPAPER_SOURCES))
+    agency_placeholders = ", ".join("?" for _ in agency_sources)
+    newspaper_placeholders = ", ".join("?" for _ in newspaper_sources)
+    agency_condition = (
+        f"({source_column} IN ({agency_placeholders}) "
+        f"OR {source_column} LIKE ? COLLATE NOCASE)"
+    )
+    agency_parameters = [*agency_sources, "Yahoo! JAPAN%"]
+
+    if source_group == AGENCIES_GROUP:
+        return agency_condition, agency_parameters
+    if source_group == NEWSPAPERS_GROUP:
+        return (
+            f"{source_column} IN ({newspaper_placeholders})",
+            list(newspaper_sources),
+        )
+    return (
+        f"NOT {agency_condition} "
+        f"AND {source_column} NOT IN ({newspaper_placeholders})",
+        [*agency_parameters, *newspaper_sources],
+    )
+
+
+def news_group_counts(source_group):
+    """Считает все материалы и совпадения раздела без загрузки JSON."""
+    condition, parameters = _news_group_condition(source_group)
+    initialize_database()
+    with _connection() as connection:
+        row = connection.execute(
+            f"""
+            SELECT COUNT(*) AS total,
+                   COUNT(f.news_key) AS found
+            FROM news_items AS n
+            LEFT JOIN found_items AS f ON f.news_key = n.news_key
+            WHERE {condition}
+            """,
+            parameters,
+        ).fetchone()
+    return int(row["total"]), int(row["found"])
+
+
+def news_source_counts(source_group):
+    """Возвращает размеры источников раздела одним SQL GROUP BY."""
+    condition, parameters = _news_group_condition(source_group)
+    initialize_database()
+    with _connection() as connection:
+        rows = connection.execute(
+            f"""
+            SELECT n.source, COUNT(*) AS news_count
+            FROM news_items AS n
+            WHERE {condition}
+            GROUP BY n.source
+            ORDER BY news_count DESC, n.source
+            """,
+            parameters,
+        ).fetchall()
+    return {
+        (row["source"] or "Неизвестный источник"): int(row["news_count"])
+        for row in rows
+    }
+
+
+def list_news_page(source_group, *, found_only=False, sources=None,
+                   search_query="", limit=20, offset=0):
+    """Читает одну страницу новостей и считает результат средствами SQLite."""
+    try:
+        limit = min(100, max(1, int(limit)))
+        offset = max(0, int(offset))
+    except (TypeError, ValueError) as error:
+        raise ValueError("Некорректная страница новостей") from error
+
+    condition, parameters = _news_group_condition(source_group)
+    conditions = [condition]
+    selected_sources = []
+    for source in sources or []:
+        source = str(source or "").strip()
+        if source and source not in selected_sources:
+            selected_sources.append(source)
+    if selected_sources:
+        placeholders = ", ".join("?" for _ in selected_sources)
+        conditions.append(f"n.source IN ({placeholders})")
+        parameters.extend(selected_sources)
+
+    search_query = " ".join(str(search_query or "").split())
+    if search_query:
+        escaped = (
+            search_query.casefold().replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        pattern = f"%{escaped}%"
+        payload_column = "f.payload_json" if found_only else "n.payload_json"
+        conditions.append(
+            "(CASEFOLD(n.title) LIKE ? ESCAPE '\\' "
+            "OR CASEFOLD(n.source) LIKE ? ESCAPE '\\' "
+            f"OR CASEFOLD({payload_column}) LIKE ? ESCAPE '\\')"
+        )
+        parameters.extend((pattern, pattern, pattern))
+
+    join = "JOIN found_items AS f ON f.news_key = n.news_key" if found_only else ""
+    payload_column = "f.payload_json" if found_only else "n.payload_json"
+    where_clause = " AND ".join(conditions)
+    initialize_database()
+    with _connection() as connection:
+        total = int(
+            connection.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM news_items AS n
+                {join}
+                WHERE {where_clause}
+                """,
+                parameters,
+            ).fetchone()[0]
+        )
+        rows = connection.execute(
+            f"""
+            SELECT {payload_column} AS payload_json
+            FROM news_items AS n
+            {join}
+            WHERE {where_clause}
+            ORDER BY n.publication_date DESC,
+                     n.parsed_date DESC,
+                     n.news_key DESC
+            LIMIT ? OFFSET ?
+            """,
+            [*parameters, limit, offset],
+        ).fetchall()
+    items = []
+    for row in rows:
+        item = _decode_item(row["payload_json"])
+        if item is not None:
+            items.append(item)
+    return items, total
+
+
+def list_news_index(source_group, limit=2000):
+    """Возвращает лёгкий индекс URL для счётчиков непрочитанного."""
+    try:
+        limit = min(5000, max(1, int(limit)))
+    except (TypeError, ValueError):
+        limit = 2000
+    condition, parameters = _news_group_condition(source_group)
+    initialize_database()
+    with _connection() as connection:
+        rows = connection.execute(
+            f"""
+            SELECT n.normalized_url AS url, n.source
+            FROM news_items AS n
+            WHERE {condition} AND n.normalized_url != ''
+            ORDER BY n.publication_date DESC,
+                     n.parsed_date DESC,
+                     n.news_key DESC
+            LIMIT ?
+            """,
+            [*parameters, limit],
+        ).fetchall()
+    return [
+        {
+            "url": row["url"],
+            "source": row["source"] or "Неизвестный источник",
+        }
+        for row in rows
+    ]
 
 
 def sync_source_incidents(statuses, now=None):
