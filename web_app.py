@@ -825,7 +825,8 @@ HTML = """
         }
         .news-card h3 a:hover{color:var(--coral-dark)}
         .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:15px}
-        .chips span{padding:5px 9px;color:var(--coral-dark);border:1px solid rgba(228,79,69,.4);border-radius:5px;background:#fffaf5;font-size:12px}
+        .chips a{padding:5px 9px;color:var(--coral-dark);border:1px solid rgba(228,79,69,.4);border-radius:5px;background:#fffaf5;font-size:12px}
+        .chips a:hover,.chips a.active{border-color:var(--coral);background:#fff0e9}
         .empty{min-height:300px;display:grid;place-content:center;gap:8px;color:var(--muted);text-align:center}
         .empty strong{color:var(--ink)}
         .sidebar{display:grid;gap:16px}.panel{overflow:hidden}
@@ -845,15 +846,14 @@ HTML = """
         .source-row:hover{background:#fff8f2}
         .source-link{
             width:100%;min-width:0;min-height:40px;padding:0 7px 0 18px;display:grid;flex:1;
-            grid-template-columns:20px minmax(0,1fr) auto auto;align-items:center;
+            grid-template-columns:20px minmax(0,1fr) auto;align-items:center;
             gap:9px;border:0;color:inherit;background:transparent;text-align:left
         }
         .source-link>span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .check{width:16px;height:16px;display:grid;place-items:center;color:#fff;border:1px solid #bdb5a9;border-radius:3px;font-size:11px}
         .source-row.active .check{border-color:var(--coral);background:var(--coral)}
-        .source-row b{min-width:28px;padding:3px 5px;color:#827b71;border:1px solid var(--line);border-radius:5px;background:#f8f4ed;text-align:center;font-size:10px;font-weight:500}
         .yahoo-source-toggle{width:100%;border:0;color:inherit;background:transparent}
-        .yahoo-source-toggle.source-link{grid-template-columns:20px minmax(0,1fr) auto auto auto}
+        .yahoo-source-toggle.source-link{grid-template-columns:20px minmax(0,1fr) auto auto}
         .yahoo-chevron{color:var(--muted);font-size:14px;transition:transform .2s}
         .source-list.yahoo-expanded .yahoo-chevron{transform:rotate(180deg)}
         .yahoo-source-row{max-height:0;min-height:0;padding-left:20px;overflow:hidden;opacity:0;transition:max-height .22s ease,opacity .18s ease}
@@ -887,8 +887,9 @@ HTML = """
         .dialog-close{border:0;background:transparent;font-size:25px}.keyword-form{display:flex;gap:10px;margin:22px 0}
         .keyword-form input{min-width:0;flex:1;height:46px;padding:0 13px;border:1px solid #c9c1b5;border-radius:6px;background:#fff}
         .primary{height:46px;padding:0 18px;border:0;border-radius:6px;color:white;background:var(--coral)}
-        .keyword-list{display:flex;flex-wrap:wrap;gap:9px}.keyword-chip{display:flex;align-items:center;gap:7px;padding:7px 8px 7px 11px;border:1px solid var(--line);border-radius:999px;background:#fff}
-        .keyword-chip button{width:22px;height:22px;padding:0;border:0;border-radius:50%;color:var(--coral-dark);background:#fff1ed}.form-message{min-height:20px;margin:10px 0 0;color:var(--coral-dark);font-size:13px}
+        .keyword-list{display:flex;flex-wrap:wrap;gap:9px}.keyword-chip{display:flex;align-items:center;gap:4px;padding:4px;border:1px solid var(--line);border-radius:999px;background:#fff}
+        .keyword-chip.active{border-color:var(--coral);background:#fff0e9}.keyword-filter{height:28px;padding:0 7px;border:0;color:var(--ink);background:transparent;font-size:13px}.keyword-chip.active .keyword-filter{color:var(--coral-dark);font-weight:700}
+        .keyword-remove{width:22px;height:22px;padding:0;border:0;border-radius:50%;color:var(--coral-dark);background:#fff1ed}.keyword-reset{height:38px;padding:0 13px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:#fff;font-size:13px}.keyword-reset.active{color:#fff;border-color:var(--coral);background:var(--coral)}.form-message{min-height:20px;margin:10px 0 0;color:var(--coral-dark);font-size:13px}
         @media(max-width:1050px){
             .topbar{grid-template-columns:auto 1fr;padding-top:14px}
             .topbar-tools{justify-self:end}
@@ -987,11 +988,12 @@ HTML = """
         <form class="search" method="get" action="{{current_path}}">
             <span class="search-icon">⌕</span>
             {% for src in source_filters %}<input type="hidden" name="source" value="{{src}}">{% endfor %}
+            {% if keyword_filter %}<input type="hidden" name="keyword" value="{{keyword_filter}}">{% endif %}
             <input id="news-search" name="q" value="{{search_query}}"
                    placeholder="Поиск по заголовкам · Enter" autocomplete="off">
         </form>
         {% if source_filters %}<div class="source-summary"><span>Выбрано: {{source_filters|length}}</span><a href="{{clear_sources_url}}">Сбросить</a></div>{% endif %}
-        <button class="tool-button" id="keywords-open" type="button">✣ Ключевые слова</button>
+        <button class="tool-button {{'active' if keyword_filter else ''}}" id="keywords-open" type="button">✣ {{keyword_filter or 'Ключевые слова'}}</button>
         <a class="tool-button" href="/collections">
             ♡ Подборки <span class="saved-count {{'hidden' if not bookmark_count else ''}}" id="saved-count">{{bookmark_count}}</span>
         </a>
@@ -1036,7 +1038,7 @@ HTML = """
                     <h3><a href="/article?url={{item.url|urlencode}}&back_url={{current_url|urlencode}}" target="_blank" rel="noopener" data-read-url="{{item.url}}">{{item.title}}</a></h3>
                     {% endif %}
                     {% if item.keywords %}
-                    <div class="chips">{% for keyword in item.keywords %}<span>{{keyword}}</span>{% endfor %}</div>
+                    <div class="chips">{% for keyword in item.keywords %}<a class="{{'active' if keyword|lower == keyword_filter|lower else ''}}" href="{{keyword_urls.get(keyword, group_found_url)}}">{{keyword}}</a>{% endfor %}</div>
                     {% endif %}
                 </article>
             {% endfor %}
@@ -1077,7 +1079,6 @@ HTML = """
                         <button class="source-link" type="button" data-source-clear>
                             <span class="check">{{'✓' if not source_filters else ''}}</span>
                             <span>Все источники</span>
-                            <b>{{total}}</b>
                             <span class="unread-count" data-unread-source="__all__"></span>
                         </button>
                     </div>
@@ -1087,7 +1088,6 @@ HTML = """
                         <button class="source-link" type="button" data-source-filter="{{src}}">
                             <span class="check">{{'✓' if src in source_filters else ''}}</span>
                             <span>{{src}}</span>
-                            <b>{{count}}</b>
                             <span class="unread-count" data-unread-source="{{src}}"></span>
                         </button>
                     </div>
@@ -1097,7 +1097,6 @@ HTML = """
                         <button class="source-link yahoo-source-toggle" id="yahoo-source-toggle" type="button" aria-expanded="{{'true' if yahoo_expanded else 'false'}}" aria-controls="yahoo-source-items">
                             <span class="check">{{'✓' if yahoo_active else ''}}</span>
                             <span>Yahoo! JAPAN</span>
-                            <b>{{yahoo_total}}</b>
                             <span class="unread-count" data-unread-source="__yahoo__"></span>
                             <span class="yahoo-chevron" aria-hidden="true">⌄</span>
                         </button>
@@ -1109,7 +1108,6 @@ HTML = """
                         <button class="source-link" type="button" data-source-filter="{{src}}">
                             <span class="check">{{'✓' if src in source_filters else ''}}</span>
                             <span>{{label}}</span>
-                            <b>{{count}}</b>
                             <span class="unread-count" data-unread-source="{{src}}"></span>
                         </button>
                     </div>
@@ -1148,7 +1146,7 @@ HTML = """
 <div class="keyword-backdrop hidden" id="keyword-modal" role="dialog" aria-modal="true" aria-labelledby="keyword-title">
     <section class="keyword-dialog">
         <header class="dialog-head">
-            <div><h2 id="keyword-title">Ключевые слова</h2><p>Изменения сразу пересоберут раздел «Совпадения».</p></div>
+            <div><h2 id="keyword-title">Ключевые слова</h2><p>Нажми на слово, чтобы показать совпадения только с ним.</p></div>
             <button class="dialog-close" id="keywords-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <form class="keyword-form" id="keyword-form">
@@ -1168,6 +1166,8 @@ HTML = """
     const brandHome = document.getElementById('brand-home');
     let newsIndex = {{news_index|tojson}};
     const sourceFilterHome = {{filter_home|tojson}};
+    const keywordFilterHome = {{group_found|tojson}};
+    const selectedKeyword = {{keyword_filter|tojson}};
     const selectedSources = new Set({{source_filters|tojson}});
     const currentSourceGroup = {{source_group|tojson}};
     let saved = new Set({{saved_urls|tojson}});
@@ -1509,15 +1509,37 @@ HTML = """
     const keywordModal = document.getElementById('keyword-modal');
     const keywordList = document.getElementById('keyword-list');
     const keywordMessage = document.getElementById('keyword-message');
+    function keywordUrl(word){
+        const target = new URL(keywordFilterHome, window.location.origin);
+        const current = new URL(window.location.href);
+        current.searchParams.forEach((value, key) => {
+            if(key !== 'keyword' && key !== 'page') target.searchParams.append(key, value);
+        });
+        if(word) target.searchParams.set('keyword', word);
+        return target.pathname + target.search;
+    }
     function renderKeywords(words){
-        keywordList.replaceChildren(...words.map(word => {
+        const reset = document.createElement('button');
+        reset.type = 'button';
+        reset.className = 'keyword-reset' + (selectedKeyword ? '' : ' active');
+        reset.textContent = 'Все ключевые слова';
+        reset.addEventListener('click', () => { window.location.href = keywordUrl(''); });
+        const chips = words.map(word => {
             const chip = document.createElement('span'); chip.className = 'keyword-chip';
-            const label = document.createElement('span'); label.textContent = word;
-            const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '×';
+            const active = word.localeCompare(selectedKeyword, undefined, {sensitivity:'accent'}) === 0;
+            if(active) chip.classList.add('active');
+            const label = document.createElement('button');
+            label.type = 'button'; label.className = 'keyword-filter'; label.textContent = word;
+            label.setAttribute('aria-pressed', String(active));
+            label.addEventListener('click', () => {
+                window.location.href = keywordUrl(active ? '' : word);
+            });
+            const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'keyword-remove'; remove.textContent = '×';
             remove.setAttribute('aria-label', 'Удалить ' + word);
             remove.addEventListener('click', () => changeKeyword('DELETE', word));
             chip.append(label, remove); return chip;
-        }));
+        });
+        keywordList.replaceChildren(reset, ...chips);
     }
     async function loadKeywords(){
         const response = await fetch('/api/keywords');
@@ -1535,6 +1557,10 @@ HTML = """
         });
         const data = await response.json();
         if(!response.ok){ keywordMessage.textContent = data.error || 'Не удалось сохранить'; return; }
+        if(method === 'DELETE' && keyword.localeCompare(selectedKeyword, undefined, {sensitivity:'accent'}) === 0){
+            window.location.href = keywordUrl('');
+            return;
+        }
         renderKeywords(data.keywords);
         keywordMessage.textContent = `Готово: ${data.found_count} совпадений.`;
     }
@@ -2649,7 +2675,6 @@ def render_news_page(
         sidebar_sources = sources
     yahoo_active = any(is_yahoo_source(source) for source in source_filters)
     yahoo_expanded = yahoo_active
-    yahoo_total = sum(count for _name, count, _label in yahoo_sources)
 
     status_sources = [
         item
@@ -2695,19 +2720,37 @@ def render_news_page(
         group_found = "/found"
 
     filter_home = group_found if mode == "found" else group_home
-    persistent_query_parameters = [
+    requested_keyword = " ".join(request.args.get("keyword", "").split())
+    keyword_filter = (
+        requested_keyword[:80]
+        if mode == "found"
+        else ""
+    )
+    shared_query_parameters = [
         (key, value)
         for key, values in request.args.lists()
-        if key not in {"page", "source"}
+        if key not in {"page", "source", "keyword"}
         for value in values
     ]
+    persistent_query_parameters = list(shared_query_parameters)
+    if keyword_filter:
+        persistent_query_parameters.append(("keyword", keyword_filter))
     clear_query = urlencode(persistent_query_parameters, doseq=True)
     clear_sources_url = filter_home + (f"?{clear_query}" if clear_query else "")
     source_query = urlencode([("source", source) for source in source_filters])
     group_home_url = group_home + (f"?{source_query}" if source_query else "")
-    group_found_url = group_found + (f"?{source_query}" if source_query else "")
+    found_query_parameters = [
+        *(('source', source) for source in source_filters),
+        *((('keyword', keyword_filter),) if keyword_filter else ()),
+    ]
+    found_query = urlencode(found_query_parameters, doseq=True)
+    group_found_url = group_found + (f"?{found_query}" if found_query else "")
     if mode == "found":
-        feed_title = "Совпадения"
+        feed_title = (
+            f"Совпадения: {keyword_filter}"
+            if keyword_filter
+            else "Совпадения"
+        )
     elif len(source_filters) == 1:
         feed_title = f"Источник: {source_filters[0]}"
     elif source_filters:
@@ -2726,6 +2769,7 @@ def render_news_page(
         found_only=mode == "found",
         sources=source_filters,
         search_query=search_query,
+        keyword=keyword_filter,
         limit=NEWS_PER_PAGE,
         offset=page_offset,
     )
@@ -2738,6 +2782,7 @@ def render_news_page(
             found_only=mode == "found",
             sources=source_filters,
             search_query=search_query,
+            keyword=keyword_filter,
             limit=NEWS_PER_PAGE,
             offset=page_offset,
         )
@@ -2776,6 +2821,15 @@ def render_news_page(
         )
         previous_number = number
 
+    keyword_urls = {}
+    for item in page_news:
+        for keyword in item.get("keywords", []) or []:
+            parameters = list(shared_query_parameters)
+            parameters.extend(("source", source) for source in source_filters)
+            parameters.append(("keyword", keyword))
+            query_string = urlencode(parameters, doseq=True)
+            keyword_urls[keyword] = group_found + f"?{query_string}"
+
     return render_template_string(
         HTML,
         news=page_news,
@@ -2786,7 +2840,8 @@ def render_news_page(
         yahoo_sources=yahoo_sources,
         yahoo_active=yahoo_active,
         yahoo_expanded=yahoo_expanded,
-        yahoo_total=yahoo_total,
+        keyword_filter=keyword_filter,
+        keyword_urls=keyword_urls,
         news_index=[
             {
                 "url": item.get("url", ""),

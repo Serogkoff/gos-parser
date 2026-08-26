@@ -867,7 +867,7 @@ def news_source_counts(source_group):
 
 
 def list_news_page(source_group, *, found_only=False, sources=None,
-                   search_query="", limit=20, offset=0):
+                   search_query="", keyword="", limit=20, offset=0):
     """Читает одну страницу новостей и считает результат средствами SQLite."""
     try:
         limit = min(100, max(1, int(limit)))
@@ -902,6 +902,16 @@ def list_news_page(source_group, *, found_only=False, sources=None,
             f"OR CASEFOLD({payload_column}) LIKE ? ESCAPE '\\')"
         )
         parameters.extend((pattern, pattern, pattern))
+
+    keyword = " ".join(str(keyword or "").split())
+    if found_only and keyword:
+        conditions.append(
+            "EXISTS ("
+            "SELECT 1 FROM json_each(f.payload_json, '$.keywords') AS matched_keyword "
+            "WHERE CASEFOLD(matched_keyword.value) = ?"
+            ")"
+        )
+        parameters.append(keyword.casefold())
 
     join = "JOIN found_items AS f ON f.news_key = n.news_key" if found_only else ""
     payload_column = "f.payload_json" if found_only else "n.payload_json"

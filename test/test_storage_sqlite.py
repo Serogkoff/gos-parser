@@ -130,6 +130,48 @@ class SQLiteStorageTests(unittest.TestCase):
             {"Коммерсантъ": 55},
         )
 
+    def test_sql_found_page_filters_by_exact_keyword_case_insensitively(self):
+        items = [
+            {
+                "source": "МЧС",
+                "title": "Точное совпадение",
+                "url": "https://mchs.gov.ru/news/exact-keyword",
+                "date": "2026-08-17",
+                "keywords": ["Курил"],
+            },
+            {
+                "source": "МЧС",
+                "title": "Похожее слово",
+                "url": "https://mchs.gov.ru/news/similar-keyword",
+                "date": "2026-08-18",
+                "keywords": ["Курилы"],
+            },
+            {
+                "source": "МЧС",
+                "title": "Другое слово",
+                "url": "https://mchs.gov.ru/news/other-keyword",
+                "date": "2026-08-19",
+                "keywords": ["Япония"],
+            },
+        ]
+        self._write_json(self.all_json, items)
+        self._write_json(self.found_json, items)
+
+        page, total = storage.list_news_page(
+            "government",
+            found_only=True,
+            keyword="кУрИл",
+        )
+        all_matches, all_total = storage.list_news_page(
+            "government",
+            found_only=True,
+        )
+
+        self.assertEqual(total, 1)
+        self.assertEqual([item["title"] for item in page], ["Точное совпадение"])
+        self.assertEqual(all_total, 3)
+        self.assertEqual(len(all_matches), 3)
+
     def test_feed_route_does_not_load_complete_news_collections(self):
         items = [
             {

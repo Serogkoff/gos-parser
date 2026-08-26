@@ -207,7 +207,7 @@ class SourceGroupPageTests(unittest.TestCase):
         return counts
 
     def _list_news_page(self, source_group, *, found_only=False, sources=None,
-                        search_query="", limit=20, offset=0):
+                        search_query="", keyword="", limit=20, offset=0):
         items = self._group_items(source_group, found_only=found_only)
         selected_sources = set(sources or [])
         if selected_sources:
@@ -228,6 +228,15 @@ class SourceGroupPageTests(unittest.TestCase):
                         " ".join(item.get("keywords", []) or []),
                     ]
                 ).casefold()
+            ]
+        if found_only and keyword:
+            needle = keyword.casefold()
+            items = [
+                item for item in items
+                if any(
+                    str(item_keyword).casefold() == needle
+                    for item_keyword in item.get("keywords", []) or []
+                )
             ]
         items = sort_news_by_publication(items)
         return items[offset:offset + limit], len(items)
@@ -273,6 +282,58 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Материал государственного ведомства", html)
         self.assertNotIn("Материал информационного агентства", html)
         self.assertNotIn("Yahoo! JAPANのニュース", html)
+
+    def test_keyword_click_filters_all_matches_by_exact_word(self):
+        self.files["found_news.json"] = [
+            {
+                "source": "МЧС",
+                "title": "Точное совпадение далеко в ленте",
+                "url": "https://mchs.gov.ru/news/keyword-exact",
+                "date": "2026-08-01",
+                "keywords": ["Курил"],
+            },
+            {
+                "source": "МЧС",
+                "title": "Похожее, но другое слово",
+                "url": "https://mchs.gov.ru/news/keyword-similar",
+                "date": "2026-08-02",
+                "keywords": ["Курилы"],
+            },
+            {
+                "source": "Президент России",
+                "title": "Другое совпадение",
+                "url": "http://kremlin.ru/events/president/news/keyword-other",
+                "date": "2026-08-03",
+                "keywords": ["Япония"],
+            },
+        ]
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            filtered = web_app.app.test_client().get(
+                "/found?keyword=%D0%BA%D1%83%D1%80%D0%B8%D0%BB"
+            )
+            unfiltered = web_app.app.test_client().get("/found")
+
+        filtered_html = filtered.get_data(as_text=True)
+        unfiltered_html = unfiltered.get_data(as_text=True)
+        self.assertIn("Точное совпадение далеко в ленте", filtered_html)
+        self.assertNotIn("Похожее, но другое слово", filtered_html)
+        self.assertNotIn("Другое совпадение", filtered_html)
+        self.assertIn("Совпадения: курил", filtered_html)
+        self.assertIn("Похожее, но другое слово", unfiltered_html)
+        self.assertIn("Другое совпадение", unfiltered_html)
+        self.assertIn("Все ключевые слова", filtered_html)
+
+    def test_source_sidebar_hides_archive_counts_but_keeps_unread_counters(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get("/")
+
+        html = response.get_data(as_text=True)
+        source_list = html[
+            html.index('id="source-list"'):html.index('</section>', html.index('id="source-list"'))
+        ]
+        self.assertNotIn("<b>", source_list)
+        self.assertIn('data-unread-source="__all__"', source_list)
+        self.assertIn('data-unread-source="МЧС"', source_list)
 
     def test_multiple_sources_can_be_selected_together(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
