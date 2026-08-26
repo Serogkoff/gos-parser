@@ -39,6 +39,41 @@ class KremlinFeedTests(unittest.TestCase):
         self.assertEqual(len(result[0]["article_paragraphs"]), 2)
         self.assertIn("официальный анонс", result[0]["summary"])
 
+    def test_keeps_official_titles_that_resemble_navigation_junk(self):
+        soup = BeautifulSoup(
+            """
+            <feed xmlns="http://www.w3.org/2005/Atom">
+                <entry>
+                    <title>Телефонный разговор с Президентом Сирии Ахмедом Шараа</title>
+                    <published>2026-08-26T12:20:00+04:00</published>
+                    <link href="http://kremlin.ru/events/president/news/80589"
+                          rel="alternate" type="text/html" />
+                </entry>
+                <entry>
+                    <title>Совещание по вопросам развития атомной энергетики</title>
+                    <published>2026-08-22T15:00:00+04:00</published>
+                    <link href="http://kremlin.ru/events/president/news/80563"
+                          rel="alternate" type="text/html" />
+                </entry>
+                <entry>
+                    <title>Заседание Совета по стратегическому развитию</title>
+                    <published>2026-08-21T14:00:00+04:00</published>
+                    <link href="http://kremlin.ru/events/president/news/80560"
+                          rel="alternate" type="text/html" />
+                </entry>
+            </feed>
+            """,
+            "xml",
+        )
+
+        result = _parse_feed(soup)
+
+        self.assertEqual(len(result), 3)
+        self.assertEqual(
+            result[0]["url"],
+            "http://kremlin.ru/events/president/news/80589",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

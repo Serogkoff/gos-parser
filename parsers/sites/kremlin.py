@@ -2,7 +2,6 @@
 
 from bs4 import BeautifulSoup
 
-from utils.filters import is_junk
 from utils.http_client import fetch_soup
 from utils.news import deduplicate_news
 
@@ -47,7 +46,11 @@ def _parse_feed(soup):
         publication_date = (
             date_tag.get_text(strip=True)[:10] if date_tag else ""
         )
-        if len(title) < 10 or not url or is_junk(title):
+        # В официальном Atom-канале уже нет пунктов меню и другого мусора.
+        # Общий HTML-фильтр здесь даёт ложные срабатывания: например,
+        # «Телефонный разговор» совпадает с «телефон», «по вопросам» —
+        # с «опрос», а «стратегическому» содержит «теги».
+        if len(title) < 10 or not url:
             continue
 
         item = {
