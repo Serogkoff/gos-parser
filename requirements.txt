@@ -4,6 +4,7 @@ gunicorn>=22,<24; platform_system != "Windows"
 lxml>=5.0,<7
 playwright>=1.45,<2
 psutil>=6.0,<8
+python-docx>=1.1,<2
 PySocks>=1.7,<2
 requests>=2.31,<3
 urllib3>=2.0,<3

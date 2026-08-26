@@ -1,3 +1,4 @@
+import io
 import sqlite3
 import tempfile
 import unittest
@@ -6,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import web_app
+from docx import Document
 from utils import storage
 
 
@@ -92,6 +94,13 @@ class PersonalBookmarksTests(unittest.TestCase):
         )
         self.assertEqual(saved.status_code, 200)
         self.assertEqual(saved.get_json()["count"], 1)
+        favorite = next(
+            folder for folder in storage.list_bookmark_folders(self.first["id"])
+            if folder["system_key"] == "favorites"
+        )
+        saved_item = storage.list_bookmarks(self.first["id"])[0]
+        self.assertEqual(saved_item["folder_id"], favorite["id"])
+        self.assertEqual(favorite["name"], "Моё избранное")
         page = first_client.get("/bookmarks")
         self.assertIn(self.item["title"], page.get_data(as_text=True))
 
@@ -378,6 +387,62 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertIn("data-folder-row", page)
         self.assertNotIn("Поднять подборку", page)
 
+    def test_collection_sidebar_scrolls_independently_and_toolbar_has_no_button(self):
+        client = web_app.app.test_client()
+        self._login(client, self.first["id"])
+
+        page = client.get("/").get_data(as_text=True)
+        collections = client.get("/collections").get_data(as_text=True)
+
+        self.assertNotIn('class="toolbar-link" href="/collections"', page)
+        self.assertIn("height:calc(100vh - 36px)", collections)
+        self.assertIn("overflow-y:auto", collections)
+        self.assertIn("overscroll-behavior:contain", collections)
+
+    def test_collection_can_be_sorted_and_exported_to_word(self):
+        folder = storage.create_bookmark_folder(self.first["id"], "Доклад шефу")
+        older = dict(
+            self.item,
+            title="Аналитика за понедельник",
+            url="https://www.kommersant.ru/doc/999002",
+            date="2026-08-20",
+        )
+        newer = dict(
+            self.item,
+            title="Сводка за вторник",
+            url="https://www.kommersant.ru/doc/999003",
+            date="2026-08-26",
+        )
+        storage.save_bookmark(self.first["id"], older, folder["id"])
+        storage.save_bookmark(self.first["id"], newer, folder["id"])
+        client = web_app.app.test_client()
+        self._login(client, self.first["id"])
+
+        sorted_page = client.get(
+            f"/collections?folder={folder['id']}&sort=oldest"
+        ).get_data(as_text=True)
+        self.assertLess(
+            sorted_page.index(older["title"]),
+            sorted_page.index(newer["title"]),
+        )
+        self.assertIn("Сначала старые", sorted_page)
+
+        response = client.get(
+            f"/collections/export.docx?folder={folder['id']}&sort=oldest"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "application/vnd.openxmlformats-officedocument",
+            response.content_type,
+        )
+        document = Document(io.BytesIO(response.data))
+        text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+        self.assertIn("Доклад шефу", text)
+        self.assertIn(older["title"], text)
+        self.assertIn("Источник: Коммерсантъ", text)
+        self.assertIn("Дата публикации: 2026-08-20", text)
+        self.assertIn(older["url"], text)
+
     def test_collection_schema_migrates_without_losing_existing_notes(self):
         legacy_database = Path(self.temporary.name) / "legacy-collections.db"
         # sqlite3.Connection как context manager фиксирует транзакцию, но сам
@@ -437,6 +502,7 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertEqual(notes[0]["body"], "Текст сохранён")
         self.assertEqual(notes[0]["source"], "")
         self.assertEqual(folders[0]["sort_order"], 0)
+        self.assertEqual(folders[0]["system_key"], "")
 
 
 if __name__ == "__main__":

@@ -43,6 +43,7 @@ class MinoboronyParserTests(unittest.TestCase):
         result = _parse_news_page(
             soup,
             now=datetime(2026, 7, 31, 14, 0),
+            base_url="https://z.mil.ru/news",
         )
 
         self.assertEqual(len(result), 1)
@@ -179,7 +180,7 @@ class MinoboronyParserTests(unittest.TestCase):
         self.assertEqual(
             [item["url"] for item in result],
             [
-                f"https://z.mil.ru/news/{NEW_ARTICLE_ID}",
+                f"https://mil.ru/news/{NEW_ARTICLE_ID}",
                 f"https://mil.ru/news/{ARTICLE_ID}",
             ],
         )
@@ -213,7 +214,53 @@ class MinoboronyParserTests(unittest.TestCase):
         self.assertEqual([item["url"] for item in result], [NEW_ARTICLE_URL])
         self.assertEqual(
             [call.args[0] for call in browser_fetch.call_args_list],
-            ["https://z.mil.ru/news", "https://mil.ru/news"],
+            ["https://mil.ru/news", "https://z.mil.ru/news"],
+        )
+
+    def test_empty_new_dom_uses_browser_even_when_legacy_feed_has_items(self):
+        legacy_soup = BeautifulSoup(
+            f"""
+            <article>
+              <time>25 августа 2026 10:30</time>
+              <a href="/news/{ARTICLE_ID}">
+                <h3>Публикация из резервной ленты Министерства обороны</h3>
+              </a>
+            </article>
+            """,
+            "html.parser",
+        )
+        modern_browser_soup = BeautifulSoup(
+            f"""
+            <article>
+              <time>26 августа 2026 12:00</time>
+              <a href="/news/{NEW_ARTICLE_ID}">
+                <h3>Свежая публикация с обновлённого сайта Министерства обороны</h3>
+              </a>
+            </article>
+            """,
+            "html.parser",
+        )
+
+        def fetch(url, *_args, **_kwargs):
+            return legacy_soup if url == "https://z.mil.ru/news" else None
+
+        def fetch_js(url, *_args, **_kwargs):
+            return modern_browser_soup if url == "https://mil.ru/news" else None
+
+        with mock.patch.object(
+            minoborony, "fetch_soup", side_effect=fetch
+        ), mock.patch.object(
+            minoborony, "fetch_soup_js", side_effect=fetch_js
+        ) as browser_fetch:
+            result = minoborony.parse()
+
+        self.assertEqual(
+            [item["url"] for item in result],
+            [NEW_ARTICLE_URL, ARTICLE_URL],
+        )
+        self.assertEqual(
+            [call.args[0] for call in browser_fetch.call_args_list],
+            ["https://mil.ru/news"],
         )
 
     def test_registered_as_government_source(self):

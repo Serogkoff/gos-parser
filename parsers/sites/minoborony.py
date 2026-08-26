@@ -15,10 +15,10 @@ from utils.news import deduplicate_news
 
 
 SOURCE_NAME = "Минобороны РФ"
-NEWS_URL = "https://z.mil.ru/news"
+NEWS_URL = "https://mil.ru/news"
 NEWS_URLS = (
     NEWS_URL,
-    "https://mil.ru/news",
+    "https://z.mil.ru/news",
 )
 MAX_AGE_DAYS = 30
 MAX_ITEMS = 60
@@ -30,11 +30,8 @@ ARTICLE_PATH = re.compile(
 
 def parse():
     news = []
-    empty_urls = []
-
-    # Минобороны публикует материалы одновременно через старый поддомен
-    # z.mil.ru и новый корневой домен mil.ru. Обе ленты нужны: наборы
-    # карточек могут временно различаться во время обновления сайта.
+    # Новый mil.ru проверяем первым, старый z.mil.ru оставляем резервом:
+    # во время обновления сайта наборы карточек на них могут различаться.
     for news_url in NEWS_URLS:
         soup = fetch_soup(
             news_url,
@@ -48,16 +45,9 @@ def parse():
             else []
         )
 
+        # Новый сайт иногда отдаёт карточки только после выполнения JavaScript.
+        # Старые новости с z.mil.ru не должны маскировать пустую новую ленту.
         if not page_news:
-            empty_urls.append(news_url)
-
-        news.extend(page_news)
-
-    # Если обе обычные страницы оказались пустыми, пробуем адреса браузером
-    # по очереди и останавливаемся на первом рабочем. Это сохраняет резервный
-    # домен, но не запускает два тяжёлых браузера на каждом цикле.
-    if not news:
-        for news_url in empty_urls:
             print(
                 "  ℹ️ Лента Минобороны пуста — "
                 f"пробую через браузер: {news_url}"
@@ -75,12 +65,9 @@ def parse():
                 if soup is not None
                 else []
             )
-            if page_news:
-                news.extend(page_news)
-                break
+        news.extend(page_news)
 
-    # Старую ленту разбираем первой, поэтому при наличии одной публикации
-    # на обоих доменах сохраняется прежняя ссылка z.mil.ru.
+    # Современную ленту разбираем первой, поэтому дубликат сохраняет mil.ru.
     news = deduplicate_news(news)
 
     print(f"  ✅ {len(news)}")

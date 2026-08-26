@@ -172,6 +172,7 @@ def _create_schema(connection):
             name TEXT NOT NULL COLLATE NOCASE,
             description TEXT NOT NULL DEFAULT '',
             visibility TEXT NOT NULL DEFAULT 'private',
+            system_key TEXT NOT NULL DEFAULT '',
             sort_order INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL DEFAULT '',
@@ -346,6 +347,14 @@ def _create_schema(connection):
                 "UPDATE bookmark_folders SET sort_order = ? WHERE id = ?",
                 [(position, folder["id"]) for position, folder in enumerate(folders)],
             )
+    if "system_key" not in columns:
+        connection.execute(
+            "ALTER TABLE bookmark_folders ADD COLUMN system_key TEXT NOT NULL DEFAULT ''"
+        )
+    connection.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_bookmark_folders_system
+           ON bookmark_folders(user_id, system_key) WHERE system_key != ''"""
+    )
 
     note_columns = {
         row["name"] for row in connection.execute(
@@ -504,6 +513,32 @@ def set_user_active(user_id, is_active):
             (int(is_active), user_id),
         )
     return load_user(user_id)
+
+
+def delete_user(user_id):
+    """Удаляет аккаунт и связанные личные данные, сохраняя последнего администратора."""
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Пользователь не найден") from error
+
+    initialize_database()
+    with STORAGE_LOCK, _connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT username, role, is_active FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("Пользователь не найден")
+        if row["role"] == "admin" and row["is_active"]:
+            active_admins = connection.execute(
+                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1"
+            ).fetchone()[0]
+            if active_admins <= 1:
+                raise ValueError("Нельзя удалить последнего активного администратора")
+        connection.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    return row["username"]
 
 
 def authenticate_user(username, password):
@@ -1249,7 +1284,7 @@ def list_bookmark_folders(user_id):
     with _connection() as connection:
         rows = connection.execute(
             """
-            SELECT f.id, f.name, f.description, f.visibility,
+            SELECT f.id, f.name, f.description, f.visibility, f.system_key,
                    f.sort_order, f.created_at, f.updated_at,
                    COUNT(DISTINCT b.id) AS bookmark_count,
                    COUNT(DISTINCT n.id) AS note_count
@@ -1269,6 +1304,7 @@ def list_bookmark_folders(user_id):
             "name": row["name"],
             "description": row["description"],
             "visibility": row["visibility"],
+            "system_key": row["system_key"],
             "sort_order": int(row["sort_order"]),
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -1277,6 +1313,55 @@ def list_bookmark_folders(user_id):
         }
         for row in rows
     ]
+
+
+def ensure_favorites_folder(user_id):
+    """Возвращает системную папку избранного и один раз переносит старые сердечки."""
+    user_id = _validated_user_id(user_id)
+    initialize_database()
+    now = datetime.now().isoformat(timespec="seconds")
+    with STORAGE_LOCK, _connection() as connection:
+        row = connection.execute(
+            """SELECT id FROM bookmark_folders
+               WHERE user_id = ? AND system_key = 'favorites'""",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            row = connection.execute(
+                """SELECT id FROM bookmark_folders
+                   WHERE user_id = ? AND name = ? COLLATE NOCASE""",
+                (user_id, "Моё избранное"),
+            ).fetchone()
+            if row is not None:
+                connection.execute(
+                    """UPDATE bookmark_folders
+                       SET system_key = 'favorites', updated_at = ? WHERE id = ?""",
+                    (now, row["id"]),
+                )
+            else:
+                sort_order = int(
+                    connection.execute(
+                        """SELECT COALESCE(MIN(sort_order), 0) - 1
+                           FROM bookmark_folders WHERE user_id = ?""",
+                        (user_id,),
+                    ).fetchone()[0]
+                )
+                cursor = connection.execute(
+                    """INSERT INTO bookmark_folders(
+                           user_id, name, system_key, sort_order, created_at, updated_at
+                       ) VALUES (?, 'Моё избранное', 'favorites', ?, ?, ?)""",
+                    (user_id, sort_order, now, now),
+                )
+                row = {"id": cursor.lastrowid}
+            # До появления системной папки сердечки хранились без папки.
+            connection.execute(
+                "UPDATE bookmarks SET folder_id = ? WHERE user_id = ? AND folder_id IS NULL",
+                (row["id"], user_id),
+            )
+        folder_id = int(row["id"])
+    return next(
+        item for item in list_bookmark_folders(user_id) if item["id"] == folder_id
+    )
 
 
 def create_bookmark_folder(user_id, name):
@@ -1318,7 +1403,8 @@ def rename_bookmark_folder(user_id, folder_id, name):
     try:
         with STORAGE_LOCK, _connection() as connection:
             cursor = connection.execute(
-                "UPDATE bookmark_folders SET name = ? WHERE id = ? AND user_id = ?",
+                """UPDATE bookmark_folders SET name = ?
+                   WHERE id = ? AND user_id = ? AND system_key = ''""",
                 (name, folder_id, user_id),
             )
             if cursor.rowcount != 1:
@@ -1338,7 +1424,8 @@ def delete_bookmark_folder(user_id, folder_id):
     initialize_database()
     with STORAGE_LOCK, _connection() as connection:
         cursor = connection.execute(
-            "DELETE FROM bookmark_folders WHERE id = ? AND user_id = ?",
+            """DELETE FROM bookmark_folders
+               WHERE id = ? AND user_id = ? AND system_key = ''""",
             (folder_id, user_id),
         )
         if cursor.rowcount != 1:
@@ -1396,6 +1483,12 @@ def update_collection(user_id, folder_id, name, description="", visibility="priv
     now = datetime.now().isoformat(timespec="seconds")
     try:
         with STORAGE_LOCK, _connection() as connection:
+            system_row = connection.execute(
+                "SELECT system_key, name FROM bookmark_folders WHERE id = ?",
+                (folder_id,),
+            ).fetchone()
+            if system_row["system_key"]:
+                name = system_row["name"]
             connection.execute(
                 """UPDATE bookmark_folders
                    SET name = ?, description = ?, visibility = ?, updated_at = ?
@@ -1449,6 +1542,7 @@ def load_collection(user_id, folder_id):
         "name": row["name"], "description": row["description"],
         "visibility": row["visibility"], "owner_name": row["owner_name"],
         "sort_order": int(row["sort_order"]),
+        "system_key": row["system_key"],
         "can_edit": bool(row["can_edit"]),
         "shared_users": [dict(id=int(item["id"]), username=item["username"])
                          for item in shared_rows],

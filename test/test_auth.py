@@ -325,6 +325,20 @@ class AuthenticationTests(unittest.TestCase):
             storage.authenticate_user("journalist", "replacement-2026")
         )
 
+        users_page = self.client.get("/admin/users").get_data(as_text=True)
+        self.assertIn("Удалить пользователя", users_page)
+        self.assertIn("password-toggle", users_page)
+        deleted = self.client.post(
+            "/admin/users",
+            data={
+                "csrf_token": token,
+                "action": "delete",
+                "user_id": user["id"],
+            },
+        )
+        self.assertEqual(deleted.status_code, 302)
+        self.assertIsNone(storage.load_user(user["id"]))
+
     def test_admin_can_open_source_panel_queue_refresh_and_pause_source(self):
         self._create_first_admin()
         with patch.object(
@@ -469,6 +483,13 @@ class AuthenticationTests(unittest.TestCase):
             storage.set_user_role(admin["id"], "user")
         self.assertTrue(storage.load_user(admin["id"])["is_active"])
         self.assertEqual(storage.load_user(admin["id"])["role"], "admin")
+        with self.assertRaisesRegex(ValueError, "последнего активного"):
+            storage.delete_user(admin["id"])
+
+    def test_login_page_has_show_password_control(self):
+        page = self.client.get("/setup").get_data(as_text=True)
+        self.assertIn("password-toggle", page)
+        self.assertIn("Показать пароль", page)
 
     def test_external_next_url_is_not_accepted(self):
         self.assertEqual(web_app.safe_next_url("https://example.com"), "/")

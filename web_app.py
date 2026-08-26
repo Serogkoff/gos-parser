@@ -1,6 +1,7 @@
 import json
 import re
 import secrets
+from io import BytesIO
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import quote, urlencode
@@ -14,6 +15,7 @@ from flask import (
     redirect,
     render_template_string,
     request,
+    send_file,
     session,
     url_for,
 )
@@ -49,8 +51,10 @@ from utils.storage import (
     create_bookmark_folder,
     delete_collection_note,
     create_user,
+    delete_user,
     delete_bookmark_folder,
     enqueue_parser_job,
+    ensure_favorites_folder,
     find_news_by_url,
     list_users,
     list_database_backups,
@@ -161,7 +165,7 @@ AUTH_HTML = """
         label{display:block;margin-top:15px;color:#514c45;font-size:13px;font-weight:650}input{width:100%;height:48px;margin-top:7px;padding:0 13px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}input:focus{outline:3px solid rgba(228,79,69,.18);border-color:var(--coral)}
         button{width:100%;height:49px;margin-top:23px;border:0;border-radius:6px;color:#fff;background:var(--coral);font:700 15px inherit;cursor:pointer}button:hover{background:#c93c35}
         .error{margin:18px 0 0;padding:12px;color:#a72d27;border-left:3px solid var(--coral);background:#fff1ed;font-size:13px}
-        .hint{margin:13px 0 0;font-size:11px}.brand{margin-bottom:30px;font-size:19px;font-weight:800;letter-spacing:-.035em}
+        .hint{margin:13px 0 0;font-size:11px}.brand{margin-bottom:30px;font-size:19px;font-weight:800;letter-spacing:-.035em}.password-wrap{position:relative;display:block}.password-wrap input{padding-right:48px}.password-toggle{position:absolute;right:5px;top:12px;width:38px;height:38px;min-height:0;margin:0;padding:0;border:0;color:var(--muted);background:transparent}.password-toggle:hover{color:var(--coral);background:transparent}.password-toggle::before{content:"";display:block;width:21px;height:21px;margin:auto;background:currentColor;mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 5c5.5 0 9.5 5.1 9.7 5.3a2.7 2.7 0 0 1 0 3.4C21.5 13.9 17.5 19 12 19S2.5 13.9 2.3 13.7a2.7 2.7 0 0 1 0-3.4C2.5 10.1 6.5 5 12 5Zm0 2c-4.4 0-7.8 4.2-8.1 4.6a.7.7 0 0 0 0 .8C4.2 12.8 7.6 17 12 17s7.8-4.2 8.1-4.6a.7.7 0 0 0 0-.8C19.8 11.2 16.4 7 12 7Zm0 1.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z'/%3E%3C/svg%3E");-webkit-mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 5c5.5 0 9.5 5.1 9.7 5.3a2.7 2.7 0 0 1 0 3.4C21.5 13.9 17.5 19 12 19S2.5 13.9 2.3 13.7a2.7 2.7 0 0 1 0-3.4C2.5 10.1 6.5 5 12 5Zm0 2c-4.4 0-7.8 4.2-8.1 4.6a.7.7 0 0 0 0 .8C4.2 12.8 7.6 17 12 17s7.8-4.2 8.1-4.6a.7.7 0 0 0 0-.8C19.8 11.2 16.4 7 12 7Zm0 1.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z'/%3E%3C/svg%3E")}
     </style>
 </head>
 <body><main class="card">
@@ -193,7 +197,26 @@ AUTH_HTML = """
     </form>
     {% if error %}<div class="error">{{error}}</div>{% endif %}
     {% if mode == 'setup' %}<p class="hint">Пароль хранится в SQLite только в виде защищённого хеша.</p>{% endif %}
-</main></body></html>
+</main><script>
+document.querySelectorAll('input[type="password"]').forEach(input => {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'password-wrap';
+    input.parentNode.insertBefore(wrapper, input);
+    wrapper.appendChild(input);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'password-toggle';
+    toggle.setAttribute('aria-label', 'Показать пароль');
+    toggle.title = 'Показать пароль';
+    toggle.addEventListener('click', () => {
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        toggle.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
+        toggle.title = show ? 'Скрыть пароль' : 'Показать пароль';
+    });
+    wrapper.appendChild(toggle);
+});
+</script></body></html>
 """
 
 
@@ -209,7 +232,7 @@ SETTINGS_HTML = """
         *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}.shell{width:min(1050px,calc(100% - 34px));margin:auto;padding:30px 0 80px}
         a{color:inherit}.back{color:var(--muted);text-decoration:none}.back:hover{color:var(--coral)}header{display:flex;align-items:end;justify-content:space-between;gap:20px;margin:34px 0 25px}h1{margin:0;font-size:clamp(36px,5vw,58px);letter-spacing:-.05em}.subtitle{margin:8px 0 0;color:var(--muted)}
         .card{padding:25px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.card h2{margin:0 0 18px;font-size:21px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.wide{grid-column:1/-1}label{display:grid;gap:7px;color:#5e574e;font-size:12px;font-weight:650}input,select{width:100%;height:44px;padding:0 12px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}button,.button{min-height:42px;padding:0 15px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;font:650 13px inherit;cursor:pointer}.primary{color:#fff;background:var(--coral)}button:disabled{cursor:not-allowed;opacity:.42}.message,.error{margin:0 0 18px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}
-        .users{display:grid;gap:12px;margin-top:18px}.user{display:grid;grid-template-columns:minmax(150px,1fr) 145px 130px minmax(230px,1.4fr);gap:14px;align-items:center;padding:18px;border:1px solid var(--line);border-radius:7px;background:var(--surface)}.identity strong{display:block}.identity small,.last-login{color:var(--muted);font-size:11px}.status{width:max-content;padding:5px 8px;border-radius:999px;color:var(--green);background:#edf6ef;font-size:10px;font-weight:750;text-transform:uppercase}.status.off{color:#9d302a;background:#fff0ed}.inline{display:flex;gap:7px;align-items:end}.inline label{flex:1}.inline button{flex:0 0 auto}.role-form{display:flex;gap:7px}.role-form select{min-width:0}.top-actions{display:flex;gap:9px;align-items:center}.button{display:inline-flex;align-items:center;text-decoration:none}
+        .users{display:grid;gap:12px;margin-top:18px}.user{display:grid;grid-template-columns:minmax(150px,1fr) 145px 130px minmax(230px,1.4fr);gap:14px;align-items:center;padding:18px;border:1px solid var(--line);border-radius:7px;background:var(--surface)}.identity strong{display:block}.identity small,.last-login{color:var(--muted);font-size:11px}.status{width:max-content;padding:5px 8px;border-radius:999px;color:var(--green);background:#edf6ef;font-size:10px;font-weight:750;text-transform:uppercase}.status.off{color:#9d302a;background:#fff0ed}.inline{display:flex;gap:7px;align-items:end}.inline label{flex:1}.inline button{flex:0 0 auto}.role-form{display:flex;gap:7px}.role-form select{min-width:0}.top-actions{display:flex;gap:9px;align-items:center}.button{display:inline-flex;align-items:center;text-decoration:none}.danger{color:#a52f29;border-color:#dca39d}.password-wrap{position:relative;display:block}.password-wrap input{padding-right:46px}.password-toggle{position:absolute;right:4px;top:3px;width:38px;height:38px;min-height:0;padding:0;border:0;color:var(--muted);background:transparent}.password-toggle:hover{color:var(--coral)}.password-toggle::before{content:"";display:block;width:20px;height:20px;margin:auto;background:currentColor;mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 5c5.5 0 9.5 5.1 9.7 5.3a2.7 2.7 0 0 1 0 3.4C21.5 13.9 17.5 19 12 19S2.5 13.9 2.3 13.7a2.7 2.7 0 0 1 0-3.4C2.5 10.1 6.5 5 12 5Zm0 2c-4.4 0-7.8 4.2-8.1 4.6a.7.7 0 0 0 0 .8C4.2 12.8 7.6 17 12 17s7.8-4.2 8.1-4.6a.7.7 0 0 0 0-.8C19.8 11.2 16.4 7 12 7Zm0 1.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z'/%3E%3C/svg%3E");-webkit-mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 5c5.5 0 9.5 5.1 9.7 5.3a2.7 2.7 0 0 1 0 3.4C21.5 13.9 17.5 19 12 19S2.5 13.9 2.3 13.7a2.7 2.7 0 0 1 0-3.4C2.5 10.1 6.5 5 12 5Zm0 2c-4.4 0-7.8 4.2-8.1 4.6a.7.7 0 0 0 0 .8C4.2 12.8 7.6 17 12 17s7.8-4.2 8.1-4.6a.7.7 0 0 0 0-.8C19.8 11.2 16.4 7 12 7Zm0 1.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z'/%3E%3C/svg%3E")}
         @media(max-width:850px){.user{grid-template-columns:1fr 1fr}.user-actions{grid-column:1/-1}}@media(max-width:580px){header{align-items:start;flex-direction:column}.grid,.user{grid-template-columns:1fr}.wide,.user-actions{grid-column:auto}.inline,.role-form{align-items:stretch;flex-direction:column}}
     </style>
 </head>
@@ -270,12 +293,32 @@ SETTINGS_HTML = """
                     <button type="submit" {{'disabled' if user.id == current_user.id else ''}}>{{'Отключить вход' if user.is_active else 'Включить вход'}}</button>
                     <span class="last-login">Последний вход: {{user.last_login_at.replace('T',' ') if user.last_login_at else 'ещё не входил'}}</span>
                 </form>
+                {% if user.id != current_user.id %}<form method="post" style="margin-top:8px" onsubmit="return confirm('Удалить этого пользователя и все его личные данные?')"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{user.id}}"><button class="danger" type="submit">Удалить пользователя</button></form>{% endif %}
             </div>
         </article>
         {% endfor %}
     </section>
     {% endif %}
-</main></body></html>
+</main><script>
+document.querySelectorAll('input[type="password"]').forEach(input => {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'password-wrap';
+    input.parentNode.insertBefore(wrapper, input);
+    wrapper.appendChild(input);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'password-toggle';
+    toggle.setAttribute('aria-label', 'Показать пароль');
+    toggle.title = 'Показать пароль';
+    toggle.addEventListener('click', () => {
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        toggle.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
+        toggle.title = show ? 'Скрыть пароль' : 'Показать пароль';
+    });
+    wrapper.appendChild(toggle);
+});
+</script></body></html>
 """
 
 
@@ -473,7 +516,8 @@ BOOKMARKS_HTML = """
         .article-read-toggle>span{display:none}
         .article-read-toggle::before{content:"";display:block;width:28px;height:28px;margin:auto;background:currentColor;mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 5.5c2.7-.9 5.3-.4 8 1.3v12c-2.7-1.7-5.3-2.1-8-1.2zM20.5 5.5c-2.7-.9-5.3-.4-8 1.3v12c2.7-1.7 5.3-2.1 8-1.2z'/%3E%3C/svg%3E");-webkit-mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 5.5c2.7-.9 5.3-.4 8 1.3v12c-2.7-1.7-5.3-2.1-8-1.2zM20.5 5.5c-2.7-.9-5.3-.4-8 1.3v12c2.7-1.7 5.3-2.1 8-1.2z'/%3E%3C/svg%3E")}
         .article-read-toggle[aria-pressed="true"]::before{mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 4.5h11.5A2.5 2.5 0 0 1 19 7v12H6.5A2.5 2.5 0 0 1 4 16.5V6a1.5 1.5 0 0 1 1-1.5Z'/%3E%3Cpath d='M4 16.5A2.5 2.5 0 0 1 6.5 14H19M8 9l1.7 1.7L13 7.5'/%3E%3C/svg%3E");-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 4.5h11.5A2.5 2.5 0 0 1 19 7v12H6.5A2.5 2.5 0 0 1 4 16.5V6a1.5 1.5 0 0 1 1-1.5Z'/%3E%3Cpath d='M4 16.5A2.5 2.5 0 0 1 6.5 14H19M8 9l1.7 1.7L13 7.5'/%3E%3C/svg%3E")}
-        @media(max-width:800px){.layout{grid-template-columns:1fr}.panel{position:static}.edit,.composer-grid,.note-edit-grid{grid-template-columns:1fr}.note-edit-grid .wide{grid-column:auto}.top{align-items:flex-start;flex-direction:column}}
+        .panel{height:calc(100vh - 36px);max-height:calc(100vh - 36px);overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.panel-heading{position:sticky;top:0;z-index:2;background:var(--surface)}.collection-head-main{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.collection-actions{display:flex;align-items:center;gap:8px}.export-button{min-height:38px;padding:0 12px;display:inline-flex;align-items:center;border:1px solid var(--coral);border-radius:6px;color:var(--coral);font-size:12px;font-weight:700;white-space:nowrap}.sort-bar{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:10px 24px;border-bottom:1px solid var(--line);background:#faf6ef}.sort-bar label{display:flex;align-items:center;gap:8px}.sort-bar select{width:auto;min-width:175px}
+        @media(max-width:800px){.layout{grid-template-columns:1fr}.panel{position:static;height:auto;max-height:none;overflow:visible}.collection-head-main{flex-direction:column}.sort-bar{justify-content:stretch}.sort-bar label,.sort-bar select{width:100%}.edit,.composer-grid,.note-edit-grid{grid-template-columns:1fr}.note-edit-grid .wide{grid-column:auto}.top{align-items:flex-start;flex-direction:column}}
     </style>
 </head>
 <body><main class="shell">
@@ -490,17 +534,18 @@ BOOKMARKS_HTML = """
             {% if shared_folders %}<div class="section-label">Доступные мне</div><nav class="folder-list">{% for folder in shared_folders %}<a class="folder {{'active' if selected_folder == folder.id|string else ''}}" href="/collections?folder={{folder.id}}"><span>{{folder.name}}<small>{{folder.owner_name}}</small></span><b>{{folder.bookmark_count + folder.note_count}}</b></a>{% endfor %}</nav>{% endif %}
             {% if selected_folder not in ('all','unfiled') and selected_folder_data and selected_folder_data.can_edit %}
             <div class="folder-tools">
-                <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="update_collection"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input name="name" value="{{selected_folder_data.name}}" maxlength="80" required><button type="submit">Сохранить название</button></form>
-                <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_folder"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><button type="submit">Удалить папку</button></form>
+                {% if not selected_folder_data.system_key %}<form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="update_collection"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input name="name" value="{{selected_folder_data.name}}" maxlength="80" required><button type="submit">Сохранить название</button></form>
+                <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_folder"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><button type="submit">Удалить папку</button></form>{% else %}<small>Системная папка для новостей, отмеченных сердечком.</small>{% endif %}
             </div>
             <form class="share" method="post"><h3>Доступ к подборке</h3><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="share_collection"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><label>Описание<textarea name="description" maxlength="1000">{{selected_folder_data.description}}</textarea></label><label>Кто видит<select name="visibility"><option value="private" {{'selected' if selected_folder_data.visibility == 'private' else ''}}>Только я</option><option value="all" {{'selected' if selected_folder_data.visibility == 'all' else ''}}>Все пользователи</option><option value="selected" {{'selected' if selected_folder_data.visibility == 'selected' else ''}}>Выбранные пользователи</option></select></label><div class="share-users">{% for account in available_users %}<label class="share-user"><input type="checkbox" name="shared_user_ids" value="{{account.id}}" {{'checked' if account.id in selected_shared_ids else ''}}>{{account.username}}</label>{% endfor %}</div><button class="primary" type="submit">Сохранить доступ</button></form>
             {% endif %}
             <form class="create" method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="create_folder"><label>Новая подборка<input name="name" maxlength="80" placeholder="Например: Выборы в Японии" required></label><button class="primary" type="submit">Создать подборку</button></form>
         </aside>
         <section class="feed">
-            <div class="collection-head"><h2>{{selected_title}}</h2>{% if selected_folder_data %}<p>{{selected_folder_data.description or 'Описание пока не добавлено'}}</p><p class="owner">Владелец: {{selected_folder_data.owner_name}} · {{'редактирование' if selected_folder_data.can_edit else 'только просмотр'}}</p>{% endif %}</div>
+            <div class="collection-head"><div class="collection-head-main"><div><h2>{{selected_title}}</h2>{% if selected_folder_data %}<p>{{selected_folder_data.description or 'Описание пока не добавлено'}}</p><p class="owner">Владелец: {{selected_folder_data.owner_name}} · {{'редактирование' if selected_folder_data.can_edit else 'только просмотр'}}</p>{% endif %}</div>{% if selected_folder_data %}<div class="collection-actions"><a class="export-button" href="/collections/export.docx?folder={{selected_folder_data.id}}&sort={{sort_mode}}">Скачать Word</a></div>{% endif %}</div></div>
             {% if selected_folder_data and not selected_folder_data.can_edit %}<div class="readonly">Подборка открыта тебе владельцем. Новые материалы появятся здесь автоматически.</div>{% endif %}
-            <form class="search" method="get"><input type="hidden" name="folder" value="{{selected_folder}}"><input type="search" name="q" value="{{search_query}}" maxlength="200" placeholder="Поиск по заголовку, источнику, тексту и комментариям"><button type="submit">Найти</button>{% if search_query %}<a class="search-clear" href="/collections?folder={{selected_folder}}">Сбросить</a>{% endif %}</form>
+            <form class="search" method="get"><input type="hidden" name="folder" value="{{selected_folder}}"><input type="hidden" name="sort" value="{{sort_mode}}"><input type="search" name="q" value="{{search_query}}" maxlength="200" placeholder="Поиск по заголовку, источнику, тексту и комментариям"><button type="submit">Найти</button>{% if search_query %}<a class="search-clear" href="/collections?folder={{selected_folder}}&sort={{sort_mode}}">Сбросить</a>{% endif %}</form>
+            <form class="sort-bar" method="get"><input type="hidden" name="folder" value="{{selected_folder}}">{% if search_query %}<input type="hidden" name="q" value="{{search_query}}">{% endif %}<label>Сортировка<select name="sort" onchange="this.form.submit()">{% for value, label in sort_options.items() %}<option value="{{value}}" {{'selected' if sort_mode == value else ''}}>{{label}}</option>{% endfor %}</select></label></form>
             {% if selected_folder_data and selected_folder_data.can_edit %}<div class="composer" data-article-composer><div class="composer-head"><strong class="composer-label">Статьи</strong><button class="primary composer-open" type="button" data-composer-open aria-expanded="false">+ Добавить статью</button></div><form class="composer-form" data-composer-form method="post" hidden><h3>Новая статья</h3><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="add_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><div class="composer-grid"><label>Ссылка<input type="url" name="url" placeholder="https://…"></label><label>Источник<input name="source" maxlength="300" placeholder="Например: Коммерсантъ"></label><label>Дата публикации<input type="date" name="publication_date"></label><label>Заголовок<input name="title" maxlength="200" required></label><label class="wide">Текст<textarea name="body" maxlength="20000" placeholder="Вставь текст статьи или напиши свой текст"></textarea></label><label class="wide">Комментарий<textarea name="comment" maxlength="5000" placeholder="Что важно в этой статье?"></textarea></label></div><div class="composer-actions"><button class="primary" type="submit">Сохранить в подборку</button><button type="button" data-composer-cancel>Отмена</button></div></form></div>{% endif %}
             {% for note in notes %}<article class="note-card"><button class="article-read-toggle" type="button" data-article-read data-folder-id="{{selected_folder_data.id}}" data-note-id="{{note.id}}" aria-pressed="{{'true' if note.is_read else 'false'}}" aria-label="{{'Отметить непрочитанной' if note.is_read else 'Отметить прочитанной'}}" title="{{'Прочитано — нажми, чтобы отменить' if note.is_read else 'Не прочитано — нажми, чтобы отметить'}}"><span aria-hidden="true">{{'📕' if note.is_read else '📖'}}</span></button><div class="meta"><span class="badge">Статья</span>{% if note.publication_date %}<time>{{note.publication_date}}</time>{% endif %}</div><h3>{{note.title}}</h3><div class="material-footer"><span>{{note.source or 'Источник не указан'}}</span>{% if note.url %}<a class="original" href="{{note.url}}" target="_blank" rel="noopener">Оригинал ↗</a>{% endif %}</div>{% if note.body_preview or note.body_remainder %}<div class="note-text" data-expandable-note><div class="note-text-part">{{note.body_preview}}{% if note.body_remainder %}<span class="note-remainder" data-note-remainder hidden>{{note.body_remainder}}</span>{% endif %}</div>{% if note.body_remainder %}<button class="note-toggle" type="button" data-note-toggle aria-expanded="false">Читать полностью</button>{% endif %}</div>{% endif %}{% if note.comment %}<div class="comment">{{note.comment}}</div>{% endif %}{% if selected_folder_data.can_edit %}<div class="note-actions"><button class="remove" type="button" data-note-edit-toggle aria-expanded="false">Изменить</button><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input type="hidden" name="note_id" value="{{note.id}}"><button class="remove" type="submit">Удалить статью</button></form></div><form class="note-edit-form" data-note-editor method="post" hidden><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="update_note"><input type="hidden" name="folder_id" value="{{selected_folder_data.id}}"><input type="hidden" name="note_id" value="{{note.id}}"><div class="note-edit-grid"><label>Ссылка<input type="url" name="url" value="{{note.url}}" placeholder="https://…"></label><label>Источник<input name="source" value="{{note.source}}" maxlength="300"></label><label>Дата публикации<input type="date" name="publication_date" value="{{note.publication_date}}"></label><label>Заголовок<input name="title" value="{{note.title}}" maxlength="200" required></label><label class="wide">Текст<textarea name="body" maxlength="20000">{{note.body}}</textarea></label><label class="wide">Комментарий<textarea name="comment" maxlength="5000">{{note.comment}}</textarea></label></div><button class="primary" type="submit">Сохранить изменения</button></form>{% endif %}</article>{% endfor %}
             {% if bookmarks %}
@@ -994,9 +1039,6 @@ HTML = """
         </form>
         {% if source_filters %}<div class="source-summary"><span>Выбрано: {{source_filters|length}}</span><a href="{{clear_sources_url}}">Сбросить</a></div>{% endif %}
         <button class="tool-button {{'active' if keyword_filter else ''}}" id="keywords-open" type="button">✣ {{keyword_filter or 'Ключевые слова'}}</button>
-        <a class="tool-button" href="/collections">
-            ♡ Подборки <span class="saved-count {{'hidden' if not bookmark_count else ''}}" id="saved-count">{{bookmark_count}}</span>
-        </a>
     </section>
 
     <div class="content-grid">
@@ -1293,8 +1335,10 @@ HTML = """
             button.textContent = active ? '♥' : '♡';
             button.setAttribute('aria-label', active ? 'Удалить из сохранённых' : 'Сохранить новость');
         });
-        savedCount.textContent = saved.size;
-        savedCount.classList.toggle('hidden', saved.size === 0);
+        if(savedCount){
+            savedCount.textContent = saved.size;
+            savedCount.classList.toggle('hidden', saved.size === 0);
+        }
     }
 
     async function migrateLegacySaved(){
@@ -2012,7 +2056,7 @@ def account():
 
 @app.route("/admin/users", methods=["GET", "POST"])
 def admin_users():
-    """Управляет аккаунтами, не удаляя связанные пользовательские данные."""
+    """Управляет аккаунтами и позволяет администратору удалить чужой аккаунт."""
     administrator = current_user()
     if not administrator or administrator.get("role") != "admin":
         abort(403)
@@ -2052,6 +2096,11 @@ def admin_users():
                         target["id"], request.form.get("password", "")
                     )
                     message = f"Пароль пользователя {updated['username']} изменён"
+                elif action == "delete":
+                    if target["id"] == administrator["id"]:
+                        raise ValueError("Нельзя удалить собственный аккаунт")
+                    deleted_name = delete_user(target["id"])
+                    message = f"Пользователь {deleted_name} удалён"
                 else:
                     raise ValueError("Неизвестное действие")
         except ValueError as operation_error:
@@ -2420,13 +2469,113 @@ def _prepare_collection_note(note):
     return prepared
 
 
+COLLECTION_SORTS = {
+    "newest": "Сначала новые",
+    "oldest": "Сначала старые",
+    "title": "По заголовку",
+    "source": "По источнику",
+}
+
+
+def _collection_materials(bookmarks, notes, sort_mode="newest"):
+    """Объединяет статьи из ленты и добавленные вручную материалы для сортировки."""
+    materials = []
+    for note in notes:
+        item = dict(note)
+        item["kind"] = "note"
+        item["date"] = item.get("publication_date", "")
+        materials.append(item)
+    for bookmark in bookmarks:
+        item = dict(bookmark)
+        item["kind"] = "bookmark"
+        item["publication_date"] = item.get("date", "")
+        materials.append(item)
+
+    sort_mode = sort_mode if sort_mode in COLLECTION_SORTS else "newest"
+    if sort_mode in {"title", "source"}:
+        field = sort_mode
+        return sorted(
+            materials,
+            key=lambda item: (
+                str(item.get(field, "") or "").casefold(),
+                str(item.get("title", "") or "").casefold(),
+            ),
+        )
+
+    def date_key(item):
+        return (
+            bool(item.get("publication_date")),
+            str(item.get("publication_date", "") or ""),
+            str(item.get("updated_at", "") or item.get("created_at", "") or ""),
+            int(item.get("id", 0)),
+        )
+
+    return sorted(materials, key=date_key, reverse=sort_mode == "newest")
+
+
+def _collection_export_name(value):
+    safe = re.sub(r"[^0-9A-Za-zА-Яа-яЁё_-]+", "-", str(value or "")).strip("-")
+    return (safe or "podborka")[:80] + ".docx"
+
+
+@app.get("/collections/export.docx")
+def export_collection_docx():
+    """Скачивает доступную подборку как Word-документ со ссылками и реквизитами."""
+    from docx import Document
+    from docx.shared import Pt
+
+    user = current_user()
+    folder_id = request.args.get("folder")
+    collection = load_collection(user["id"], folder_id)
+    if collection is None:
+        abort(404)
+    materials = _collection_materials(
+        list_collection_bookmarks(user["id"], folder_id),
+        list_collection_notes(user["id"], folder_id),
+        request.args.get("sort", "newest"),
+    )
+
+    document = Document()
+    document.styles["Normal"].font.name = "Arial"
+    document.styles["Normal"].font.size = Pt(11)
+    document.add_heading(collection["name"], level=0)
+    if collection.get("description"):
+        document.add_paragraph(collection["description"])
+    document.add_paragraph(f"Материалов: {len(materials)}")
+    for number, item in enumerate(materials, start=1):
+        document.add_heading(f"{number}. {item.get('title') or 'Без заголовка'}", level=1)
+        document.add_paragraph(f"Источник: {item.get('source') or 'не указан'}")
+        document.add_paragraph(
+            f"Дата публикации: {item.get('publication_date') or 'не указана'}"
+        )
+        document.add_paragraph(f"Ссылка: {item.get('url') or 'не указана'}")
+
+    output = BytesIO()
+    document.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=_collection_export_name(collection["name"]),
+        mimetype=(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ),
+    )
+
+
 @app.route("/bookmarks", methods=["GET", "POST"])
 @app.route("/collections", methods=["GET", "POST"])
 def bookmarks_page():
     """Показывает рабочие подборки, общий доступ, ссылки и заметки."""
     user = current_user()
     user_id = user["id"]
-    selected_folder = str(request.args.get("folder", "unfiled")).strip() or "unfiled"
+    favorite_folder = ensure_favorites_folder(user_id)
+    selected_folder = str(
+        request.args.get("folder", favorite_folder["id"])
+    ).strip() or str(favorite_folder["id"])
+    sort_mode = str(request.args.get("sort", "newest")).strip().casefold()
+    if sort_mode not in COLLECTION_SORTS:
+        sort_mode = "newest"
     folders = list_bookmark_folders(user_id)
     folder_by_id = {str(folder["id"]): folder for folder in folders}
     shared_folders = list_shared_collections(user_id)
@@ -2472,7 +2621,7 @@ def bookmarks_page():
             elif action == "delete_folder":
                 delete_bookmark_folder(user_id, request.form.get("folder_id"))
                 message = "Подборка удалена, её новости перенесены в «Без подборки»"
-                selected_folder = "unfiled"
+                selected_folder = str(favorite_folder["id"])
             elif action == "add_external":
                 save_external_bookmark(
                     user_id, request.form.get("folder_id"), request.form.get("url"),
@@ -2524,12 +2673,13 @@ def bookmarks_page():
                 url_for(
                     "bookmarks_page",
                     folder=selected_folder,
+                    sort=sort_mode,
                     error=str(operation_error),
                 )
             )
-        return redirect(
-            url_for("bookmarks_page", folder=selected_folder, message=message)
-        )
+        return redirect(url_for(
+            "bookmarks_page", folder=selected_folder, sort=sort_mode, message=message
+        ))
 
     search_query = str(request.args.get("q", "")).strip()[:200]
     all_bookmarks = list_bookmarks(user_id)
@@ -2563,6 +2713,9 @@ def bookmarks_page():
         prepared["is_read"] = int(item["id"]) in read_note_ids
         prepared_notes.append(prepared)
     notes = prepared_notes
+    materials = _collection_materials(bookmarks, notes, sort_mode)
+    notes = [item for item in materials if item["kind"] == "note"]
+    bookmarks = [item for item in materials if item["kind"] == "bookmark"]
     if selected_folder_data:
         selected_title = selected_folder_data["name"]
     elif selected_folder == "unfiled":
@@ -2581,10 +2734,13 @@ def bookmarks_page():
         shared_folders=shared_folders,
         bookmarks=bookmarks,
         notes=notes,
+        materials=materials,
         selected_folder=selected_folder,
         selected_folder_data=selected_folder_data,
         selected_title=selected_title,
         search_query=search_query,
+        sort_mode=sort_mode,
+        sort_options=COLLECTION_SORTS,
         total_count=len(all_bookmarks),
         unfiled_count=sum(item["folder_id"] is None for item in all_bookmarks),
         available_users=active_users,
@@ -3100,7 +3256,7 @@ def keywords_api():
 
 @app.route("/api/bookmarks", methods=["GET", "POST", "DELETE"])
 def bookmarks_api():
-    """Быстро переключает личное сердечко у новости в общей ленте."""
+    """Переключает сердечко и складывает выбранную новость в «Моё избранное»."""
     user = current_user()
     user_id = user["id"]
     if request.method == "GET":
@@ -3116,6 +3272,7 @@ def bookmarks_api():
     if request.method == "DELETE":
         remove_bookmark(user_id, url)
     else:
+        favorite_folder = ensure_favorites_folder(user_id)
         legacy_urls = payload.get("urls")
         if isinstance(legacy_urls, list):
             # Старый интерфейс хранил сердечки только в localStorage.
@@ -3123,12 +3280,12 @@ def bookmarks_api():
             for legacy_url in legacy_urls[:500]:
                 item = find_news_by_url(str(legacy_url).strip())
                 if item is not None:
-                    save_bookmark(user_id, item)
+                    save_bookmark(user_id, item, favorite_folder["id"])
         else:
             item = find_news_by_url(url)
             if item is None:
                 return jsonify(error="Новость не найдена"), 404
-            save_bookmark(user_id, item)
+            save_bookmark(user_id, item, favorite_folder["id"])
     return jsonify(
         urls=bookmarked_urls(user_id),
         count=count_bookmarks(user_id),
