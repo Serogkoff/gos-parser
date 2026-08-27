@@ -1055,7 +1055,12 @@ HTML = """
             {% for item in news %}
                 <article class="news-card {{'match' if item.keywords else ''}}"
                          data-id="{{item.url}}" data-source="{{item.source}}"
+                         data-tv-date="{{item.date or item.parsed_date or ''}}"
                          data-search="{{(item.title + ' ' + item.source + ' ' + (item.keywords|join(' ')))|lower}}">
+                    <div class="jptv-source-badge" aria-hidden="true">
+                        <strong>{{item.source}}</strong>
+                        <small>{{item.date or item.parsed_date or ''}}</small>
+                    </div>
                     {% if item.keywords %}
                     <div class="match-label">✣ Совпадение с ключевыми словами</div>
                     {% endif %}

@@ -43,6 +43,23 @@ class JapanTvModeTests(unittest.TestCase):
         self.assertIn("article h1", script)
         self.assertIn(".body", script)
 
+    def test_reference_art_is_used_by_the_exact_tv_layout(self):
+        stylesheet = (ROOT / "static" / "japan-tv.css").read_text(encoding="utf-8")
+
+        self.assertIn("japan-tv-reference.png", stylesheet)
+        self.assertIn("grid-template-rows:224px 66px", stylesheet)
+        self.assertIn('content:"キタコレ!"', stylesheet)
+        self.assertTrue((ROOT / "static" / "japan-tv-reference.png").is_file())
+
+    def test_news_cards_use_reference_backgrounds_and_stickers(self):
+        stylesheet = (ROOT / "static" / "japan-tv.css").read_text(encoding="utf-8")
+
+        for name in ("blue", "green", "check", "purple", "orange"):
+            asset = ROOT / "static" / f"jptv-card-{name}.png"
+            self.assertTrue(asset.is_file(), name)
+            self.assertIn(asset.name, stylesheet)
+        self.assertIn('class="jptv-source-badge"', web_app.HTML)
+
 
 if __name__ == "__main__":
     unittest.main()
