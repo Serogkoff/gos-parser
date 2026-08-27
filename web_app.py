@@ -1055,12 +1055,7 @@ HTML = """
             {% for item in news %}
                 <article class="news-card {{'match' if item.keywords else ''}}"
                          data-id="{{item.url}}" data-source="{{item.source}}"
-                         data-tv-date="{{item.date or item.parsed_date or ''}}"
                          data-search="{{(item.title + ' ' + item.source + ' ' + (item.keywords|join(' ')))|lower}}">
-                    <div class="jptv-source-badge" aria-hidden="true">
-                        <strong>{{item.source}}</strong>
-                        <small>{{item.date or item.parsed_date or ''}}</small>
-                    </div>
                     {% if item.keywords %}
                     <div class="match-label">✣ Совпадение с ключевыми словами</div>
                     {% endif %}
@@ -1223,6 +1218,7 @@ HTML = """
     let unreadState;
     let brandClicks = 0;
     let brandClickTimer = null;
+    let brandHideTimer = null;
 
     brandHome.addEventListener('click', event => {
         if(
@@ -1236,11 +1232,16 @@ HTML = """
         brandClicks += 1;
         clearTimeout(brandClickTimer);
 
-        if(brandClicks >= 4){
+        if(brandClicks >= 5){
             brandClicks = 0;
-            if(typeof window.toggleJapanTVMode === 'function'){
-                window.toggleJapanTVMode();
-            }
+            clearTimeout(brandHideTimer);
+            brandHome.classList.remove('easter-active');
+            void brandHome.offsetWidth;
+            brandHome.classList.add('easter-active');
+            brandHideTimer = setTimeout(
+                () => brandHome.classList.remove('easter-active'),
+                4200
+            );
             return;
         }
 
@@ -1858,24 +1859,6 @@ def load_current_user():
 @app.after_request
 def add_security_headers(response):
     """Добавляет безопасные браузерные настройки ко всем ответам."""
-    if response.mimetype == "text/html" and not response.direct_passthrough:
-        rendered = response.get_data(as_text=True)
-        if "</head>" in rendered and "japan-tv.css" not in rendered:
-            rendered = rendered.replace(
-                "</head>",
-                '<link rel="stylesheet" href="/static/japan-tv.css">'
-                "<script>try{if(localStorage.getItem('monitor-japan-tv')==='1')"
-                "document.documentElement.classList.add('japan-tv')}catch(e){}</script>"
-                "</head>",
-                1,
-            )
-        if "</body>" in rendered and "japan-tv.js" not in rendered:
-            rendered = rendered.replace(
-                "</body>",
-                '<script src="/static/japan-tv.js"></script></body>',
-                1,
-            )
-        response.set_data(rendered)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "same-origin")

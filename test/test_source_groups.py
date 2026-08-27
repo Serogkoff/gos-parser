@@ -452,15 +452,14 @@ class SourceGroupPageTests(unittest.TestCase):
             html,
         )
 
-    def test_header_contains_four_click_japanese_tv_mode(self):
+    def test_header_contains_five_click_easter_egg(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
             response = web_app.app.test_client().get("/")
 
         html = response.get_data(as_text=True)
         self.assertIn('id="brand-home"', html)
-        self.assertIn("if(brandClicks >= 4)", html)
-        self.assertIn("window.toggleJapanTVMode()", html)
-        self.assertIn("/static/japan-tv.js", html)
+        self.assertIn("kyodo-easter-egg.webp", html)
+        self.assertIn("if(brandClicks >= 5)", html)
 
     def test_feed_does_not_prefetch_and_opens_articles_in_new_tab(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
