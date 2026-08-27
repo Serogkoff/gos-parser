@@ -1,0 +1,165 @@
+:root.japan-tv{
+    --paper:#11cfff!important;--surface:#fffdf2!important;--ink:#091249!important;
+    --muted:#3b3974!important;--line:#091249!important;--coral:#ff197d!important;
+    --coral-dark:#d90063!important;--green:#00a94f!important;--amber:#ff8a00!important
+}
+html.japan-tv body{
+    padding-top:30px!important;padding-bottom:35px!important;color:#091249!important;
+    font-family:"Yu Gothic","Hiragino Kaku Gothic ProN",Meiryo,Inter,Arial,sans-serif!important;
+    background:
+        radial-gradient(circle at 12% 9%,#fff800 0 7%,transparent 7.3%),
+        radial-gradient(circle at 92% 16%,#ff4ba0 0 8%,transparent 8.3%),
+        linear-gradient(135deg,rgba(255,255,255,.23) 25%,transparent 25%) 0 0/28px 28px,
+        linear-gradient(315deg,rgba(255,255,255,.18) 25%,transparent 25%) 0 0/28px 28px,
+        #10cdfa!important
+}
+html.japan-tv body::before{
+    content:"緊急速報　●　ニュース監視システム　●　最新情報をリアルタイム更新中";
+    position:fixed;z-index:9998;left:0;right:0;top:0;height:30px;display:flex;
+    align-items:center;justify-content:center;overflow:hidden;color:#fff;background:#ed005f;
+    border-bottom:3px solid #091249;font-size:12px;font-weight:900;letter-spacing:.12em;
+    white-space:nowrap;text-shadow:2px 2px 0 #091249
+}
+html.japan-tv body::after{
+    content:"速報　　官公庁・通信社・新聞を24時間監視　　NEWS MONITOR LIVE";
+    position:fixed;z-index:9998;left:0;right:0;bottom:0;height:32px;display:flex;
+    align-items:center;justify-content:center;color:#091249;background:#fff000;
+    border-top:3px solid #091249;font-size:12px;font-weight:950;letter-spacing:.08em;
+    white-space:nowrap
+}
+html.japan-tv .shell{width:min(1560px,calc(100% - 34px))!important}
+html.japan-tv .topbar,
+html.japan-tv .top{
+    padding-inline:18px!important;background:#fff000!important;border:3px solid #091249!important;
+    box-shadow:8px 8px 0 #ff197d!important
+}
+html.japan-tv .brand,
+html.japan-tv .brand-text{
+    color:#fff!important;font-weight:950!important;letter-spacing:-.08em!important;
+    -webkit-text-stroke:2px #091249;text-shadow:4px 4px 0 #ff197d,7px 7px 0 #091249
+}
+html.japan-tv .brand::after{
+    content:"LIVE";margin-left:12px;padding:4px 8px;color:#fff;background:#ed005f;
+    border:2px solid #091249;border-radius:999px;-webkit-text-stroke:0;
+    box-shadow:3px 3px 0 #091249;font-size:10px;letter-spacing:.08em
+}
+html.japan-tv .site-sections{gap:9px!important}
+html.japan-tv .site-section,
+html.japan-tv .tab{
+    margin-block:auto;padding:9px 13px!important;color:#091249!important;background:#fff!important;
+    border:2px solid #091249!important;border-radius:999px!important;box-shadow:3px 3px 0 #091249;
+    font-weight:900!important
+}
+html.japan-tv .site-section.active,
+html.japan-tv .tab.active{color:#fff!important;background:#ff197d!important}
+html.japan-tv .site-section::after,
+html.japan-tv .tab::after{display:none!important}
+html.japan-tv .intro,
+html.japan-tv header:not(.topbar):not(.panel-title):not(.feed-heading):not(.dialog-head){
+    margin-top:22px!important;padding:24px!important;background:linear-gradient(110deg,#ff197d,#ff5e00)!important;
+    border:3px solid #091249!important;box-shadow:8px 8px 0 #091249!important
+}
+html.japan-tv .intro h1,
+html.japan-tv header h1{
+    color:#fff!important;font-weight:950!important;-webkit-text-stroke:1.5px #091249;
+    text-shadow:4px 4px 0 #091249!important
+}
+html.japan-tv .eyebrow,
+html.japan-tv .subtitle{color:#091249!important;font-weight:900!important}
+html.japan-tv .toolbar{padding-block:20px!important}
+html.japan-tv .search,
+html.japan-tv .source-select,
+html.japan-tv .tool-button,
+html.japan-tv input,
+html.japan-tv select,
+html.japan-tv textarea{
+    color:#091249!important;background:#fff!important;border:3px solid #091249!important;
+    border-radius:2px!important;box-shadow:4px 4px 0 #ff197d!important
+}
+html.japan-tv button,
+html.japan-tv .button,
+html.japan-tv .original,
+html.japan-tv .refresh{
+    color:#091249!important;background:#fff000!important;border:2px solid #091249!important;
+    border-radius:2px!important;box-shadow:3px 3px 0 #091249!important;font-weight:900!important
+}
+html.japan-tv button:hover,
+html.japan-tv .button:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 #ff197d!important}
+html.japan-tv .feed,
+html.japan-tv .panel,
+html.japan-tv .card,
+html.japan-tv article:not(.news-card),
+html.japan-tv .jobs{
+    background:#fffdf2!important;border:3px solid #091249!important;border-radius:2px!important;
+    box-shadow:8px 8px 0 rgba(9,18,73,.92)!important
+}
+html.japan-tv .feed-heading,
+html.japan-tv .panel-title,
+html.japan-tv .panel-heading,
+html.japan-tv .collection-head,
+html.japan-tv .panel-head{
+    color:#fff!important;background:#091249!important;border-bottom:3px solid #091249!important
+}
+html.japan-tv .feed-heading h2,
+html.japan-tv .panel-title h2,
+html.japan-tv .panel-heading h2,
+html.japan-tv .collection-head h2,
+html.japan-tv .panel-head h2{font-weight:950!important}
+html.japan-tv .news-card{
+    margin:10px;padding-block:26px!important;background:#fff!important;border:2px solid #091249!important;
+    border-left:13px solid #00c153!important;box-shadow:4px 4px 0 #00c153!important
+}
+html.japan-tv .news-card:nth-child(even){border-left-color:#ff8a00!important;box-shadow:4px 4px 0 #ff8a00!important}
+html.japan-tv .news-card.match{border-left-color:#ff197d!important;box-shadow:5px 5px 0 #ff197d!important}
+html.japan-tv .news-card h3,
+html.japan-tv article h1,
+html.japan-tv .bookmark h3,
+html.japan-tv .note-card h3{
+    color:#091249!important;font-family:Inter,"Segoe UI",Arial,sans-serif!important;font-weight:900!important;
+    text-shadow:none!important;-webkit-text-stroke:0!important
+}
+html.japan-tv .match-label,
+html.japan-tv .unread-label,
+html.japan-tv .badge,
+html.japan-tv .status{
+    color:#fff!important;background:#ff197d!important;border:2px solid #091249!important;
+    border-radius:0!important;box-shadow:2px 2px 0 #091249!important;font-weight:950!important
+}
+html.japan-tv .chips a{
+    color:#091249!important;background:#fff000!important;border:2px solid #091249!important;
+    border-radius:0!important;font-weight:850!important
+}
+html.japan-tv .source-row:hover,
+html.japan-tv .folder:hover,
+html.japan-tv .folder.active{background:#fff000!important}
+html.japan-tv .source-row.active .check,
+html.japan-tv .page-current{background:#ff197d!important;border-color:#091249!important}
+html.japan-tv .coverage,
+html.japan-tv .summary,
+html.japan-tv .layout{position:relative}
+html.japan-tv .metric{
+    background:#fff!important;border:3px solid #091249!important;border-radius:0!important;
+    box-shadow:5px 5px 0 #ff197d!important
+}
+html.japan-tv table{background:#fff!important;border:3px solid #091249!important}
+html.japan-tv th{color:#fff!important;background:#091249!important}
+html.japan-tv tr:nth-child(even) td{background:#fff9bd!important}
+html.japan-tv .keyword-backdrop{background:rgba(9,18,73,.75)!important}
+html.japan-tv .keyword-dialog{
+    border:4px solid #091249!important;border-radius:0!important;box-shadow:12px 12px 0 #ff197d!important
+}
+.jptv-mode-switch{
+    position:fixed;z-index:9999;right:12px;bottom:44px;display:none;min-height:34px!important;
+    padding:0 11px!important;color:#fff!important;background:#091249!important;border:2px solid #fff!important;
+    border-radius:0!important;box-shadow:3px 3px 0 #ff197d!important;font-size:10px!important;font-weight:900!important
+}
+html.japan-tv .jptv-mode-switch{display:block}
+html.japan-tv.jptv-entering .feed,
+html.japan-tv.jptv-entering .panel{animation:jptv-pop .38s cubic-bezier(.2,.9,.3,1) both}
+@keyframes jptv-pop{from{opacity:.25;transform:scale(.97) rotate(-.4deg)}to{opacity:1;transform:none}}
+@media(max-width:760px){
+    html.japan-tv body::before,html.japan-tv body::after{justify-content:flex-start;padding-left:12px;font-size:9px}
+    html.japan-tv .topbar{padding-inline:10px!important;box-shadow:5px 5px 0 #ff197d!important}
+    html.japan-tv .brand::after{display:none}.jptv-mode-switch{right:8px;bottom:39px}
+}
+@media(prefers-reduced-motion:reduce){html.japan-tv.jptv-entering .feed,html.japan-tv.jptv-entering .panel{animation:none}}
