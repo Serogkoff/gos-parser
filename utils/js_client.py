@@ -25,6 +25,7 @@ def fetch_soup_js(
     wait_until="networkidle",
     use_partial_on_timeout=False,
     proxy_url="",
+    parser="html.parser",
 ):
     """
     Открывает страницу в headless-браузере (для сайтов, которые
@@ -93,7 +94,7 @@ def fetch_soup_js(
         )
         return None
 
-    return BeautifulSoup(html, "html.parser")
+    return BeautifulSoup(html, parser)
 
 
 def _is_transient_browser_error(error):

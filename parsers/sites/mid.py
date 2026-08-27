@@ -2,12 +2,13 @@
 
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
 from utils.dates import parse_date
 from utils.http_client import fetch_soup
+from utils.js_client import fetch_soup_js
 from utils.news import deduplicate_news
 
 
@@ -15,10 +16,11 @@ SOURCE_NAME = "МИД РФ"
 PRIMARY_FEED_URL = "https://mid.ru/ru/rss.php"
 FALLBACK_FEED_URL = "https://www.mid.ru/ru/rss"
 MAX_ITEMS = 60
+BROWSER_WAIT_MS = 7000
 
 
 def parse():
-    """Читает быструю ленту МИДа и обращается к старой только при сбое."""
+    """Читает RSS МИДа, проходя JavaScript-защиту только при необходимости."""
     for feed_url in (PRIMARY_FEED_URL, FALLBACK_FEED_URL):
         soup = fetch_soup(
             feed_url,
@@ -31,6 +33,25 @@ def parse():
         news = _parse_feed(soup)
         if news:
             print(f"  ✅ {len(news)}")
+            return news
+
+    # МИД периодически возвращает requests не RSS, а HTML-заглушку bobcmn.
+    # Браузер выполняет её JavaScript, получает служебную cookie и дожидается
+    # настоящей ленты. Этот более тяжёлый путь используется только после того,
+    # как оба обычных запроса не дали ни одной записи.
+    for feed_url in (PRIMARY_FEED_URL, FALLBACK_FEED_URL):
+        soup = fetch_soup_js(
+            feed_url,
+            SOURCE_NAME,
+            wait_ms=BROWSER_WAIT_MS,
+            timeout_ms=45000,
+            wait_until="domcontentloaded",
+            use_partial_on_timeout=True,
+            parser="xml",
+        )
+        news = _parse_feed(soup)
+        if news:
+            print(f"  ✅ {len(news)} (через браузер)")
             return news
 
     print("  ✅ 0")
@@ -76,11 +97,15 @@ def _entry_url(entry):
     for link in entry.find_all("link"):
         href = str(link.get("href", "")).strip()
         if href and link.get("rel", "alternate") in {"", "alternate"}:
-            return href
+            return _absolute_mid_url(href)
         text = " ".join(link.get_text(" ", strip=True).split())
         if text:
-            return text
-    return _first_tag_text(entry, "guid", "id")
+            return _absolute_mid_url(text)
+    return _absolute_mid_url(_first_tag_text(entry, "guid", "id"))
+
+
+def _absolute_mid_url(value):
+    return urljoin("https://mid.ru/", str(value or "").strip())
 
 
 def _is_mid_article_url(value):
@@ -124,7 +149,9 @@ def _first_tag_text(entry, *names):
 
 
 def _tag_text(entry, name):
-    tag = entry.find(name)
+    # После Chromium RSS может быть сериализован как HTML, где BeautifulSoup
+    # приводит pubDate к нижнему регистру.
+    tag = entry.find(name) or entry.find(str(name).casefold())
     return " ".join(tag.get_text(" ", strip=True).split()) if tag else ""
 
 
