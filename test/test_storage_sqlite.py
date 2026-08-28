@@ -693,6 +693,26 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual(result["newest_publication"], "2026-08-13")
         self.assertEqual(result["last_received"], "2026-08-13 10:15:00")
 
+    def test_news_page_exposes_formatted_date_and_first_parser_time(self):
+        item = {
+            "source": "МЧС",
+            "title": "Публикация со временем получения",
+            "url": "https://mchs.gov.ru/news/parser-added-time",
+            "date": "2026-08-28",
+            "parsed_date": "2026-08-28 14:37:52",
+        }
+        self._write_json(self.all_json, [item])
+        self._write_json(self.found_json, [])
+
+        page, total = storage.list_news_page("government")
+        article = storage.find_news_by_url(item["url"])
+
+        self.assertEqual(total, 1)
+        self.assertEqual(page[0]["publication_date_display"], "28.08.2026")
+        self.assertEqual(page[0]["parser_added_time"], "14:37")
+        self.assertEqual(article["publication_date_display"], "28.08.2026")
+        self.assertEqual(article["parser_added_time"], "14:37")
+
 
 if __name__ == "__main__":
     unittest.main()

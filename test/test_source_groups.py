@@ -77,6 +77,8 @@ class SourceGroupPageTests(unittest.TestCase):
                     "title": "Материал государственного ведомства",
                     "url": "https://mchs.gov.ru/news/1",
                     "date": "2026-07-29",
+                    "publication_date_display": "29.07.2026",
+                    "parser_added_time": "14:37",
                 },
                 {
                     "source": "Президент России",
@@ -351,6 +353,14 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertNotIn('title="Отметить прочитанной"', html)
         self.assertIn("fetch('/api/news-read'", html)
         self.assertNotIn("localStorage.setItem(unreadStorageKey", html)
+
+    def test_feed_shows_publication_date_and_parser_time_in_one_line(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get("/")
+
+        html = response.get_data(as_text=True)
+        self.assertIn("29.07.2026 14:37", html)
+        self.assertNotIn("добавлено в 14:37", html)
 
     def test_multiple_sources_can_be_selected_together(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):

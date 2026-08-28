@@ -12,6 +12,7 @@ from threading import RLock
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from utils.dates import parse_date
 from utils.logger import get_logger
 from utils.news import deduplicate_news, merge_news, normalize_url
 from utils.source_groups import (
@@ -1473,7 +1474,8 @@ def list_news_page(source_group, *, found_only=False, sources=None,
         )
         rows = connection.execute(
             f"""
-            SELECT {payload_column} AS payload_json
+            SELECT {payload_column} AS payload_json,
+                   n.parsed_date, n.first_seen_at
             FROM news_items AS n
             {join}
             WHERE {where_clause}
@@ -1488,6 +1490,9 @@ def list_news_page(source_group, *, found_only=False, sources=None,
     for row in rows:
         item = _decode_item(row["payload_json"])
         if item is not None:
+            _attach_news_display_fields(
+                item, row["parsed_date"], row["first_seen_at"],
+            )
             items.append(item)
     return items, total
 
@@ -2854,14 +2859,21 @@ def find_news_by_url(url):
     with _connection() as connection:
         row = connection.execute(
             """
-            SELECT payload_json
+            SELECT payload_json, parsed_date, first_seen_at
             FROM news_items
             WHERE normalized_url = ?
             LIMIT 1
             """,
             (normalized,),
         ).fetchone()
-    return _decode_item(row["payload_json"]) if row else None
+    if row is None:
+        return None
+    item = _decode_item(row["payload_json"])
+    if item is not None:
+        _attach_news_display_fields(
+            item, row["parsed_date"], row["first_seen_at"],
+        )
+    return item
 
 
 def load_cached_article(url):
@@ -3309,6 +3321,25 @@ def _decode_item(payload):
     except (TypeError, json.JSONDecodeError):
         logger.warning("В SQLite обнаружена повреждённая запись новости")
         return None
+
+
+def _attach_news_display_fields(item, parsed_date, first_seen_at):
+    """Добавляет готовые дату публикации и время первого получения."""
+    publication_date = parse_date(item.get("date", ""))
+    item["publication_date_display"] = (
+        datetime.strptime(publication_date, "%Y-%m-%d").strftime("%d.%m.%Y")
+        if publication_date
+        else str(item.get("date", ""))
+    )
+    item["parser_added_time"] = ""
+    for value in (parsed_date, first_seen_at):
+        match = re.search(
+            r"(?:^|[T\s])(\d{2}:\d{2})(?::\d{2})?",
+            str(value or ""),
+        )
+        if match:
+            item["parser_added_time"] = match.group(1)
+            break
 
 
 def _clean_cached_paragraphs(paragraphs):

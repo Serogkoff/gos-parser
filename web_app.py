@@ -1132,7 +1132,7 @@ HTML = """
                         <span>{{item.source}}</span><i></i>
                         {% if item.section %}<span>{{item.section}}</span><i></i>{% endif %}
                         <time>
-                            {% if item.date %}{{item.date}}
+                            {% if item.date %}{{item.publication_date_display or item.date}}{% if item.parser_added_time %} {{item.parser_added_time}}{% endif %}
                             {% elif item.parsed_date %}Получено {{item.parsed_date}}
                             {% endif %}
                         </time>
@@ -1754,7 +1754,7 @@ ARTICLE_HTML = """
 <body><main class="shell">
     <a class="back" id="article-back" href="{{back_url}}">← Вернуться к ленте</a>
     <article>
-        <div class="meta"><span>{{item.source}}</span><span>•</span><time>{{item.date or item.parsed_date or ''}}</time></div>
+        <div class="meta"><span>{{item.source}}</span><span>•</span><time>{% if item.date %}{{item.publication_date_display or item.date}}{% if item.parser_added_time %} {{item.parser_added_time}}{% endif %}{% else %}{{item.parsed_date or ''}}{% endif %}</time></div>
         <h1>{{article.title or item.title}}</h1>
         <div class="body">
             {% if article.paragraphs %}
