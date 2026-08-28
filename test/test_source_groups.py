@@ -349,6 +349,8 @@ class SourceGroupPageTests(unittest.TestCase):
             html,
         )
         self.assertNotIn('title="Отметить прочитанной"', html)
+        self.assertIn("fetch('/api/news-read'", html)
+        self.assertNotIn("localStorage.setItem(unreadStorageKey", html)
 
     def test_multiple_sources_can_be_selected_together(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):

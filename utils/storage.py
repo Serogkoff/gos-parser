@@ -135,7 +135,8 @@ def _create_schema(connection):
             publication_date TEXT NOT NULL DEFAULT '',
             parsed_date TEXT NOT NULL DEFAULT '',
             payload_json TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            first_seen_at TEXT NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS found_items (
@@ -311,6 +312,24 @@ def _create_schema(connection):
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS user_news_read_state (
+            user_id INTEGER NOT NULL,
+            source_group TEXT NOT NULL,
+            read_all_before TEXT NOT NULL,
+            initialized_at TEXT NOT NULL,
+            PRIMARY KEY(user_id, source_group),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS news_item_reads (
+            user_id INTEGER NOT NULL,
+            normalized_url TEXT NOT NULL,
+            is_read INTEGER NOT NULL DEFAULT 1 CHECK(is_read IN (0, 1)),
+            read_at TEXT NOT NULL,
+            PRIMARY KEY(user_id, normalized_url),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS source_settings (
             source TEXT PRIMARY KEY COLLATE NOCASE,
             enabled INTEGER NOT NULL DEFAULT 1
@@ -382,6 +401,8 @@ def _create_schema(connection):
             ON dictionary_cards(user_id, deck_id, next_review);
         CREATE INDEX IF NOT EXISTS idx_user_source_orders_user
             ON user_source_orders(user_id, source_group);
+        CREATE INDEX IF NOT EXISTS idx_news_item_reads_user
+            ON news_item_reads(user_id, read_at DESC);
         CREATE INDEX IF NOT EXISTS idx_parser_jobs_status
             ON parser_jobs(status, requested_at);
         CREATE INDEX IF NOT EXISTS idx_parser_jobs_source
@@ -394,6 +415,39 @@ def _create_schema(connection):
             ON source_incidents(source, started_at DESC);
         """
     )
+
+    news_columns = {
+        row["name"] for row in connection.execute(
+            "PRAGMA table_info(news_items)"
+        ).fetchall()
+    }
+    if "first_seen_at" not in news_columns:
+        connection.execute(
+            "ALTER TABLE news_items ADD COLUMN first_seen_at TEXT NOT NULL DEFAULT ''"
+        )
+    connection.execute(
+        """UPDATE news_items
+           SET first_seen_at = CASE
+               WHEN updated_at != '' THEN updated_at
+               ELSE ?
+           END
+           WHERE first_seen_at = ''""",
+        (datetime.now().isoformat(timespec="microseconds"),),
+    )
+    connection.execute(
+        """CREATE INDEX IF NOT EXISTS idx_news_first_seen
+           ON news_items(first_seen_at DESC)"""
+    )
+
+    read_columns = {
+        row["name"] for row in connection.execute(
+            "PRAGMA table_info(news_item_reads)"
+        ).fetchall()
+    }
+    if "is_read" not in read_columns:
+        connection.execute(
+            "ALTER TABLE news_item_reads ADD COLUMN is_read INTEGER NOT NULL DEFAULT 1"
+        )
 
     columns = {
         row["name"] for row in connection.execute(
@@ -1466,6 +1520,181 @@ def list_news_index(source_group, limit=2000):
         }
         for row in rows
     ]
+
+
+def list_unread_news(user_id, source_group, limit=2000):
+    """Возвращает непрочитанные URL пользователя в одном разделе ленты."""
+    try:
+        user_id = int(user_id)
+        limit = min(5000, max(1, int(limit)))
+    except (TypeError, ValueError) as error:
+        raise ValueError("Пользователь не найден") from error
+    if user_id <= 0:
+        return []
+
+    source_group = str(source_group or "").strip().casefold()
+    condition, parameters = _news_group_condition(source_group)
+    initialize_database()
+    moment = datetime.now().isoformat(timespec="microseconds")
+    with STORAGE_LOCK, _connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        state = connection.execute(
+            """SELECT read_all_before
+               FROM user_news_read_state
+               WHERE user_id = ? AND source_group = ?""",
+            (user_id, source_group),
+        ).fetchone()
+        if state is None:
+            # При первом включении функции весь существующий архив считается
+            # прочитанным. Новыми станут только последующие поступления.
+            connection.execute(
+                """INSERT INTO user_news_read_state(
+                       user_id, source_group, read_all_before, initialized_at
+                   ) VALUES (?, ?, ?, ?)""",
+                (user_id, source_group, moment, moment),
+            )
+            return []
+
+        rows = connection.execute(
+            f"""
+            SELECT n.normalized_url AS url
+            FROM news_items AS n
+            LEFT JOIN news_item_reads AS r
+              ON r.user_id = ? AND r.normalized_url = n.normalized_url
+            WHERE {condition}
+              AND n.normalized_url != ''
+              AND (
+                  (n.first_seen_at > ? AND r.normalized_url IS NULL)
+                  OR r.is_read = 0
+              )
+            ORDER BY n.first_seen_at DESC, n.news_key DESC
+            LIMIT ?
+            """,
+            [user_id, *parameters, state["read_all_before"], limit],
+        ).fetchall()
+    return [row["url"] for row in rows]
+
+
+def mark_news_read(user_id, url):
+    """Сохраняет личную отметку чтения одной новости."""
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Пользователь не найден") from error
+    normalized = normalize_url(url)
+    if user_id <= 0 or not normalized:
+        raise ValueError("Новость не найдена")
+
+    initialize_database()
+    read_at = datetime.now().isoformat(timespec="microseconds")
+    with STORAGE_LOCK, _connection() as connection:
+        item = connection.execute(
+            "SELECT 1 FROM news_items WHERE normalized_url = ? LIMIT 1",
+            (normalized,),
+        ).fetchone()
+        if item is None:
+            raise ValueError("Новость не найдена")
+        connection.execute(
+            """INSERT INTO news_item_reads(
+                   user_id, normalized_url, is_read, read_at
+               ) VALUES (?, ?, 1, ?)
+               ON CONFLICT(user_id, normalized_url) DO UPDATE SET
+                   is_read = 1,
+                   read_at = excluded.read_at""",
+            (user_id, normalized, read_at),
+        )
+    return normalized
+
+
+def migrate_legacy_unread(user_id, unread_urls):
+    """Один раз переносит непрочитанные ссылки из старого localStorage."""
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Пользователь не найден") from error
+    if user_id <= 0 or not isinstance(unread_urls, list):
+        raise ValueError("Некорректные отметки чтения")
+
+    normalized_urls = []
+    for url in unread_urls[:5000]:
+        normalized = normalize_url(url)
+        if normalized and normalized not in normalized_urls:
+            normalized_urls.append(normalized)
+
+    initialize_database()
+    moment = datetime.now().isoformat(timespec="microseconds")
+    with STORAGE_LOCK, _connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        initialized = connection.execute(
+            "SELECT 1 FROM user_news_read_state WHERE user_id = ? LIMIT 1",
+            (user_id,),
+        ).fetchone()
+        if initialized is not None:
+            return False
+
+        connection.executemany(
+            """INSERT INTO user_news_read_state(
+                   user_id, source_group, read_all_before, initialized_at
+               ) VALUES (?, ?, ?, ?)""",
+            [
+                (user_id, source_group, moment, moment)
+                for source_group in (
+                    GOVERNMENT_GROUP, AGENCIES_GROUP, NEWSPAPERS_GROUP,
+                )
+            ],
+        )
+        if normalized_urls:
+            placeholders = ", ".join("?" for _ in normalized_urls)
+            existing = connection.execute(
+                f"""SELECT normalized_url FROM news_items
+                    WHERE normalized_url IN ({placeholders})""",
+                normalized_urls,
+            ).fetchall()
+            connection.executemany(
+                """INSERT INTO news_item_reads(
+                       user_id, normalized_url, is_read, read_at
+                   ) VALUES (?, ?, 0, ?)""",
+                [
+                    (user_id, row["normalized_url"], moment)
+                    for row in existing
+                ],
+            )
+    return True
+
+
+def mark_news_group_read(user_id, source_group):
+    """Отмечает прочитанными все текущие новости выбранного раздела."""
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Пользователь не найден") from error
+    if user_id <= 0:
+        raise ValueError("Пользователь не найден")
+
+    source_group = str(source_group or "").strip().casefold()
+    condition, parameters = _news_group_condition(source_group)
+    initialize_database()
+    moment = datetime.now().isoformat(timespec="microseconds")
+    with STORAGE_LOCK, _connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """INSERT INTO user_news_read_state(
+                   user_id, source_group, read_all_before, initialized_at
+               ) VALUES (?, ?, ?, ?)
+               ON CONFLICT(user_id, source_group) DO UPDATE SET
+                   read_all_before = excluded.read_all_before""",
+            (user_id, source_group, moment, moment),
+        )
+        # Индивидуальные отметки до общей границы больше не нужны.
+        connection.execute(
+            f"""DELETE FROM news_item_reads
+                WHERE user_id = ? AND normalized_url IN (
+                    SELECT n.normalized_url FROM news_items AS n
+                    WHERE {condition}
+                )""",
+            [user_id, *parameters],
+        )
+    return True
 
 
 def sync_source_incidents(statuses, now=None):
@@ -2995,22 +3224,31 @@ def _remove_old_manual_backups(retention):
 
 def _replace_collections(connection, all_news, found_news):
     """Заменяет обе коллекции в одной транзакции: либо всё, либо ничего."""
+    first_seen_by_key = {
+        row["news_key"]: row["first_seen_at"]
+        for row in connection.execute(
+            "SELECT news_key, first_seen_at FROM news_items"
+        ).fetchall()
+    }
     connection.execute("DELETE FROM found_items")
     connection.execute("DELETE FROM news_items")
-    _insert_news_items(connection, all_news)
+    _insert_news_items(connection, all_news, first_seen_by_key=first_seen_by_key)
 
     available = {_news_key(item) for item in all_news}
     safe_found = [item for item in found_news if _news_key(item) in available]
     _insert_found_items(connection, safe_found)
 
 
-def _insert_news_items(connection, items):
+def _insert_news_items(connection, items, first_seen_by_key=None):
     updated_at = datetime.now().isoformat(timespec="seconds")
+    first_seen_at = datetime.now().isoformat(timespec="microseconds")
+    first_seen_by_key = first_seen_by_key or {}
     rows = []
     for item in deduplicate_news(items):
+        news_key = _news_key(item)
         rows.append(
             (
-                _news_key(item),
+                news_key,
                 normalize_url(item.get("url", "")),
                 str(item.get("source", "")),
                 str(item.get("title", "")),
@@ -3018,14 +3256,16 @@ def _insert_news_items(connection, items):
                 str(item.get("parsed_date", "")),
                 _encode_item(item),
                 updated_at,
+                first_seen_by_key.get(news_key) or first_seen_at,
             )
         )
     connection.executemany(
         """
         INSERT INTO news_items(
             news_key, normalized_url, source, title,
-            publication_date, parsed_date, payload_json, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            publication_date, parsed_date, payload_json, updated_at,
+            first_seen_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rows,
     )

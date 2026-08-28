@@ -74,6 +74,7 @@ from utils.storage import (
     list_dictionary_decks,
     list_personal_notes,
     list_news_index,
+    list_unread_news,
     list_news_page,
     list_shared_collections,
     load_collection,
@@ -83,6 +84,7 @@ from utils.storage import (
     load_cached_article,
     load_found_news,
     load_user,
+    migrate_legacy_unread,
     remove_bookmark,
     rename_bookmark_folder,
     save_cached_article,
@@ -96,6 +98,8 @@ from utils.storage import (
     save_source_order,
     set_source_enabled,
     set_collection_note_read,
+    mark_news_group_read,
+    mark_news_read,
     set_user_active,
     set_user_password,
     set_user_role,
@@ -1278,8 +1282,7 @@ HTML = """
     const currentSourceGroup = {{source_group|tojson}};
     let saved = new Set({{saved_urls|tojson}});
     const legacySavedStorageKey = 'monitor-saved';
-    const unreadStorageKey = 'monitor-unread-v1';
-    let unreadState;
+    const legacyUnreadStorageKey = 'monitor-unread-v1';
     let brandClicks = 0;
     let brandClickTimer = null;
     let brandHideTimer = null;
@@ -1320,6 +1323,34 @@ HTML = """
     let unread = new Set();
 
     async function initializeUnread(){
+        let legacyUnread = null;
+        try{
+            const legacyState = JSON.parse(
+                localStorage.getItem(legacyUnreadStorageKey) || 'null'
+            );
+            if(legacyState && Array.isArray(legacyState.unread)){
+                legacyUnread = legacyState.unread;
+            }
+        }catch(error){
+            legacyUnread = null;
+        }
+
+        if(legacyUnread !== null){
+            try{
+                const migration = await fetch('/api/news-read/migrate', {
+                    method:'POST',
+                    headers:{
+                        'Content-Type':'application/json',
+                        'X-CSRF-Token': {{csrf_token|tojson}}
+                    },
+                    credentials:'same-origin',
+                    body:JSON.stringify({unread_urls:legacyUnread})
+                });
+                if(migration.ok) localStorage.removeItem(legacyUnreadStorageKey);
+            }catch(error){
+                // Старые отметки останутся в браузере до успешного переноса.
+            }
+        }
         try{
             const response = await fetch(
                 '/api/news-index?group=' + encodeURIComponent(currentSourceGroup),
@@ -1328,38 +1359,12 @@ HTML = """
             if(response.ok){
                 const data = await response.json();
                 if(Array.isArray(data.items)) newsIndex = data.items;
+                unread = new Set(data.unread_urls || []);
             }
         }catch(error){
             // Карточки уже доступны; счётчики обновятся при следующем открытии.
         }
-        try{
-            unreadState = JSON.parse(localStorage.getItem(unreadStorageKey) || 'null');
-        }catch(error){
-            unreadState = null;
-        }
-        if(!unreadState || !Array.isArray(unreadState.known) || !Array.isArray(unreadState.unread)){
-            // Первый запуск: существующие материалы считаются уже прочитанными.
-            unreadState = {known: newsIndex.map(item => item.url), unread: []};
-        }else{
-            const known = new Set(unreadState.known);
-            const unreadNews = new Set(unreadState.unread);
-            newsIndex.forEach(item => {
-                if(item.url && !known.has(item.url)){
-                    known.add(item.url);
-                    unreadNews.add(item.url);
-                }
-            });
-            unreadState = {known: [...known], unread: [...unreadNews]};
-        }
-        localStorage.setItem(unreadStorageKey, JSON.stringify(unreadState));
-        unread = new Set(unreadState.unread);
         refreshUnread();
-    }
-
-    function saveUnread(){
-        if(!unreadState) return;
-        unreadState.unread = [...unread];
-        localStorage.setItem(unreadStorageKey, JSON.stringify(unreadState));
     }
 
     function refreshUnread(){
@@ -1386,10 +1391,25 @@ HTML = """
         });
     }
 
-    function markRead(url){
+    async function markRead(url){
         if(!unread.delete(url)) return;
-        saveUnread();
         refreshUnread();
+        try{
+            const response = await fetch('/api/news-read', {
+                method:'POST',
+                headers:{
+                    'Content-Type':'application/json',
+                    'X-CSRF-Token': {{csrf_token|tojson}}
+                },
+                credentials:'same-origin',
+                keepalive:true,
+                body:JSON.stringify({url:url})
+            });
+            if(!response.ok) throw new Error('Не удалось сохранить отметку');
+        }catch(error){
+            unread.add(url);
+            refreshUnread();
+        }
     }
 
     function refreshSavedIcons(){
@@ -1477,10 +1497,25 @@ HTML = """
     document.querySelectorAll('[data-mark-read]').forEach(button => {
         button.addEventListener('click', () => markRead(button.dataset.markRead));
     });
-    document.getElementById('mark-all-read').addEventListener('click', () => {
-        newsIndex.forEach(item => unread.delete(item.url));
-        saveUnread();
+    document.getElementById('mark-all-read').addEventListener('click', async () => {
+        const previousUnread = new Set(unread);
+        unread.clear();
         refreshUnread();
+        try{
+            const response = await fetch('/api/news-read', {
+                method:'POST',
+                headers:{
+                    'Content-Type':'application/json',
+                    'X-CSRF-Token': {{csrf_token|tojson}}
+                },
+                credentials:'same-origin',
+                body:JSON.stringify({source_group:currentSourceGroup, all:true})
+            });
+            if(!response.ok) throw new Error('Не удалось сохранить отметки');
+        }catch(error){
+            unread = previousUnread;
+            refreshUnread();
+        }
     });
     initializeUnread();
     search.addEventListener('input', applyFilters);
@@ -3622,7 +3657,7 @@ def bookmarks_api():
 
 @app.get("/api/news-index")
 def news_index_api():
-    """Подгружает лёгкий индекс непрочитанного после показа самой страницы."""
+    """Подгружает индекс и личные непрочитанные новости из SQLite."""
     source_group = str(request.args.get("group", "")).strip().casefold()
     if source_group not in {
         GOVERNMENT_GROUP,
@@ -3630,7 +3665,47 @@ def news_index_api():
         NEWSPAPERS_GROUP,
     }:
         return jsonify(error="Неизвестный раздел источников"), 400
-    return jsonify(items=list_news_index(source_group, UNREAD_INDEX_LIMIT))
+    user = current_user()
+    return jsonify(
+        items=list_news_index(source_group, UNREAD_INDEX_LIMIT),
+        unread_urls=list_unread_news(
+            user["id"], source_group, UNREAD_INDEX_LIMIT,
+        ),
+    )
+
+
+@app.post("/api/news-read")
+def news_read_api():
+    """Синхронизирует личные отметки чтения между устройствами."""
+    if not csrf_is_valid():
+        return jsonify(error="Сессия устарела. Обновите страницу."), 400
+    user = current_user()
+    payload = request.get_json(silent=True) or {}
+    try:
+        if payload.get("all") is True:
+            source_group = str(payload.get("source_group", "")).strip().casefold()
+            mark_news_group_read(user["id"], source_group)
+        else:
+            mark_news_read(user["id"], payload.get("url"))
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+    return jsonify(ok=True)
+
+
+@app.post("/api/news-read/migrate")
+def news_read_migration_api():
+    """Один раз переносит старые браузерные отметки в текущий аккаунт."""
+    if not csrf_is_valid():
+        return jsonify(error="Сессия устарела. Обновите страницу."), 400
+    payload = request.get_json(silent=True) or {}
+    unread_urls = payload.get("unread_urls")
+    if not isinstance(unread_urls, list):
+        return jsonify(error="Некорректные отметки чтения"), 400
+    try:
+        migrated = migrate_legacy_unread(current_user()["id"], unread_urls)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+    return jsonify(ok=True, migrated=migrated)
 
 
 @app.post("/api/source-order")
