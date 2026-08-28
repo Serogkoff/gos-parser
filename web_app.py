@@ -1,8 +1,9 @@
 import json
 import re
 import secrets
+from calendar import monthrange
 from io import BytesIO
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
@@ -45,11 +46,14 @@ from utils.source_groups import (
 from utils.storage import (
     authenticate_user,
     create_manual_backup,
+    create_dictionary_deck,
     bookmarked_urls,
     count_users,
     count_bookmarks,
     create_bookmark_folder,
     delete_collection_note,
+    delete_calendar_event,
+    delete_personal_note,
     create_user,
     delete_user,
     delete_bookmark_folder,
@@ -65,6 +69,10 @@ from utils.storage import (
     list_collection_bookmarks,
     list_collection_note_read_ids,
     list_collection_notes,
+    list_calendar_events,
+    list_dictionary_cards,
+    list_dictionary_decks,
+    list_personal_notes,
     list_news_index,
     list_news_page,
     list_shared_collections,
@@ -81,6 +89,9 @@ from utils.storage import (
     save_bookmark,
     save_bookmark_folder_order,
     save_collection_note,
+    save_calendar_event,
+    save_dictionary_card,
+    save_personal_note,
     save_external_bookmark,
     save_source_order,
     set_source_enabled,
@@ -88,6 +99,7 @@ from utils.storage import (
     set_user_active,
     set_user_password,
     set_user_role,
+    review_dictionary_card,
     update_collection,
     update_collection_note,
     news_group_counts,
@@ -710,6 +722,54 @@ BOOKMARKS_HTML = """
 """
 
 
+NOTES_HTML = """
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Заметки — Монитор</title>
+    <style>
+        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655;--violet:#7262a5}
+        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:radial-gradient(circle at 0 0,#fff 0,transparent 34rem),var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}a{color:inherit;text-decoration:none}button,input,select,textarea{font:inherit}button{cursor:pointer}.shell{width:min(1350px,calc(100% - 38px));margin:auto;padding:26px 0 70px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px}.back,.account{color:var(--muted);font-size:13px}.test{padding:5px 9px;border-radius:999px;color:#a13b34;background:#fff0eb;font-size:10px;font-weight:800;letter-spacing:.08em}.hero{margin:34px 0 20px;display:flex;align-items:end;justify-content:space-between;gap:20px}.hero h1{margin:0;font-size:clamp(42px,6vw,68px);line-height:1;letter-spacing:-.055em}.hero p{margin:9px 0 0;color:var(--muted)}.tabs{display:flex;gap:7px;margin-bottom:16px;padding-bottom:1px;overflow:auto}.tab{min-height:44px;padding:0 17px;display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:7px 7px 0 0;color:var(--muted);background:#eee8dd;font-size:13px;font-weight:700;white-space:nowrap}.tab.active{color:var(--coral);border-bottom-color:var(--surface);background:var(--surface)}.panel{border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden}.panel-head{min-height:66px;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;gap:14px;border-bottom:1px solid var(--line)}.panel-head h2,.panel-head h3{margin:0;font-size:18px}.panel-head p{margin:4px 0 0;color:var(--muted);font-size:12px}.message,.error{margin:0 0 14px;padding:12px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.button,button{min-height:39px;padding:0 13px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;font-weight:700;font-size:12px}.primary{color:#fff;background:var(--coral)}.secondary{color:var(--muted);border-color:var(--line)}label{display:grid;gap:6px;color:var(--muted);font-size:11px}input,select,textarea{width:100%;padding:10px 11px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff}input,select{height:42px}textarea{min-height:105px;resize:vertical}.form{display:grid;gap:12px;padding:16px}.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.form-actions{display:flex;justify-content:flex-end;gap:8px}.share-users{max-height:120px;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:6px;background:#fff}.share-user{display:flex;grid-template:none;align-items:center;gap:8px;margin:4px 0}.share-user input{width:auto;height:auto}.calendar-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(310px,.7fr);gap:16px;align-items:start}.month-nav{display:flex;align-items:center;gap:7px}.calendar{display:grid;grid-template-columns:repeat(7,1fr)}.weekday{padding:10px 8px;color:var(--muted);text-align:center;font-size:10px;font-weight:800;text-transform:uppercase}.day{min-height:104px;padding:8px;display:block;border:0;border-top:1px solid var(--line);border-right:1px solid var(--line);border-radius:0;color:var(--ink);background:#fff;text-align:left}.day:nth-child(7n){border-right:0}.day.outside{color:#aaa49a;background:#f2ede4}.day.selected{background:#fff0ea;box-shadow:inset 0 0 0 2px var(--coral)}.day time{display:block;margin-bottom:7px;font-weight:800}.event-chip{display:block;margin:4px 0;padding:5px 6px;border-radius:4px;color:#9f3d36;background:#fff0eb;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.event-chip.green{color:var(--green);background:#edf6ef}.event-list{display:grid;gap:9px;padding:15px;border-bottom:1px solid var(--line)}.event-card{padding:12px;border:1px solid var(--line);border-radius:6px;background:#fff}.event-card strong{display:block;margin-bottom:5px}.event-meta{color:var(--muted);font-size:12px}.event-actions{display:flex;gap:7px;margin-top:9px}.event-actions form{margin:0}.empty{padding:34px 20px;color:var(--muted);text-align:center}.records-layout{display:grid;grid-template-columns:230px 320px minmax(0,1fr);min-height:610px}.column{min-width:0;border-right:1px solid var(--line)}.column:last-child{border-right:0}.column-title{padding:15px 17px;border-bottom:1px solid var(--line);color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase}.list{padding:8px}.list-link{display:block;margin-bottom:3px;padding:11px;border-radius:5px;color:#575149;font-size:13px}.list-link:hover,.list-link.active{color:var(--coral);background:#fff0ea}.list-link strong,.list-link span{display:block}.list-link span{margin-top:4px;color:var(--muted);font-size:11px}.editor textarea{min-height:260px}.dictionary-layout{display:grid;grid-template-columns:235px minmax(0,1fr) 330px;gap:16px;align-items:start}.deck-list{padding:9px}.summary{padding:16px;border-bottom:1px solid var(--line)}.summary strong,.summary span{display:block}.summary span{margin-top:4px;color:var(--muted);font-size:12px}.word-table{width:100%;border-collapse:collapse}.word-table th,.word-table td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;font-size:12px}.word-table th{color:var(--muted);background:#faf6ef;font-size:10px;text-transform:uppercase}.term{font-size:19px!important}.quiz{padding:16px}.flashcard{min-height:230px;padding:23px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:#fff;text-align:center}.flashcard .term{font-size:38px!important}.answer{margin-top:16px;padding-top:15px;border-top:1px solid var(--line)}.answer strong,.answer span{display:block}.answer span{margin-top:5px;color:var(--muted)}details summary{list-style:none}details summary::-webkit-details-marker{display:none}.ratings{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}.ratings form,.ratings button{width:100%}.muted{color:var(--muted);font-size:12px}.danger{color:#9d302a;border-color:#dca39d}.access-pill{display:inline-block;margin-top:8px;padding:4px 7px;border-radius:999px;color:var(--green);background:#edf6ef;font-size:10px}.folder-filter{display:flex;align-items:center;justify-content:space-between}.folder-filter b{font-size:10px}@media(max-width:1050px){.calendar-layout,.dictionary-layout{grid-template-columns:1fr}.records-layout{grid-template-columns:200px 1fr}.records-layout .editor{grid-column:1/-1;border-top:1px solid var(--line)}.calendar .day{min-height:88px}}@media(max-width:700px){.shell{width:min(100% - 24px,1350px)}.hero{align-items:flex-start;flex-direction:column}.calendar{min-width:720px}.calendar-scroll{overflow:auto}.records-layout{grid-template-columns:1fr}.column{border-right:0;border-bottom:1px solid var(--line)}.form-row{grid-template-columns:1fr}.word-table{min-width:600px}.table-scroll{overflow:auto}}
+    </style>
+</head>
+<body><main class="shell">
+    <div class="top"><a class="back" href="/">← Вернуться к Монитору</a><div><span class="test">ТЕСТ · ТОЛЬКО АДМИНИСТРАТОР</span> <a class="account" href="/account">{{current_user.username}}</a></div></div>
+    <header class="hero"><div><h1>Заметки</h1><p>Календарь, рабочие записи и личные учебные карточки</p></div></header>
+    {% if message %}<p class="message">{{message}}</p>{% endif %}{% if error %}<p class="error">{{error}}</p>{% endif %}
+    <nav class="tabs"><a class="tab {{'active' if view == 'calendar' else ''}}" href="/notes?view=calendar">Календарь</a><a class="tab {{'active' if view == 'records' else ''}}" href="/notes?view=records">Записи</a><a class="tab {{'active' if view == 'dictionary' else ''}}" href="/notes?view=dictionary">Словарь и квиз</a></nav>
+
+    {% if view == 'calendar' %}
+    <div class="calendar-layout">
+        <section class="panel">
+            <div class="panel-head"><div><h2>{{month_label}}</h2><p>Нажми на день, чтобы посмотреть его мероприятия</p></div><div class="month-nav"><a class="button secondary" href="{{previous_month_url}}">←</a><a class="button secondary" href="{{today_url}}">Сегодня</a><a class="button secondary" href="{{next_month_url}}">→</a></div></div>
+            <div class="calendar-scroll"><div class="calendar"><div class="weekday">Пн</div><div class="weekday">Вт</div><div class="weekday">Ср</div><div class="weekday">Чт</div><div class="weekday">Пт</div><div class="weekday">Сб</div><div class="weekday">Вс</div>{% for day in calendar_days %}<a class="day {{'outside' if not day.in_month else ''}} {{'selected' if day.iso == selected_date else ''}}" href="{{day.url}}"><time>{{day.number}}</time>{% for event in day.events[:3] %}<span class="event-chip {{'green' if loop.index is even else ''}}">{{event.event_time or 'Весь день'}} · {{event.title}}</span>{% endfor %}{% if day.events|length > 3 %}<span class="muted">ещё {{day.events|length - 3}}</span>{% endif %}</a>{% endfor %}</div></div>
+        </section>
+        <aside class="panel">
+            <div class="panel-head"><div><h3>{{selected_date_label}}</h3><p>{{selected_events|length}} мероприятий</p></div><a class="button" href="{{new_event_url}}">+ Добавить</a></div>
+            {% if selected_events %}<div class="event-list">{% for event in selected_events %}<article class="event-card"><strong>{{event.event_time or 'Весь день'}} · {{event.title}}</strong>{% if event.place %}<div class="event-meta">{{event.place}}</div>{% endif %}{% if event.description %}<p class="muted">{{event.description}}</p>{% endif %}<span class="access-pill">{{access_labels[event.visibility]}}{% if event.shared_users %} · {{event.shared_users|map(attribute='username')|join(', ')}}{% endif %}</span><div class="event-actions"><a class="button secondary" href="{{event.edit_url}}">Изменить</a><form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete_event"><input type="hidden" name="event_id" value="{{event.id}}"><input type="hidden" name="return_date" value="{{selected_date}}"><button class="danger" type="submit">Удалить</button></form></div></article>{% endfor %}</div>{% else %}<div class="empty">На этот день мероприятий нет.</div>{% endif %}
+            <form class="form" method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="save_event"><input type="hidden" name="event_id" value="{{event_form.id or ''}}"><label>Название<input name="title" value="{{event_form.title}}" maxlength="200" required></label><div class="form-row"><label>Дата<input type="date" name="event_date" value="{{event_form.event_date}}" required></label><label>Время<input type="time" name="event_time" value="{{event_form.event_time}}"></label></div><label>Место<input name="place" value="{{event_form.place}}" maxlength="500"></label><label>Комментарий<textarea name="description" maxlength="5000">{{event_form.description}}</textarea></label><label>Доступ<select name="visibility"><option value="private" {{'selected' if event_form.visibility == 'private' else ''}}>Только я</option><option value="selected" {{'selected' if event_form.visibility == 'selected' else ''}}>Выбранные пользователи</option><option value="all" {{'selected' if event_form.visibility == 'all' else ''}}>Все пользователи</option></select></label><div class="share-users">{% for account in available_users %}<label class="share-user"><input type="checkbox" name="shared_user_ids" value="{{account.id}}" {{'checked' if account.id in event_shared_ids else ''}}>{{account.username}}</label>{% else %}<span class="muted">Других пользователей пока нет</span>{% endfor %}</div><div class="form-actions"><button class="primary" type="submit">{{'Сохранить изменения' if event_form.id else 'Создать мероприятие'}}</button></div></form>
+        </aside>
+    </div>
+
+    {% elif view == 'records' %}
+    <section class="panel records-layout">
+        <div class="column"><div class="column-title">Папки</div><nav class="list"><a class="list-link folder-filter {{'active' if selected_folder == '' else ''}}" href="/notes?view=records"><span>Все записи</span><b>{{notes|length}}</b></a>{% for folder in note_folders %}<a class="list-link folder-filter {{'active' if selected_folder == folder.name else ''}}" href="{{folder.url}}"><span>{{folder.name}}</span><b>{{folder.count}}</b></a>{% endfor %}</nav></div>
+        <div class="column"><div class="column-title">Записи</div><nav class="list">{% for note in filtered_notes %}<a class="list-link {{'active' if selected_note and selected_note.id == note.id else ''}}" href="{{note.url}}"><strong>{{note.title}}</strong><span>{{note.folder}} · {{note.updated_at[:16]|replace('T',' ')}}</span></a>{% else %}<div class="empty">В этой папке пока пусто.</div>{% endfor %}</nav></div>
+        <div class="column editor"><div class="panel-head"><div><h3>{{'Редактирование записи' if note_form.id else 'Новая запись'}}</h3><p>Адреса, телефоны, ссылки и рабочий текст</p></div>{% if note_form.id %}<a class="button" href="/notes?view=records{% if selected_folder %}&folder={{selected_folder|urlencode}}{% endif %}">+ Новая</a>{% endif %}</div><form class="form" method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="save_note"><input type="hidden" name="note_id" value="{{note_form.id or ''}}"><label>Папка<input name="folder" value="{{note_form.folder}}" maxlength="80" placeholder="Например: Контакты"></label><label>Заголовок<input name="title" value="{{note_form.title}}" maxlength="200" required></label><label>Текст<textarea name="body" maxlength="20000" placeholder="Телефоны, адреса, ссылки, комментарии…">{{note_form.body}}</textarea></label><label>Доступ<select name="visibility"><option value="private" {{'selected' if note_form.visibility == 'private' else ''}}>Только я</option><option value="selected" {{'selected' if note_form.visibility == 'selected' else ''}}>Выбранные пользователи</option><option value="all" {{'selected' if note_form.visibility == 'all' else ''}}>Все пользователи</option></select></label><div class="share-users">{% for account in available_users %}<label class="share-user"><input type="checkbox" name="shared_user_ids" value="{{account.id}}" {{'checked' if account.id in note_shared_ids else ''}}>{{account.username}}</label>{% else %}<span class="muted">Других пользователей пока нет</span>{% endfor %}</div><div class="form-actions">{% if note_form.id %}<button class="danger" type="submit" name="action" value="delete_note">Удалить</button>{% endif %}<button class="primary" type="submit">Сохранить</button></div></form></div>
+    </section>
+
+    {% else %}
+    <div class="dictionary-layout">
+        <aside class="panel"><div class="summary"><strong>{{deck_total}} словарей</strong><span>{{due_total}} карточек на сегодня</span></div><nav class="deck-list">{% for deck in decks %}<a class="list-link folder-filter {{'active' if selected_deck and selected_deck.id == deck.id else ''}}" href="{{deck.url}}"><span>{{deck.name}}<small>{{deck.card_count}} слов · {{deck.due_count}} повторить</small></span><b>›</b></a>{% endfor %}</nav><form class="form" method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="create_deck"><label>Новый словарь<input name="name" maxlength="100" placeholder="Например: Политика" required></label><button class="primary" type="submit">Создать</button></form></aside>
+        <section class="panel"><div class="panel-head"><div><h2>{{selected_deck.name if selected_deck else 'Словарь'}}</h2><p>Иероглиф, чтение и перевод</p></div></div>{% if selected_deck %}<div class="table-scroll"><table class="word-table"><thead><tr><th>Слово</th><th>Чтение</th><th>Перевод</th><th>Следующий повтор</th></tr></thead><tbody>{% for card in cards %}<tr><td class="term">{{card.term}}</td><td>{{card.reading or '—'}}</td><td>{{card.translation}}</td><td>{{card.next_review or 'сегодня'}}</td></tr>{% else %}<tr><td colspan="4" class="muted">Добавь первую карточку.</td></tr>{% endfor %}</tbody></table></div><form class="form" method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="add_card"><input type="hidden" name="deck_id" value="{{selected_deck.id}}"><div class="form-row"><label>Слово / иероглиф<input name="term" maxlength="200" required></label><label>Чтение<input name="reading" maxlength="300"></label></div><label>Перевод<input name="translation" maxlength="1000" required></label><div class="form-actions"><button class="primary" type="submit">Добавить карточку</button></div></form>{% else %}<div class="empty">Создай словарь слева.</div>{% endif %}</section>
+        <aside class="panel"><div class="panel-head"><div><h3>Квиз на сегодня</h3><p>Интервальные повторения</p></div></div><div class="quiz">{% if quiz_card %}<details><summary class="button primary" style="display:grid;place-items:center">Показать ответ</summary><div class="flashcard"><div><div class="term">{{quiz_card.term}}</div><div class="muted">Вспомни чтение и перевод</div><div class="answer"><strong>{{quiz_card.reading or 'Без чтения'}}</strong><span>{{quiz_card.translation}}</span></div></div></div><div class="ratings">{% for rating,label in ratings %}<form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="review_card"><input type="hidden" name="card_id" value="{{quiz_card.id}}"><input type="hidden" name="deck_id" value="{{selected_deck.id}}"><input type="hidden" name="rating" value="{{rating}}"><button type="submit">{{label}}</button></form>{% endfor %}</div></details>{% elif selected_deck %}<div class="empty">Все карточки на сегодня повторены 🎉</div>{% else %}<div class="empty">Выбери или создай словарь.</div>{% endif %}</div></aside>
+    </div>
+    {% endif %}
+</main></body></html>
+"""
+
+
 HTML = """
 <!DOCTYPE html>
 <html lang="ru">
@@ -989,6 +1049,9 @@ HTML = """
             <a class="site-section" href="/collections">
                 Подборки
             </a>
+            {% if current_user.role == 'admin' %}<a class="site-section" href="/notes">
+                Заметки <small style="font-size:8px;color:var(--coral);vertical-align:top">ТЕСТ</small>
+            </a>{% endif %}
         </nav>
         <div class="topbar-tools">
             <div class="clocks">
@@ -2561,6 +2624,267 @@ def export_collection_docx():
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         ),
     )
+
+
+MONTH_NAMES_RU = (
+    "", "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+)
+ACCESS_LABELS = {
+    "private": "Только я", "selected": "Выбранные пользователи",
+    "all": "Все пользователи",
+}
+
+
+def _notes_admin():
+    user = current_user()
+    if not user or user.get("role") != "admin":
+        abort(403)
+    return user
+
+
+def _notes_redirect(view, **values):
+    return redirect(url_for("notes_page", view=view, **values))
+
+
+@app.route("/notes", methods=["GET", "POST"])
+def notes_page():
+    """Экспериментальные заметки, доступные только администратору."""
+    user = _notes_admin()
+    user_id = user["id"]
+    view = str(request.values.get("view", "calendar")).strip().casefold()
+    if view not in {"calendar", "records", "dictionary"}:
+        view = "calendar"
+
+    if request.method == "POST":
+        if not csrf_is_valid():
+            abort(400)
+        action = str(request.form.get("action", "")).strip()
+        try:
+            if action == "save_event":
+                event_id = save_calendar_event(
+                    user_id, request.form.get("title"),
+                    request.form.get("event_date"), request.form.get("event_time"),
+                    request.form.get("place"), request.form.get("description"),
+                    request.form.get("visibility"),
+                    request.form.getlist("shared_user_ids"),
+                    request.form.get("event_id"),
+                )
+                event_date = request.form.get("event_date")
+                return _notes_redirect(
+                    "calendar", selected=event_date, event=event_id,
+                    message="Мероприятие сохранено",
+                )
+            if action == "delete_event":
+                delete_calendar_event(user_id, request.form.get("event_id"))
+                return _notes_redirect(
+                    "calendar", selected=request.form.get("return_date"),
+                    message="Мероприятие удалено",
+                )
+            if action == "save_note":
+                if "delete_note" in request.form.getlist("action"):
+                    delete_personal_note(user_id, request.form.get("note_id"))
+                    return _notes_redirect("records", message="Запись удалена")
+                note_id = save_personal_note(
+                    user_id, request.form.get("folder"), request.form.get("title"),
+                    request.form.get("body"), request.form.get("visibility"),
+                    request.form.getlist("shared_user_ids"),
+                    request.form.get("note_id"),
+                )
+                return _notes_redirect(
+                    "records", note=note_id, message="Запись сохранена"
+                )
+            if action == "create_deck":
+                deck_id = create_dictionary_deck(user_id, request.form.get("name"))
+                return _notes_redirect(
+                    "dictionary", deck=deck_id, message="Словарь создан"
+                )
+            if action == "add_card":
+                deck_id = request.form.get("deck_id")
+                save_dictionary_card(
+                    user_id, deck_id, request.form.get("term"),
+                    request.form.get("reading"), request.form.get("translation"),
+                )
+                return _notes_redirect(
+                    "dictionary", deck=deck_id, message="Карточка добавлена"
+                )
+            if action == "review_card":
+                deck_id = request.form.get("deck_id")
+                result = review_dictionary_card(
+                    user_id, request.form.get("card_id"), request.form.get("rating")
+                )
+                return _notes_redirect(
+                    "dictionary", deck=deck_id,
+                    message=f"Следующий повтор: {result['next_review']}",
+                )
+            raise ValueError("Неизвестное действие")
+        except ValueError as operation_error:
+            return _notes_redirect(view, error=str(operation_error))
+
+    available_users = [
+        account for account in list_users()
+        if account["is_active"] and account["id"] != user_id
+    ]
+    context = {
+        "current_user": user,
+        "csrf_token": csrf_token(),
+        "view": view,
+        "available_users": available_users,
+        "message": str(request.args.get("message", "")).strip(),
+        "error": str(request.args.get("error", "")).strip(),
+        "access_labels": ACCESS_LABELS,
+    }
+
+    if view == "calendar":
+        today = date.today()
+        try:
+            year = int(request.args.get("year", today.year))
+            month = int(request.args.get("month", today.month))
+            if not 2000 <= year <= 2100 or not 1 <= month <= 12:
+                raise ValueError
+        except (TypeError, ValueError):
+            year, month = today.year, today.month
+        first_day = date(year, month, 1)
+        days_in_month = monthrange(year, month)[1]
+        last_day = date(year, month, days_in_month)
+        grid_start = first_day - timedelta(days=first_day.weekday())
+        grid_end = grid_start + timedelta(days=41)
+        events = list_calendar_events(
+            user_id, grid_start.isoformat(), grid_end.isoformat()
+        )
+        events_by_date = {}
+        for event in events:
+            events_by_date.setdefault(event["event_date"], []).append(event)
+        selected_date = str(request.args.get("selected", "")).strip()
+        try:
+            parsed_selected = datetime.strptime(selected_date, "%Y-%m-%d").date()
+        except ValueError:
+            parsed_selected = today if first_day <= today <= last_day else first_day
+            selected_date = parsed_selected.isoformat()
+        calendar_days = []
+        for offset in range(42):
+            item_date = grid_start + timedelta(days=offset)
+            calendar_days.append({
+                "number": item_date.day,
+                "iso": item_date.isoformat(),
+                "in_month": item_date.month == month,
+                "events": events_by_date.get(item_date.isoformat(), []),
+                "url": url_for(
+                    "notes_page", view="calendar", year=item_date.year,
+                    month=item_date.month, selected=item_date.isoformat(),
+                ),
+            })
+        selected_events = list(events_by_date.get(selected_date, []))
+        for event in selected_events:
+            event["edit_url"] = url_for(
+                "notes_page", view="calendar", year=year, month=month,
+                selected=selected_date, event=event["id"],
+            )
+        selected_event = next(
+            (
+                event for event in events
+                if str(event["id"]) == str(request.args.get("event", ""))
+            ),
+            None,
+        )
+        event_form = selected_event or {
+            "id": "", "title": "", "event_date": selected_date,
+            "event_time": "", "place": "", "description": "",
+            "visibility": "private", "shared_users": [],
+        }
+        previous_anchor = first_day - timedelta(days=1)
+        next_anchor = last_day + timedelta(days=1)
+        context.update(
+            month_label=f"{MONTH_NAMES_RU[month]} {year}",
+            calendar_days=calendar_days,
+            selected_date=selected_date,
+            selected_date_label=parsed_selected.strftime("%d.%m.%Y"),
+            selected_events=selected_events,
+            event_form=event_form,
+            event_shared_ids={item["id"] for item in event_form["shared_users"]},
+            previous_month_url=url_for(
+                "notes_page", view="calendar", year=previous_anchor.year,
+                month=previous_anchor.month,
+            ),
+            next_month_url=url_for(
+                "notes_page", view="calendar", year=next_anchor.year,
+                month=next_anchor.month,
+            ),
+            today_url=url_for(
+                "notes_page", view="calendar", year=today.year,
+                month=today.month, selected=today.isoformat(),
+            ),
+            new_event_url=url_for(
+                "notes_page", view="calendar", year=year, month=month,
+                selected=selected_date,
+            ),
+        )
+    elif view == "records":
+        notes = list_personal_notes(user_id)
+        selected_folder = str(request.args.get("folder", "")).strip()
+        folder_counts = {}
+        for note in notes:
+            folder_counts[note["folder"]] = folder_counts.get(note["folder"], 0) + 1
+            note["url"] = url_for(
+                "notes_page", view="records", folder=selected_folder or None,
+                note=note["id"],
+            )
+        filtered_notes = [
+            note for note in notes
+            if not selected_folder or note["folder"] == selected_folder
+        ]
+        selected_note = next(
+            (
+                note for note in notes
+                if str(note["id"]) == str(request.args.get("note", ""))
+            ),
+            None,
+        )
+        note_form = selected_note or {
+            "id": "", "folder": selected_folder or "Без папки", "title": "",
+            "body": "", "visibility": "private", "shared_users": [],
+        }
+        context.update(
+            notes=notes,
+            filtered_notes=filtered_notes,
+            selected_folder=selected_folder,
+            selected_note=selected_note,
+            note_form=note_form,
+            note_shared_ids={item["id"] for item in note_form["shared_users"]},
+            note_folders=[
+                {"name": name, "count": count,
+                 "url": url_for("notes_page", view="records", folder=name)}
+                for name, count in sorted(folder_counts.items())
+            ],
+        )
+    else:
+        decks = list_dictionary_decks(user_id)
+        requested_deck = str(request.args.get("deck", "")).strip()
+        selected_deck = next(
+            (deck for deck in decks if str(deck["id"]) == requested_deck),
+            decks[0] if decks else None,
+        )
+        for deck in decks:
+            deck["url"] = url_for("notes_page", view="dictionary", deck=deck["id"])
+        cards = (
+            list_dictionary_cards(user_id, selected_deck["id"])
+            if selected_deck else []
+        )
+        due_cards = (
+            list_dictionary_cards(user_id, selected_deck["id"], due_only=True)
+            if selected_deck else []
+        )
+        context.update(
+            decks=decks,
+            deck_total=len(decks),
+            due_total=sum(deck["due_count"] for deck in decks),
+            selected_deck=selected_deck,
+            cards=cards,
+            quiz_card=due_cards[0] if due_cards else None,
+            ratings=(("again", "Снова"), ("hard", "Трудно"),
+                     ("good", "Хорошо"), ("easy", "Легко")),
+        )
+    return render_template_string(NOTES_HTML, **context)
 
 
 @app.route("/bookmarks", methods=["GET", "POST"])

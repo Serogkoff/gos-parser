@@ -214,6 +214,76 @@ def _create_schema(connection):
             FOREIGN KEY(note_id) REFERENCES collection_notes(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS personal_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            folder TEXT NOT NULL DEFAULT 'Без папки',
+            title TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '',
+            visibility TEXT NOT NULL DEFAULT 'private'
+                CHECK(visibility IN ('private', 'selected', 'all')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS personal_note_shares (
+            note_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            PRIMARY KEY(note_id, user_id),
+            FOREIGN KEY(note_id) REFERENCES personal_notes(id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS calendar_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            event_date TEXT NOT NULL,
+            event_time TEXT NOT NULL DEFAULT '',
+            place TEXT NOT NULL DEFAULT '',
+            description TEXT NOT NULL DEFAULT '',
+            visibility TEXT NOT NULL DEFAULT 'private'
+                CHECK(visibility IN ('private', 'selected', 'all')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS calendar_event_shares (
+            event_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            PRIMARY KEY(event_id, user_id),
+            FOREIGN KEY(event_id) REFERENCES calendar_events(id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS dictionary_decks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL COLLATE NOCASE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(user_id, name),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS dictionary_cards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            deck_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            term TEXT NOT NULL,
+            reading TEXT NOT NULL DEFAULT '',
+            translation TEXT NOT NULL,
+            repetitions INTEGER NOT NULL DEFAULT 0,
+            interval_days INTEGER NOT NULL DEFAULT 0,
+            next_review TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(deck_id) REFERENCES dictionary_decks(id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS bookmarks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -298,6 +368,18 @@ def _create_schema(connection):
             ON collection_notes(folder_id, updated_at DESC);
         CREATE INDEX IF NOT EXISTS idx_collection_note_reads_note
             ON collection_note_reads(note_id);
+        CREATE INDEX IF NOT EXISTS idx_personal_notes_user
+            ON personal_notes(user_id, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_personal_note_shares_user
+            ON personal_note_shares(user_id, note_id);
+        CREATE INDEX IF NOT EXISTS idx_calendar_events_user_date
+            ON calendar_events(user_id, event_date, event_time);
+        CREATE INDEX IF NOT EXISTS idx_calendar_event_shares_user
+            ON calendar_event_shares(user_id, event_id);
+        CREATE INDEX IF NOT EXISTS idx_dictionary_decks_user
+            ON dictionary_decks(user_id, name);
+        CREATE INDEX IF NOT EXISTS idx_dictionary_cards_due
+            ON dictionary_cards(user_id, deck_id, next_review);
         CREATE INDEX IF NOT EXISTS idx_user_source_orders_user
             ON user_source_orders(user_id, source_group);
         CREATE INDEX IF NOT EXISTS idx_parser_jobs_status
@@ -571,6 +653,377 @@ def authenticate_user(username, password):
     user = _user_from_row(row)
     user["last_login_at"] = logged_at
     return user
+
+
+def _validated_notes_text(value, field, maximum, required=False):
+    text = str(value or "").strip()
+    if required and not text:
+        raise ValueError(f"Заполните поле «{field}»")
+    if len(text) > maximum:
+        raise ValueError(f"Поле «{field}» слишком длинное")
+    return text
+
+
+def _validated_visibility(value):
+    visibility = str(value or "private").strip().casefold()
+    if visibility not in {"private", "selected", "all"}:
+        raise ValueError("Некорректный режим доступа")
+    return visibility
+
+
+def _validated_date(value, field="Дата"):
+    text = str(value or "").strip()
+    try:
+        datetime.strptime(text, "%Y-%m-%d")
+    except ValueError as error:
+        raise ValueError(f"Поле «{field}» заполнено неверно") from error
+    return text
+
+
+def _validated_time(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        datetime.strptime(text, "%H:%M")
+    except ValueError as error:
+        raise ValueError("Поле «Время» заполнено неверно") from error
+    return text
+
+
+def _replace_notes_shares(connection, table, owner_id, item_id, visibility,
+                          shared_user_ids):
+    id_column = "note_id" if table == "personal_note_shares" else "event_id"
+    connection.execute(f"DELETE FROM {table} WHERE {id_column} = ?", (item_id,))
+    if visibility != "selected":
+        return
+    result = set()
+    for value in shared_user_ids or []:
+        try:
+            user_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if user_id > 0 and user_id != owner_id:
+            result.add(user_id)
+    if not result:
+        return
+    available = {
+        int(row["id"])
+        for row in connection.execute(
+            "SELECT id FROM users WHERE is_active = 1"
+        ).fetchall()
+    }
+    connection.executemany(
+        f"INSERT INTO {table}({id_column}, user_id) VALUES (?, ?)",
+        [(item_id, user_id) for user_id in sorted(result & available)],
+    )
+
+
+def _shared_users(connection, table, id_column, item_id):
+    rows = connection.execute(
+        f"""SELECT u.id, u.username FROM {table} AS s
+            JOIN users AS u ON u.id = s.user_id
+            WHERE s.{id_column} = ? ORDER BY u.username COLLATE NOCASE""",
+        (item_id,),
+    ).fetchall()
+    return [{"id": int(row["id"]), "username": row["username"]} for row in rows]
+
+
+def save_personal_note(user_id, folder, title, body, visibility="private",
+                       shared_user_ids=None, note_id=None):
+    """Создаёт или обновляет рабочую запись владельца."""
+    user_id = _validated_user_id(user_id)
+    folder = _validated_notes_text(folder, "Папка", 80) or "Без папки"
+    title = _validated_notes_text(title, "Заголовок", 200, required=True)
+    body = _validated_notes_text(body, "Текст", 20_000)
+    visibility = _validated_visibility(visibility)
+    now = datetime.now().isoformat(timespec="seconds")
+    with STORAGE_LOCK, _connection() as connection:
+        if note_id:
+            try:
+                note_id = int(note_id)
+            except (TypeError, ValueError) as error:
+                raise ValueError("Заметка не найдена") from error
+            cursor = connection.execute(
+                """UPDATE personal_notes
+                   SET folder = ?, title = ?, body = ?, visibility = ?, updated_at = ?
+                   WHERE id = ? AND user_id = ?""",
+                (folder, title, body, visibility, now, note_id, user_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Заметка не найдена")
+        else:
+            cursor = connection.execute(
+                """INSERT INTO personal_notes(
+                       user_id, folder, title, body, visibility, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, folder, title, body, visibility, now, now),
+            )
+            note_id = cursor.lastrowid
+        _replace_notes_shares(
+            connection, "personal_note_shares", user_id, note_id,
+            visibility, shared_user_ids,
+        )
+    return int(note_id)
+
+
+def list_personal_notes(user_id):
+    """Возвращает личные записи владельца с настройкой доступа."""
+    user_id = _validated_user_id(user_id)
+    initialize_database()
+    with _connection() as connection:
+        rows = connection.execute(
+            """SELECT id, folder, title, body, visibility, created_at, updated_at
+               FROM personal_notes WHERE user_id = ?
+               ORDER BY updated_at DESC, id DESC""",
+            (user_id,),
+        ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["id"] = int(item["id"])
+            item["shared_users"] = _shared_users(
+                connection, "personal_note_shares", "note_id", item["id"]
+            )
+            result.append(item)
+    return result
+
+
+def delete_personal_note(user_id, note_id):
+    user_id = _validated_user_id(user_id)
+    try:
+        note_id = int(note_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Заметка не найдена") from error
+    with STORAGE_LOCK, _connection() as connection:
+        cursor = connection.execute(
+            "DELETE FROM personal_notes WHERE id = ? AND user_id = ?",
+            (note_id, user_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("Заметка не найдена")
+
+
+def save_calendar_event(user_id, title, event_date, event_time="", place="",
+                        description="", visibility="private",
+                        shared_user_ids=None, event_id=None):
+    """Создаёт или обновляет событие календаря владельца."""
+    user_id = _validated_user_id(user_id)
+    title = _validated_notes_text(title, "Название", 200, required=True)
+    event_date = _validated_date(event_date)
+    event_time = _validated_time(event_time)
+    place = _validated_notes_text(place, "Место", 500)
+    description = _validated_notes_text(description, "Комментарий", 5000)
+    visibility = _validated_visibility(visibility)
+    now = datetime.now().isoformat(timespec="seconds")
+    with STORAGE_LOCK, _connection() as connection:
+        if event_id:
+            try:
+                event_id = int(event_id)
+            except (TypeError, ValueError) as error:
+                raise ValueError("Мероприятие не найдено") from error
+            cursor = connection.execute(
+                """UPDATE calendar_events SET title = ?, event_date = ?,
+                       event_time = ?, place = ?, description = ?, visibility = ?,
+                       updated_at = ? WHERE id = ? AND user_id = ?""",
+                (title, event_date, event_time, place, description, visibility,
+                 now, event_id, user_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Мероприятие не найдено")
+        else:
+            cursor = connection.execute(
+                """INSERT INTO calendar_events(
+                       user_id, title, event_date, event_time, place, description,
+                       visibility, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, title, event_date, event_time, place, description,
+                 visibility, now, now),
+            )
+            event_id = cursor.lastrowid
+        _replace_notes_shares(
+            connection, "calendar_event_shares", user_id, event_id,
+            visibility, shared_user_ids,
+        )
+    return int(event_id)
+
+
+def list_calendar_events(user_id, date_from, date_to):
+    """Возвращает события владельца за включительный диапазон дат."""
+    user_id = _validated_user_id(user_id)
+    date_from = _validated_date(date_from, "Начальная дата")
+    date_to = _validated_date(date_to, "Конечная дата")
+    initialize_database()
+    with _connection() as connection:
+        rows = connection.execute(
+            """SELECT id, title, event_date, event_time, place, description,
+                      visibility, created_at, updated_at
+               FROM calendar_events
+               WHERE user_id = ? AND event_date BETWEEN ? AND ?
+               ORDER BY event_date, event_time, id""",
+            (user_id, date_from, date_to),
+        ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["id"] = int(item["id"])
+            item["shared_users"] = _shared_users(
+                connection, "calendar_event_shares", "event_id", item["id"]
+            )
+            result.append(item)
+    return result
+
+
+def delete_calendar_event(user_id, event_id):
+    user_id = _validated_user_id(user_id)
+    try:
+        event_id = int(event_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Мероприятие не найдено") from error
+    with STORAGE_LOCK, _connection() as connection:
+        cursor = connection.execute(
+            "DELETE FROM calendar_events WHERE id = ? AND user_id = ?",
+            (event_id, user_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("Мероприятие не найдено")
+
+
+def create_dictionary_deck(user_id, name):
+    user_id = _validated_user_id(user_id)
+    name = _validated_notes_text(name, "Название словаря", 100, required=True)
+    now = datetime.now().isoformat(timespec="seconds")
+    try:
+        with STORAGE_LOCK, _connection() as connection:
+            cursor = connection.execute(
+                """INSERT INTO dictionary_decks(user_id, name, created_at, updated_at)
+                   VALUES (?, ?, ?, ?)""",
+                (user_id, name, now, now),
+            )
+            deck_id = cursor.lastrowid
+    except sqlite3.IntegrityError as error:
+        raise ValueError("Словарь с таким названием уже существует") from error
+    return int(deck_id)
+
+
+def list_dictionary_decks(user_id):
+    user_id = _validated_user_id(user_id)
+    initialize_database()
+    today = datetime.now().date().isoformat()
+    with _connection() as connection:
+        rows = connection.execute(
+            """SELECT d.id, d.name, COUNT(c.id) AS card_count,
+                      SUM(CASE WHEN c.id IS NOT NULL AND
+                          (c.next_review = '' OR c.next_review <= ?) THEN 1 ELSE 0 END)
+                          AS due_count
+               FROM dictionary_decks AS d
+               LEFT JOIN dictionary_cards AS c ON c.deck_id = d.id
+               WHERE d.user_id = ? GROUP BY d.id
+               ORDER BY d.name COLLATE NOCASE""",
+            (today, user_id),
+        ).fetchall()
+    return [
+        {"id": int(row["id"]), "name": row["name"],
+         "card_count": int(row["card_count"] or 0),
+         "due_count": int(row["due_count"] or 0)}
+        for row in rows
+    ]
+
+
+def save_dictionary_card(user_id, deck_id, term, reading, translation):
+    user_id = _validated_user_id(user_id)
+    try:
+        deck_id = int(deck_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Словарь не найден") from error
+    term = _validated_notes_text(term, "Слово", 200, required=True)
+    reading = _validated_notes_text(reading, "Чтение", 300)
+    translation = _validated_notes_text(
+        translation, "Перевод", 1000, required=True
+    )
+    now = datetime.now().isoformat(timespec="seconds")
+    with STORAGE_LOCK, _connection() as connection:
+        if connection.execute(
+            "SELECT 1 FROM dictionary_decks WHERE id = ? AND user_id = ?",
+            (deck_id, user_id),
+        ).fetchone() is None:
+            raise ValueError("Словарь не найден")
+        cursor = connection.execute(
+            """INSERT INTO dictionary_cards(
+                   deck_id, user_id, term, reading, translation, created_at, updated_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (deck_id, user_id, term, reading, translation, now, now),
+        )
+        connection.execute(
+            "UPDATE dictionary_decks SET updated_at = ? WHERE id = ?", (now, deck_id)
+        )
+    return int(cursor.lastrowid)
+
+
+def list_dictionary_cards(user_id, deck_id, due_only=False):
+    user_id = _validated_user_id(user_id)
+    try:
+        deck_id = int(deck_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Словарь не найден") from error
+    today = datetime.now().date().isoformat()
+    initialize_database()
+    query = """SELECT c.id, c.deck_id, c.term, c.reading, c.translation,
+                      c.repetitions, c.interval_days, c.next_review
+               FROM dictionary_cards AS c
+               JOIN dictionary_decks AS d ON d.id = c.deck_id
+               WHERE c.user_id = ? AND c.deck_id = ? AND d.user_id = ?"""
+    parameters = [user_id, deck_id, user_id]
+    if due_only:
+        query += " AND (c.next_review = '' OR c.next_review <= ?)"
+        parameters.append(today)
+    query += " ORDER BY c.next_review, c.id"
+    with _connection() as connection:
+        rows = connection.execute(query, parameters).fetchall()
+    return [dict(row) for row in rows]
+
+
+def review_dictionary_card(user_id, card_id, rating):
+    """Применяет простой интервальный повтор для ответа в квизе."""
+    user_id = _validated_user_id(user_id)
+    try:
+        card_id = int(card_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Карточка не найдена") from error
+    rating = str(rating or "").strip().casefold()
+    if rating not in {"again", "hard", "good", "easy"}:
+        raise ValueError("Неизвестная оценка карточки")
+    with STORAGE_LOCK, _connection() as connection:
+        row = connection.execute(
+            """SELECT repetitions, interval_days FROM dictionary_cards
+               WHERE id = ? AND user_id = ?""",
+            (card_id, user_id),
+        ).fetchone()
+        if row is None:
+            raise ValueError("Карточка не найдена")
+        old_interval = int(row["interval_days"] or 0)
+        old_repetitions = int(row["repetitions"] or 0)
+        if rating == "again":
+            repetitions, interval_days = 0, 0
+        elif rating == "hard":
+            repetitions, interval_days = old_repetitions + 1, max(1, old_interval)
+        elif rating == "good":
+            repetitions = old_repetitions + 1
+            interval_days = 1 if old_interval == 0 else max(2, round(old_interval * 2.3))
+        else:
+            repetitions = old_repetitions + 1
+            interval_days = 4 if old_interval == 0 else max(4, round(old_interval * 3.2))
+        next_review = (
+            datetime.now().date() + timedelta(days=interval_days)
+        ).isoformat()
+        connection.execute(
+            """UPDATE dictionary_cards SET repetitions = ?, interval_days = ?,
+                   next_review = ?, updated_at = ? WHERE id = ? AND user_id = ?""",
+            (repetitions, interval_days, next_review,
+             datetime.now().isoformat(timespec="seconds"), card_id, user_id),
+        )
+    return {"id": card_id, "interval_days": interval_days,
+            "next_review": next_review}
 
 
 def load_source_order(user_id, source_group):
