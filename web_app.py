@@ -974,6 +974,7 @@ HTML = """
         .unread-count{min-width:28px;color:var(--green);text-align:right;font-size:11px;font-weight:700}
         .unread-count:empty{display:none}
         .unread-label{margin-left:auto;padding:3px 6px;color:var(--green);border:1px solid rgba(62,118,85,.35);border-radius:4px;background:rgba(62,118,85,.08);font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+        .unread-label:hover{color:#fff;border-color:var(--green);background:var(--green)}
         .coverage{padding-top:18px}.coverage>h2,.coverage dl{padding:0 20px}
         .coverage dl{margin:14px 0 16px}.coverage dl div{min-height:31px;display:flex;align-items:center;justify-content:space-between}
         .coverage dt,.coverage dd{margin:0;color:#686158;font-size:12px}.coverage dt{display:flex;align-items:center;gap:8px}.coverage dd{color:var(--ink)}
@@ -1131,7 +1132,7 @@ HTML = """
                             {% elif item.parsed_date %}Получено {{item.parsed_date}}
                             {% endif %}
                         </time>
-                        <span class="unread-label hidden">Новая</span>
+                        <button class="unread-label hidden" type="button" data-mark-read="{{item.url}}">Новая</button>
                     </div>
                     {% if item.source in ('МИД РФ', 'Минсельхоз') %}
                     <h3>
@@ -1472,6 +1473,9 @@ HTML = """
     });
     document.querySelectorAll('[data-read-url]').forEach(link => {
         link.addEventListener('click', () => markRead(link.dataset.readUrl));
+    });
+    document.querySelectorAll('[data-mark-read]').forEach(button => {
+        button.addEventListener('click', () => markRead(button.dataset.markRead));
     });
     document.getElementById('mark-all-read').addEventListener('click', () => {
         newsIndex.forEach(item => unread.delete(item.url));

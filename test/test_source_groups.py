@@ -335,6 +335,21 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn('data-unread-source="__all__"', source_list)
         self.assertIn('data-unread-source="МЧС"', source_list)
 
+    def test_new_badge_can_mark_article_read_without_opening_it(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get("/")
+
+        html = response.get_data(as_text=True)
+        self.assertIn(
+            'type="button" data-mark-read="https://mchs.gov.ru/news/1">Новая</button>',
+            html,
+        )
+        self.assertIn(
+            "button.addEventListener('click', () => markRead(button.dataset.markRead))",
+            html,
+        )
+        self.assertNotIn('title="Отметить прочитанной"', html)
+
     def test_multiple_sources_can_be_selected_together(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
             response = web_app.app.test_client().get(
