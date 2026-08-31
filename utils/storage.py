@@ -499,15 +499,14 @@ def list_unread_news(user_id, source_group, limit=2000):
     ]
 
 
-def list_unread_news_index(user_id, source_group, limit=2000):
-    """Возвращает компактный индекс только непрочитанных новостей."""
+def _unread_news_context(user_id, source_group):
+    """Готовит границу чтения без write-транзакции для обычного запроса."""
     try:
         user_id = int(user_id)
-        limit = min(5000, max(1, int(limit)))
     except (TypeError, ValueError) as error:
         raise ValueError("Пользователь не найден") from error
     if user_id <= 0:
-        return []
+        return None
 
     source_group = str(source_group or "").strip().casefold()
     condition, parameters = _news_group_condition(source_group)
@@ -538,50 +537,78 @@ def list_unread_news_index(user_id, source_group, limit=2000):
                 (user_id, source_group),
             ).fetchone()
         if inserted:
-            return []
+            return None
+
+    return {
+        "user_id": user_id,
+        "condition": condition,
+        "parameters": parameters,
+        "read_all_before": state["read_all_before"],
+    }
+
+
+def _unread_news_select(condition):
+    """Строит общую выборку новых и явно оставленных непрочитанными."""
+    return f"""
+        SELECT n.normalized_url AS url,
+               n.source AS source,
+               n.first_seen_at AS first_seen_at,
+               n.news_key AS news_key
+        FROM news_items AS n
+        LEFT JOIN news_item_reads AS r
+          ON r.user_id = ? AND r.normalized_url = n.normalized_url
+        WHERE {condition}
+          AND n.normalized_url != ''
+          AND n.first_seen_at > ?
+          AND r.normalized_url IS NULL
+
+        UNION
+
+        SELECT n.normalized_url AS url,
+               n.source AS source,
+               n.first_seen_at AS first_seen_at,
+               n.news_key AS news_key
+        FROM news_item_reads AS r
+        JOIN news_items AS n
+          ON n.normalized_url = r.normalized_url
+        WHERE r.user_id = ?
+          AND r.is_read = 0
+          AND {condition}
+          AND n.normalized_url != ''
+    """
+
+
+def _unread_news_parameters(context):
+    parameters = context["parameters"]
+    return [
+        context["user_id"],
+        *parameters,
+        context["read_all_before"],
+        context["user_id"],
+        *parameters,
+    ]
+
+
+def list_unread_news_index(user_id, source_group, limit=2000):
+    """Возвращает компактный индекс только непрочитанных новостей."""
+    try:
+        limit = min(5000, max(1, int(limit)))
+    except (TypeError, ValueError):
+        limit = 2000
+    context = _unread_news_context(user_id, source_group)
+    if context is None:
+        return []
+    unread_select = _unread_news_select(context["condition"])
 
     with _connection() as connection:
         rows = connection.execute(
             f"""
             SELECT unread.url, unread.source
-            FROM (
-                SELECT n.normalized_url AS url,
-                       n.source AS source,
-                       n.first_seen_at AS first_seen_at,
-                       n.news_key AS news_key
-                FROM news_items AS n
-                LEFT JOIN news_item_reads AS r
-                  ON r.user_id = ? AND r.normalized_url = n.normalized_url
-                WHERE {condition}
-                  AND n.normalized_url != ''
-                  AND n.first_seen_at > ?
-                  AND r.normalized_url IS NULL
-
-                UNION
-
-                SELECT n.normalized_url AS url,
-                       n.source AS source,
-                       n.first_seen_at AS first_seen_at,
-                       n.news_key AS news_key
-                FROM news_item_reads AS r
-                JOIN news_items AS n
-                  ON n.normalized_url = r.normalized_url
-                WHERE r.user_id = ?
-                  AND r.is_read = 0
-                  AND {condition}
-                  AND n.normalized_url != ''
-            ) AS unread
+            FROM ({unread_select}) AS unread
             ORDER BY unread.first_seen_at DESC, unread.news_key DESC
             LIMIT ?
             """,
-            [
-                user_id,
-                *parameters,
-                state["read_all_before"],
-                user_id,
-                *parameters,
-                limit,
-            ],
+            [*_unread_news_parameters(context), limit],
         ).fetchall()
     return [
         {
@@ -590,6 +617,71 @@ def list_unread_news_index(user_id, source_group, limit=2000):
         }
         for row in rows
     ]
+
+
+def news_unread_summary(user_id, source_group, visible_urls=None):
+    """Считает непрочитанное и возвращает отметки только видимых карточек."""
+    empty = {"total": 0, "by_source": {}, "visible_urls": []}
+    context = _unread_news_context(user_id, source_group)
+    if context is None:
+        return empty
+
+    visible_candidates = []
+    seen_normalized = set()
+    for url in visible_urls or []:
+        original = str(url or "").strip()
+        normalized = normalize_url(original)
+        if not normalized or normalized in seen_normalized:
+            continue
+        seen_normalized.add(normalized)
+        visible_candidates.append((original, normalized))
+
+    unread_select = _unread_news_select(context["condition"])
+    with _connection() as connection:
+        rows = connection.execute(
+            f"""
+            SELECT unread.source, COUNT(*) AS unread_count
+            FROM ({unread_select}) AS unread
+            GROUP BY unread.source
+            """,
+            _unread_news_parameters(context),
+        ).fetchall()
+        visible_unread = set()
+        if visible_candidates:
+            placeholders = ", ".join("?" for _ in visible_candidates)
+            visible_rows = connection.execute(
+                f"""
+                SELECT DISTINCT n.normalized_url AS url
+                FROM news_items AS n
+                LEFT JOIN news_item_reads AS r
+                  ON r.user_id = ? AND r.normalized_url = n.normalized_url
+                WHERE n.normalized_url IN ({placeholders})
+                  AND (
+                      (n.first_seen_at > ? AND r.normalized_url IS NULL)
+                      OR r.is_read = 0
+                  )
+                """,
+                [
+                    context["user_id"],
+                    *(normalized for _, normalized in visible_candidates),
+                    context["read_all_before"],
+                ],
+            ).fetchall()
+            visible_unread = {row["url"] for row in visible_rows}
+
+    by_source = {
+        (row["source"] or "Неизвестный источник"): int(row["unread_count"])
+        for row in rows
+    }
+    return {
+        "total": sum(by_source.values()),
+        "by_source": by_source,
+        "visible_urls": [
+            original
+            for original, normalized in visible_candidates
+            if normalized in visible_unread
+        ],
+    }
 
 
 def mark_news_read(user_id, url):

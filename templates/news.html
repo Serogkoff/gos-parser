@@ -360,7 +360,7 @@
                             {% elif item.parsed_date %}Получено {{item.parsed_date}}
                             {% endif %}
                         </time>
-                        <button class="unread-label hidden" type="button" data-mark-read="{{item.url}}">Новая</button>
+                        <button class="unread-label{{'' if item.url in unread_urls else ' hidden'}}" type="button" data-mark-read="{{item.url}}">Новая</button>
                     </div>
                     {% if item.source in ('МИД РФ', 'Минсельхоз') %}
                     <h3>
@@ -413,7 +413,7 @@
                         <button class="source-link" type="button" data-source-clear>
                             <span class="check">{{'✓' if not source_filters else ''}}</span>
                             <span>Все источники</span>
-                            <span class="unread-count" data-unread-source="__all__"></span>
+                            <span class="unread-count" data-unread-source="__all__">{{('+' ~ unread_total) if unread_total else ''}}</span>
                         </button>
                     </div>
                     {% for src, count in sidebar_sources %}
@@ -422,7 +422,7 @@
                         <button class="source-link" type="button" data-source-filter="{{src}}">
                             <span class="check">{{'✓' if src in source_filters else ''}}</span>
                             <span>{{src}}</span>
-                            <span class="unread-count" data-unread-source="{{src}}"></span>
+                            <span class="unread-count" data-unread-source="{{src}}">{{('+' ~ unread_counts.get(src, 0)) if unread_counts.get(src, 0) else ''}}</span>
                         </button>
                     </div>
                     {% endfor %}
@@ -431,7 +431,7 @@
                         <button class="source-link yahoo-source-toggle" id="yahoo-source-toggle" type="button" aria-expanded="{{'true' if yahoo_expanded else 'false'}}" aria-controls="yahoo-source-items">
                             <span class="check">{{'✓' if yahoo_active else ''}}</span>
                             <span>Yahoo! JAPAN</span>
-                            <span class="unread-count" data-unread-source="__yahoo__"></span>
+                            <span class="unread-count" data-unread-source="__yahoo__">{{('+' ~ yahoo_unread_count) if yahoo_unread_count else ''}}</span>
                             <span class="yahoo-chevron" aria-hidden="true">⌄</span>
                         </button>
                     </div>
@@ -442,7 +442,7 @@
                         <button class="source-link" type="button" data-source-filter="{{src}}">
                             <span class="check">{{'✓' if src in source_filters else ''}}</span>
                             <span>{{label}}</span>
-                            <span class="unread-count" data-unread-source="{{src}}"></span>
+                            <span class="unread-count" data-unread-source="{{src}}">{{('+' ~ unread_counts.get(src, 0)) if unread_counts.get(src, 0) else ''}}</span>
                         </button>
                     </div>
                     {% endfor %}
@@ -498,7 +498,6 @@
     const emptyState = document.getElementById('empty-state');
     const savedCount = document.getElementById('saved-count');
     const brandHome = document.getElementById('brand-home');
-    let newsIndex = {{news_index|tojson}};
     const sourceFilterHome = {{filter_home|tojson}};
     const keywordFilterHome = {{group_found|tojson}};
     const selectedKeyword = {{keyword_filter|tojson}};
@@ -544,7 +543,24 @@
         }, 650);
     });
 
-    let unread = new Set();
+    let unread = new Set({{unread_urls|tojson}});
+    let unreadCounts = {{unread_counts|tojson}};
+    let groupUnreadCount = {{unread_total|tojson}};
+    let yahooUnreadCount = {{yahoo_unread_count|tojson}};
+
+    function replaceUnread(items){
+        unread = new Set();
+        unreadCounts = {};
+        groupUnreadCount = 0;
+        yahooUnreadCount = 0;
+        items.forEach(item => {
+            if(!item || !item.url || unread.has(item.url)) return;
+            unread.add(item.url);
+            groupUnreadCount++;
+            unreadCounts[item.source] = (unreadCounts[item.source] || 0) + 1;
+            if(item.source.startsWith('Yahoo! JAPAN')) yahooUnreadCount++;
+        });
+    }
 
     async function initializeUnread(){
         let legacyUnread = null;
@@ -559,6 +575,7 @@
             legacyUnread = null;
         }
 
+        let migrated = false;
         if(legacyUnread !== null){
             try{
                 const migration = await fetch('/api/news-read/migrate', {
@@ -570,43 +587,37 @@
                     credentials:'same-origin',
                     body:JSON.stringify({unread_urls:legacyUnread})
                 });
-                if(migration.ok) localStorage.removeItem(legacyUnreadStorageKey);
+                if(migration.ok){
+                    localStorage.removeItem(legacyUnreadStorageKey);
+                    migrated = true;
+                }
             }catch(error){
                 // Старые отметки останутся в браузере до успешного переноса.
             }
         }
-        try{
-            const response = await fetch(
-                '/api/news-index?group=' + encodeURIComponent(currentSourceGroup),
-                {credentials:'same-origin'}
-            );
-            if(response.ok){
-                const data = await response.json();
-                if(Array.isArray(data.items)) newsIndex = data.items;
-                unread = new Set(newsIndex.map(item => item.url));
+        if(migrated){
+            try{
+                const response = await fetch(
+                    '/api/news-index?group=' + encodeURIComponent(currentSourceGroup),
+                    {credentials:'same-origin'}
+                );
+                if(response.ok){
+                    const data = await response.json();
+                    if(Array.isArray(data.items)) replaceUnread(data.items);
+                }
+            }catch(error){
+                // Серверные отметки уже показаны; перенос обновится при следующем входе.
             }
-        }catch(error){
-            // Карточки уже доступны; счётчики обновятся при следующем открытии.
         }
         refreshUnread();
     }
 
     function refreshUnread(){
-        const counts = {};
-        let groupUnreadCount = 0;
-        let yahooUnreadCount = 0;
-        newsIndex.forEach(item => {
-            if(unread.has(item.url)){
-                groupUnreadCount++;
-                counts[item.source] = (counts[item.source] || 0) + 1;
-                if(item.source.startsWith('Yahoo! JAPAN')) yahooUnreadCount++;
-            }
-        });
         document.querySelectorAll('[data-unread-source]').forEach(badge => {
             const source = badge.dataset.unreadSource;
             const count = source === '__all__'
                 ? groupUnreadCount
-                : (source === '__yahoo__' ? yahooUnreadCount : (counts[source] || 0));
+                : (source === '__yahoo__' ? yahooUnreadCount : (unreadCounts[source] || 0));
             badge.textContent = count ? '+' + count : '';
         });
         cards.forEach(card => {
@@ -615,8 +626,20 @@
         });
     }
 
+    function adjustUnreadCount(url, change){
+        const card = cards.find(item => item.dataset.id === url);
+        if(!card) return;
+        const source = card.dataset.source;
+        unreadCounts[source] = Math.max(0, (unreadCounts[source] || 0) + change);
+        groupUnreadCount = Math.max(0, groupUnreadCount + change);
+        if(source.startsWith('Yahoo! JAPAN')){
+            yahooUnreadCount = Math.max(0, yahooUnreadCount + change);
+        }
+    }
+
     async function markRead(url){
         if(!unread.delete(url)) return;
+        adjustUnreadCount(url, -1);
         refreshUnread();
         try{
             const response = await fetch('/api/news-read', {
@@ -632,6 +655,7 @@
             if(!response.ok) throw new Error('Не удалось сохранить отметку');
         }catch(error){
             unread.add(url);
+            adjustUnreadCount(url, 1);
             refreshUnread();
         }
     }
@@ -723,7 +747,13 @@
     });
     document.getElementById('mark-all-read').addEventListener('click', async () => {
         const previousUnread = new Set(unread);
+        const previousUnreadCounts = {...unreadCounts};
+        const previousGroupUnreadCount = groupUnreadCount;
+        const previousYahooUnreadCount = yahooUnreadCount;
         unread.clear();
+        unreadCounts = {};
+        groupUnreadCount = 0;
+        yahooUnreadCount = 0;
         refreshUnread();
         try{
             const response = await fetch('/api/news-read', {
@@ -738,6 +768,9 @@
             if(!response.ok) throw new Error('Не удалось сохранить отметки');
         }catch(error){
             unread = previousUnread;
+            unreadCounts = previousUnreadCounts;
+            groupUnreadCount = previousGroupUnreadCount;
+            yahooUnreadCount = previousYahooUnreadCount;
             refreshUnread();
         }
     });

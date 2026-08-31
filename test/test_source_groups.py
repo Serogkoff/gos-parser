@@ -178,6 +178,15 @@ class SourceGroupPageTests(unittest.TestCase):
                 "list_news_index",
                 side_effect=self._list_news_index,
             ),
+            patch.object(
+                web_app,
+                "news_unread_summary",
+                return_value={
+                    "total": 0,
+                    "by_source": {},
+                    "visible_urls": [],
+                },
+            ),
         )
         for patcher in self.feed_patchers:
             patcher.start()

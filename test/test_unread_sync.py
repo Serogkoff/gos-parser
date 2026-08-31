@@ -115,6 +115,59 @@ class UnreadSyncTests(unittest.TestCase):
             {"items": [{"source": "МЧС", "url": fresh_url}]},
         )
 
+    def test_initial_page_contains_unread_badge_and_source_count(self):
+        client, _ = self._client_for(self.owner)
+        self.assertEqual(self._unread(client, "government")[1], [])
+
+        fresh_url = "https://mchs.gov.ru/news/rendered-unread"
+        self._insert_news(
+            {
+                "source": "МЧС",
+                "title": "Свежая публикация без второго запроса",
+                "url": fresh_url,
+                "date": "2026-08-28",
+            }
+        )
+        html = client.get("/").get_data(as_text=True)
+        card_start = html.index(f'data-id="{fresh_url}"')
+        card = html[card_start:html.index("</article>", card_start)]
+
+        self.assertIn('class="unread-label"', card)
+        self.assertIn('data-unread-source="МЧС">+1</span>', html)
+        self.assertIn('data-unread-source="__all__">+1</span>', html)
+
+    def test_unread_summary_returns_counts_and_visible_urls(self):
+        client, _ = self._client_for(self.owner)
+        self.assertEqual(self._unread(client, "government")[1], [])
+
+        first_url = "https://mchs.gov.ru/news/summary-first"
+        second_url = "https://minfin.gov.ru/news/summary-second"
+        self._insert_news(
+            {
+                "source": "МЧС",
+                "title": "Первая новая публикация",
+                "url": first_url,
+                "date": "2026-08-28",
+            },
+            {
+                "source": "Минфин",
+                "title": "Вторая новая публикация",
+                "url": second_url,
+                "date": "2026-08-28",
+            },
+        )
+
+        self.assertEqual(
+            storage.news_unread_summary(
+                self.owner["id"], "government", [first_url],
+            ),
+            {
+                "total": 2,
+                "by_source": {"МЧС": 1, "Минфин": 1},
+                "visible_urls": [first_url],
+            },
+        )
+
     def test_existing_read_state_uses_no_immediate_write_transaction(self):
         client, _ = self._client_for(self.owner)
         self.assertEqual(self._unread(client, "government")[1], [])

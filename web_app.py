@@ -107,6 +107,7 @@ from utils.storage import (
     update_collection,
     update_collection_note,
     news_group_counts,
+    news_unread_summary,
     news_source_counts,
     source_news_statistics,
     source_incident_statistics,
@@ -1718,6 +1719,13 @@ def render_news_page(
             query_string = urlencode(parameters, doseq=True)
             keyword_urls[keyword] = group_found + f"?{query_string}"
 
+    unread_summary = news_unread_summary(
+        user["id"],
+        source_group,
+        [item.get("url", "") for item in page_news],
+    )
+    unread_counts = unread_summary["by_source"]
+
     return render_template(
         "news.html",
         news=page_news,
@@ -1730,14 +1738,14 @@ def render_news_page(
         yahoo_expanded=yahoo_expanded,
         keyword_filter=keyword_filter,
         keyword_urls=keyword_urls,
-        news_index=[
-            {
-                "url": item.get("url", ""),
-                "source": item.get("source", "Неизвестный источник"),
-            }
-            for item in page_news
-            if item.get("url")
-        ],
+        unread_urls=unread_summary["visible_urls"],
+        unread_counts=unread_counts,
+        unread_total=unread_summary["total"],
+        yahoo_unread_count=sum(
+            count
+            for source, count in unread_counts.items()
+            if is_yahoo_source(source)
+        ),
         source_filters=source_filters,
         feed_title=feed_title,
         mode=mode,
