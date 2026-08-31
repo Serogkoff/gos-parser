@@ -10,12 +10,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from threading import RLock
 
-from werkzeug.security import check_password_hash, generate_password_hash
-
 from utils.dates import parse_date
 from utils.logger import get_logger
 from utils.news import deduplicate_news, merge_news, normalize_url
 from utils.storage_schema import create_schema as _create_schema
+from utils.storage_users import UserStorage
 from utils.source_groups import (
     AGENCIES_GROUP,
     AGENCY_SOURCES,
@@ -119,209 +118,56 @@ def _connection():
         connection.close()
 
 
+_USER_STORAGE = UserStorage(
+    initialize_database=lambda: initialize_database(),
+    connection_factory=lambda: _connection(),
+    lock=STORAGE_LOCK,
+)
+
+
 def count_users():
     """Возвращает число учётных записей, включая отключённые."""
-    initialize_database()
-    with _connection() as connection:
-        return int(connection.execute("SELECT COUNT(*) FROM users").fetchone()[0])
+    return _USER_STORAGE.count_users()
 
 
 def create_user(username, password, role="user"):
     """Создаёт пользователя с хешем пароля; открытый пароль не хранится."""
-    username = _validate_username(username)
-    password = _validate_password(password)
-    role = str(role or "user").strip().casefold()
-    if role not in {"admin", "user"}:
-        raise ValueError("Неизвестная роль пользователя")
-
-    initialize_database()
-    created_at = datetime.now().isoformat(timespec="seconds")
-    try:
-        with STORAGE_LOCK, _connection() as connection:
-            cursor = connection.execute(
-                """
-                INSERT INTO users(
-                    username, password_hash, role, is_active, created_at
-                ) VALUES (?, ?, ?, 1, ?)
-                """,
-                (
-                    username,
-                    generate_password_hash(password),
-                    role,
-                    created_at,
-                ),
-            )
-            user_id = cursor.lastrowid
-    except sqlite3.IntegrityError as error:
-        raise ValueError("Пользователь с таким именем уже существует") from error
-    return load_user(user_id)
+    return _USER_STORAGE.create_user(username, password, role)
 
 
 def load_user(user_id):
     """Возвращает безопасные поля пользователя без хеша пароля."""
-    try:
-        user_id = int(user_id)
-    except (TypeError, ValueError):
-        return None
-    initialize_database()
-    with _connection() as connection:
-        row = connection.execute(
-            """
-            SELECT id, username, role, is_active, created_at, last_login_at
-            FROM users WHERE id = ?
-            """,
-            (user_id,),
-        ).fetchone()
-    return _user_from_row(row)
+    return _USER_STORAGE.load_user(user_id)
 
 
 def list_users():
     """Возвращает безопасный список пользователей без хешей паролей."""
-    initialize_database()
-    with _connection() as connection:
-        rows = connection.execute(
-            """
-            SELECT id, username, role, is_active, created_at, last_login_at
-            FROM users
-            ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END,
-                     username COLLATE NOCASE
-            """
-        ).fetchall()
-    return [_user_from_row(row) for row in rows]
+    return _USER_STORAGE.list_users()
 
 
 def set_user_password(user_id, password):
     """Заменяет пароль пользователя новым защищённым хешем."""
-    password = _validate_password(password)
-    user = load_user(user_id)
-    if user is None:
-        raise ValueError("Пользователь не найден")
-    with STORAGE_LOCK, _connection() as connection:
-        connection.execute(
-            "UPDATE users SET password_hash = ? WHERE id = ?",
-            (generate_password_hash(password), user["id"]),
-        )
-    return load_user(user["id"])
+    return _USER_STORAGE.set_user_password(user_id, password)
 
 
 def set_user_role(user_id, role):
     """Меняет роль, не позволяя убрать последнего активного администратора."""
-    role = str(role or "").strip().casefold()
-    if role not in {"admin", "user"}:
-        raise ValueError("Неизвестная роль пользователя")
-    try:
-        user_id = int(user_id)
-    except (TypeError, ValueError) as error:
-        raise ValueError("Пользователь не найден") from error
-
-    initialize_database()
-    with STORAGE_LOCK, _connection() as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        row = connection.execute(
-            "SELECT role, is_active FROM users WHERE id = ?",
-            (user_id,),
-        ).fetchone()
-        if row is None:
-            raise ValueError("Пользователь не найден")
-        if row["role"] == "admin" and role != "admin" and row["is_active"]:
-            active_admins = connection.execute(
-                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1"
-            ).fetchone()[0]
-            if active_admins <= 1:
-                raise ValueError("Нельзя понизить последнего активного администратора")
-        connection.execute(
-            "UPDATE users SET role = ? WHERE id = ?",
-            (role, user_id),
-        )
-    return load_user(user_id)
+    return _USER_STORAGE.set_user_role(user_id, role)
 
 
 def set_user_active(user_id, is_active):
     """Включает или отключает вход, сохраняя все данные пользователя."""
-    try:
-        user_id = int(user_id)
-    except (TypeError, ValueError) as error:
-        raise ValueError("Пользователь не найден") from error
-    is_active = bool(is_active)
-
-    initialize_database()
-    with STORAGE_LOCK, _connection() as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        row = connection.execute(
-            "SELECT role, is_active FROM users WHERE id = ?",
-            (user_id,),
-        ).fetchone()
-        if row is None:
-            raise ValueError("Пользователь не найден")
-        if row["role"] == "admin" and row["is_active"] and not is_active:
-            active_admins = connection.execute(
-                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1"
-            ).fetchone()[0]
-            if active_admins <= 1:
-                raise ValueError("Нельзя отключить последнего активного администратора")
-        connection.execute(
-            "UPDATE users SET is_active = ? WHERE id = ?",
-            (int(is_active), user_id),
-        )
-    return load_user(user_id)
+    return _USER_STORAGE.set_user_active(user_id, is_active)
 
 
 def delete_user(user_id):
     """Удаляет аккаунт и связанные личные данные, сохраняя последнего администратора."""
-    try:
-        user_id = int(user_id)
-    except (TypeError, ValueError) as error:
-        raise ValueError("Пользователь не найден") from error
-
-    initialize_database()
-    with STORAGE_LOCK, _connection() as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        row = connection.execute(
-            "SELECT username, role, is_active FROM users WHERE id = ?",
-            (user_id,),
-        ).fetchone()
-        if row is None:
-            raise ValueError("Пользователь не найден")
-        if row["role"] == "admin" and row["is_active"]:
-            active_admins = connection.execute(
-                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1"
-            ).fetchone()[0]
-            if active_admins <= 1:
-                raise ValueError("Нельзя удалить последнего активного администратора")
-        connection.execute("DELETE FROM users WHERE id = ?", (user_id,))
-    return row["username"]
+    return _USER_STORAGE.delete_user(user_id)
 
 
 def authenticate_user(username, password):
     """Проверяет пароль и возвращает активного пользователя."""
-    username = " ".join(str(username or "").split())
-    password = str(password or "")
-    if not username or not password:
-        return None
-    initialize_database()
-    with STORAGE_LOCK, _connection() as connection:
-        row = connection.execute(
-            """
-            SELECT id, username, password_hash, role, is_active,
-                   created_at, last_login_at
-            FROM users WHERE username = ? COLLATE NOCASE
-            """,
-            (username,),
-        ).fetchone()
-        if (
-            row is None
-            or not bool(row["is_active"])
-            or not check_password_hash(row["password_hash"], password)
-        ):
-            return None
-        logged_at = datetime.now().isoformat(timespec="seconds")
-        connection.execute(
-            "UPDATE users SET last_login_at = ? WHERE id = ?",
-            (logged_at, row["id"]),
-        )
-    user = _user_from_row(row)
-    user["last_login_at"] = logged_at
-    return user
+    return _USER_STORAGE.authenticate_user(username, password)
 
 
 def _validated_notes_text(value, field, maximum, required=False):
@@ -2273,22 +2119,6 @@ def _bookmark_from_row(row):
     }
 
 
-def _validate_username(value):
-    username = " ".join(str(value or "").split())
-    if not 3 <= len(username) <= 50:
-        raise ValueError("Логин должен содержать от 3 до 50 символов")
-    if not all(character.isalnum() or character in "._-" for character in username):
-        raise ValueError("В логине разрешены буквы, цифры, точка, дефис и подчёркивание")
-    return username
-
-
-def _validate_password(value):
-    password = str(value or "")
-    if not 10 <= len(password) <= 256:
-        raise ValueError("Пароль должен содержать не менее 10 символов")
-    return password
-
-
 def _validated_source_name(value):
     source = " ".join(str(value or "").split())
     if not 1 <= len(source) <= 300:
@@ -2324,19 +2154,6 @@ def _parser_job_from_row(row):
         "started_at": row["started_at"],
         "finished_at": row["finished_at"],
         "error": row["error"],
-    }
-
-
-def _user_from_row(row):
-    if row is None:
-        return None
-    return {
-        "id": int(row["id"]),
-        "username": row["username"],
-        "role": row["role"],
-        "is_active": bool(row["is_active"]),
-        "created_at": row["created_at"],
-        "last_login_at": row["last_login_at"],
     }
 
 
