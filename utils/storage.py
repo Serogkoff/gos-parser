@@ -14,19 +14,11 @@ from utils.dates import parse_date
 from utils.logger import get_logger
 from utils.news import deduplicate_news, merge_news, normalize_url
 from utils.storage_monitoring import MonitoringStorage
+from utils.storage_news import NewsStorage
 from utils.storage_schema import create_schema as _create_schema
 from utils.storage_source_control import SourceControlStorage
 from utils.storage_users import UserStorage
 from utils.storage_workspace import PersonalWorkspaceStorage
-from utils.source_groups import (
-    AGENCIES_GROUP,
-    AGENCY_SOURCES,
-    GOVERNMENT_GROUP,
-    NEWSPAPERS_GROUP,
-    NEWSPAPER_SOURCES,
-)
-
-
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 ALL_NEWS_FILE = PROJECT_DIR / "all_news.json"
 FOUND_NEWS_FILE = PROJECT_DIR / "found_news.json"
@@ -301,511 +293,93 @@ def source_news_statistics():
     return _SOURCE_CONTROL_STORAGE.source_news_statistics()
 
 
+_NEWS_STORAGE = NewsStorage(
+    initialize_database=lambda: initialize_database(),
+    connection_factory=lambda: _connection(),
+    lock=STORAGE_LOCK,
+    normalize_url=normalize_url,
+    decode_item=lambda payload: _decode_item(payload),
+    attach_display_fields=lambda item, parsed_date, first_seen_at:
+        _attach_news_display_fields(item, parsed_date, first_seen_at),
+)
+
+
 def _news_group_condition(source_group, source_column="n.source"):
     """Строит параметризованное SQL-условие для одного раздела ленты."""
-    source_group = str(source_group or "").strip().casefold()
-    if source_group not in {
-        GOVERNMENT_GROUP,
-        AGENCIES_GROUP,
-        NEWSPAPERS_GROUP,
-    }:
-        raise ValueError("Неизвестный раздел источников")
-
-    agency_sources = tuple(sorted(AGENCY_SOURCES))
-    newspaper_sources = tuple(sorted(NEWSPAPER_SOURCES))
-    agency_placeholders = ", ".join("?" for _ in agency_sources)
-    newspaper_placeholders = ", ".join("?" for _ in newspaper_sources)
-    agency_condition = (
-        f"({source_column} IN ({agency_placeholders}) "
-        f"OR {source_column} LIKE ? COLLATE NOCASE)"
-    )
-    agency_parameters = [*agency_sources, "Yahoo! JAPAN%"]
-
-    if source_group == AGENCIES_GROUP:
-        return agency_condition, agency_parameters
-    if source_group == NEWSPAPERS_GROUP:
-        return (
-            f"{source_column} IN ({newspaper_placeholders})",
-            list(newspaper_sources),
-        )
-    return (
-        f"NOT {agency_condition} "
-        f"AND {source_column} NOT IN ({newspaper_placeholders})",
-        [*agency_parameters, *newspaper_sources],
-    )
+    return _NEWS_STORAGE.news_group_condition(source_group, source_column)
 
 
 def news_group_counts(source_group):
     """Считает все материалы и совпадения раздела без загрузки JSON."""
-    condition, parameters = _news_group_condition(source_group)
-    initialize_database()
-    with _connection() as connection:
-        row = connection.execute(
-            f"""
-            SELECT COUNT(*) AS total,
-                   COUNT(f.news_key) AS found
-            FROM news_items AS n
-            LEFT JOIN found_items AS f ON f.news_key = n.news_key
-            WHERE {condition}
-            """,
-            parameters,
-        ).fetchone()
-    return int(row["total"]), int(row["found"])
+    return _NEWS_STORAGE.news_group_counts(source_group)
 
 
 def news_source_counts(source_group):
     """Возвращает размеры источников раздела одним SQL GROUP BY."""
-    condition, parameters = _news_group_condition(source_group)
-    initialize_database()
-    with _connection() as connection:
-        rows = connection.execute(
-            f"""
-            SELECT n.source, COUNT(*) AS news_count
-            FROM news_items AS n
-            WHERE {condition}
-            GROUP BY n.source
-            ORDER BY news_count DESC, n.source
-            """,
-            parameters,
-        ).fetchall()
-    return {
-        (row["source"] or "Неизвестный источник"): int(row["news_count"])
-        for row in rows
-    }
+    return _NEWS_STORAGE.news_source_counts(source_group)
 
 
 def list_news_page(source_group, *, found_only=False, sources=None,
                    search_query="", keyword="", limit=20, offset=0):
     """Читает одну страницу новостей и считает результат средствами SQLite."""
-    try:
-        limit = min(100, max(1, int(limit)))
-        offset = max(0, int(offset))
-    except (TypeError, ValueError) as error:
-        raise ValueError("Некорректная страница новостей") from error
-
-    condition, parameters = _news_group_condition(source_group)
-    conditions = [condition]
-    selected_sources = []
-    for source in sources or []:
-        source = str(source or "").strip()
-        if source and source not in selected_sources:
-            selected_sources.append(source)
-    if selected_sources:
-        placeholders = ", ".join("?" for _ in selected_sources)
-        conditions.append(f"n.source IN ({placeholders})")
-        parameters.extend(selected_sources)
-
-    search_query = " ".join(str(search_query or "").split())
-    if search_query:
-        escaped = (
-            search_query.casefold().replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-        )
-        pattern = f"%{escaped}%"
-        payload_column = "f.payload_json" if found_only else "n.payload_json"
-        conditions.append(
-            "(CASEFOLD(n.title) LIKE ? ESCAPE '\\' "
-            "OR CASEFOLD(n.source) LIKE ? ESCAPE '\\' "
-            f"OR CASEFOLD({payload_column}) LIKE ? ESCAPE '\\')"
-        )
-        parameters.extend((pattern, pattern, pattern))
-
-    keyword = " ".join(str(keyword or "").split())
-    if found_only and keyword:
-        conditions.append(
-            "EXISTS ("
-            "SELECT 1 FROM json_each(f.payload_json, '$.keywords') AS matched_keyword "
-            "WHERE CASEFOLD(matched_keyword.value) = ?"
-            ")"
-        )
-        parameters.append(keyword.casefold())
-
-    join = "JOIN found_items AS f ON f.news_key = n.news_key" if found_only else ""
-    payload_column = "f.payload_json" if found_only else "n.payload_json"
-    where_clause = " AND ".join(conditions)
-    initialize_database()
-    with _connection() as connection:
-        total = int(
-            connection.execute(
-                f"""
-                SELECT COUNT(*)
-                FROM news_items AS n
-                {join}
-                WHERE {where_clause}
-                """,
-                parameters,
-            ).fetchone()[0]
-        )
-        rows = connection.execute(
-            f"""
-            SELECT {payload_column} AS payload_json,
-                   n.parsed_date, n.first_seen_at
-            FROM news_items AS n
-            {join}
-            WHERE {where_clause}
-            ORDER BY n.publication_date DESC,
-                     n.parsed_date DESC,
-                     n.news_key DESC
-            LIMIT ? OFFSET ?
-            """,
-            [*parameters, limit, offset],
-        ).fetchall()
-    items = []
-    for row in rows:
-        item = _decode_item(row["payload_json"])
-        if item is not None:
-            _attach_news_display_fields(
-                item, row["parsed_date"], row["first_seen_at"],
-            )
-            items.append(item)
-    return items, total
+    return _NEWS_STORAGE.list_news_page(
+        source_group,
+        found_only=found_only,
+        sources=sources,
+        search_query=search_query,
+        keyword=keyword,
+        limit=limit,
+        offset=offset,
+    )
 
 
 def list_news_index(source_group, limit=2000):
-    """Возвращает лёгкий индекс URL для счётчиков непрочитанного."""
-    try:
-        limit = min(5000, max(1, int(limit)))
-    except (TypeError, ValueError):
-        limit = 2000
-    condition, parameters = _news_group_condition(source_group)
-    initialize_database()
-    with _connection() as connection:
-        rows = connection.execute(
-            f"""
-            SELECT n.normalized_url AS url, n.source
-            FROM news_items AS n
-            WHERE {condition} AND n.normalized_url != ''
-            ORDER BY n.publication_date DESC,
-                     n.parsed_date DESC,
-                     n.news_key DESC
-            LIMIT ?
-            """,
-            [*parameters, limit],
-        ).fetchall()
-    return [
-        {
-            "url": row["url"],
-            "source": row["source"] or "Неизвестный источник",
-        }
-        for row in rows
-    ]
+    """Возвращает лёгкий индекс ленты без чтения payload_json."""
+    return _NEWS_STORAGE.list_news_index(source_group, limit)
 
 
 def list_unread_news(user_id, source_group, limit=2000):
-    """Возвращает непрочитанные URL пользователя в одном разделе ленты."""
-    return [
-        item["url"]
-        for item in list_unread_news_index(user_id, source_group, limit)
-    ]
+    """Совместимый список непрочитанных материалов без полного JSON базы."""
+    return _NEWS_STORAGE.list_unread_news(user_id, source_group, limit)
 
 
 def _unread_news_context(user_id, source_group):
-    """Готовит границу чтения без write-транзакции для обычного запроса."""
-    try:
-        user_id = int(user_id)
-    except (TypeError, ValueError) as error:
-        raise ValueError("Пользователь не найден") from error
-    if user_id <= 0:
-        return None
-
-    source_group = str(source_group or "").strip().casefold()
-    condition, parameters = _news_group_condition(source_group)
-    initialize_database()
-    with _connection() as connection:
-        state = connection.execute(
-            """SELECT read_all_before
-               FROM user_news_read_state
-               WHERE user_id = ? AND source_group = ?""",
-            (user_id, source_group),
-        ).fetchone()
-
-    if state is None:
-        moment = datetime.now().isoformat(timespec="microseconds")
-        with STORAGE_LOCK, _connection() as connection:
-            # При первом включении функции весь существующий архив считается
-            # прочитанным. Новыми станут только последующие поступления.
-            inserted = connection.execute(
-                """INSERT OR IGNORE INTO user_news_read_state(
-                       user_id, source_group, read_all_before, initialized_at
-                   ) VALUES (?, ?, ?, ?)""",
-                (user_id, source_group, moment, moment),
-            ).rowcount
-            state = connection.execute(
-                """SELECT read_all_before
-                   FROM user_news_read_state
-                   WHERE user_id = ? AND source_group = ?""",
-                (user_id, source_group),
-            ).fetchone()
-        if inserted:
-            return None
-
-    return {
-        "user_id": user_id,
-        "condition": condition,
-        "parameters": parameters,
-        "read_all_before": state["read_all_before"],
-    }
+    return _NEWS_STORAGE._unread_news_context(user_id, source_group)
 
 
 def _unread_news_select(condition):
-    """Строит общую выборку новых и явно оставленных непрочитанными."""
-    return f"""
-        SELECT n.normalized_url AS url,
-               n.source AS source,
-               n.first_seen_at AS first_seen_at,
-               n.news_key AS news_key
-        FROM news_items AS n
-        LEFT JOIN news_item_reads AS r
-          ON r.user_id = ? AND r.normalized_url = n.normalized_url
-        WHERE {condition}
-          AND n.normalized_url != ''
-          AND n.first_seen_at > ?
-          AND r.normalized_url IS NULL
-
-        UNION
-
-        SELECT n.normalized_url AS url,
-               n.source AS source,
-               n.first_seen_at AS first_seen_at,
-               n.news_key AS news_key
-        FROM news_item_reads AS r
-        JOIN news_items AS n
-          ON n.normalized_url = r.normalized_url
-        WHERE r.user_id = ?
-          AND r.is_read = 0
-          AND {condition}
-          AND n.normalized_url != ''
-    """
+    return _NEWS_STORAGE._unread_news_select(condition)
 
 
 def _unread_news_parameters(context):
-    parameters = context["parameters"]
-    return [
-        context["user_id"],
-        *parameters,
-        context["read_all_before"],
-        context["user_id"],
-        *parameters,
-    ]
+    return _NEWS_STORAGE._unread_news_parameters(context)
 
 
 def list_unread_news_index(user_id, source_group, limit=2000):
-    """Возвращает компактный индекс только непрочитанных новостей."""
-    try:
-        limit = min(5000, max(1, int(limit)))
-    except (TypeError, ValueError):
-        limit = 2000
-    context = _unread_news_context(user_id, source_group)
-    if context is None:
-        return []
-    unread_select = _unread_news_select(context["condition"])
-
-    with _connection() as connection:
-        rows = connection.execute(
-            f"""
-            SELECT unread.url, unread.source
-            FROM ({unread_select}) AS unread
-            ORDER BY unread.first_seen_at DESC, unread.news_key DESC
-            LIMIT ?
-            """,
-            [*_unread_news_parameters(context), limit],
-        ).fetchall()
-    return [
-        {
-            "url": row["url"],
-            "source": row["source"] or "Неизвестный источник",
-        }
-        for row in rows
-    ]
+    """Возвращает лёгкий индекс непрочитанных новостей пользователя."""
+    return _NEWS_STORAGE.list_unread_news_index(user_id, source_group, limit)
 
 
 def news_unread_summary(user_id, source_group, visible_urls=None):
-    """Считает непрочитанное и возвращает отметки только видимых карточек."""
-    empty = {"total": 0, "by_source": {}, "visible_urls": []}
-    context = _unread_news_context(user_id, source_group)
-    if context is None:
-        return empty
-
-    visible_candidates = []
-    seen_normalized = set()
-    for url in visible_urls or []:
-        original = str(url or "").strip()
-        normalized = normalize_url(original)
-        if not normalized or normalized in seen_normalized:
-            continue
-        seen_normalized.add(normalized)
-        visible_candidates.append((original, normalized))
-
-    unread_select = _unread_news_select(context["condition"])
-    with _connection() as connection:
-        rows = connection.execute(
-            f"""
-            SELECT unread.source, COUNT(*) AS unread_count
-            FROM ({unread_select}) AS unread
-            GROUP BY unread.source
-            """,
-            _unread_news_parameters(context),
-        ).fetchall()
-        visible_unread = set()
-        if visible_candidates:
-            placeholders = ", ".join("?" for _ in visible_candidates)
-            visible_rows = connection.execute(
-                f"""
-                SELECT DISTINCT n.normalized_url AS url
-                FROM news_items AS n
-                LEFT JOIN news_item_reads AS r
-                  ON r.user_id = ? AND r.normalized_url = n.normalized_url
-                WHERE n.normalized_url IN ({placeholders})
-                  AND (
-                      (n.first_seen_at > ? AND r.normalized_url IS NULL)
-                      OR r.is_read = 0
-                  )
-                """,
-                [
-                    context["user_id"],
-                    *(normalized for _, normalized in visible_candidates),
-                    context["read_all_before"],
-                ],
-            ).fetchall()
-            visible_unread = {row["url"] for row in visible_rows}
-
-    by_source = {
-        (row["source"] or "Неизвестный источник"): int(row["unread_count"])
-        for row in rows
-    }
-    return {
-        "total": sum(by_source.values()),
-        "by_source": by_source,
-        "visible_urls": [
-            original
-            for original, normalized in visible_candidates
-            if normalized in visible_unread
-        ],
-    }
+    """Одним SQL-запросом считает новые новости и состояние видимых карточек."""
+    return _NEWS_STORAGE.news_unread_summary(
+        user_id, source_group, visible_urls
+    )
 
 
 def mark_news_read(user_id, url):
-    """Сохраняет личную отметку чтения одной новости."""
-    try:
-        user_id = int(user_id)
-    except (TypeError, ValueError) as error:
-        raise ValueError("Пользователь не найден") from error
-    normalized = normalize_url(url)
-    if user_id <= 0 or not normalized:
-        raise ValueError("Новость не найдена")
-
-    initialize_database()
-    read_at = datetime.now().isoformat(timespec="microseconds")
-    with STORAGE_LOCK, _connection() as connection:
-        item = connection.execute(
-            "SELECT 1 FROM news_items WHERE normalized_url = ? LIMIT 1",
-            (normalized,),
-        ).fetchone()
-        if item is None:
-            raise ValueError("Новость не найдена")
-        connection.execute(
-            """INSERT INTO news_item_reads(
-                   user_id, normalized_url, is_read, read_at
-               ) VALUES (?, ?, 1, ?)
-               ON CONFLICT(user_id, normalized_url) DO UPDATE SET
-                   is_read = 1,
-                   read_at = excluded.read_at""",
-            (user_id, normalized, read_at),
-        )
-    return normalized
+    """Отмечает одну новость прочитанной для конкретного пользователя."""
+    return _NEWS_STORAGE.mark_news_read(user_id, url)
 
 
 def migrate_legacy_unread(user_id, unread_urls):
-    """Один раз переносит непрочитанные ссылки из старого localStorage."""
-    try:
-        user_id = int(user_id)
-    except (TypeError, ValueError) as error:
-        raise ValueError("Пользователь не найден") from error
-    if user_id <= 0 or not isinstance(unread_urls, list):
-        raise ValueError("Некорректные отметки чтения")
-
-    normalized_urls = []
-    for url in unread_urls[:5000]:
-        normalized = normalize_url(url)
-        if normalized and normalized not in normalized_urls:
-            normalized_urls.append(normalized)
-
-    initialize_database()
-    moment = datetime.now().isoformat(timespec="microseconds")
-    with STORAGE_LOCK, _connection() as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        initialized = connection.execute(
-            "SELECT 1 FROM user_news_read_state WHERE user_id = ? LIMIT 1",
-            (user_id,),
-        ).fetchone()
-        if initialized is not None:
-            return False
-
-        connection.executemany(
-            """INSERT INTO user_news_read_state(
-                   user_id, source_group, read_all_before, initialized_at
-               ) VALUES (?, ?, ?, ?)""",
-            [
-                (user_id, source_group, moment, moment)
-                for source_group in (
-                    GOVERNMENT_GROUP, AGENCIES_GROUP, NEWSPAPERS_GROUP,
-                )
-            ],
-        )
-        if normalized_urls:
-            placeholders = ", ".join("?" for _ in normalized_urls)
-            existing = connection.execute(
-                f"""SELECT normalized_url FROM news_items
-                    WHERE normalized_url IN ({placeholders})""",
-                normalized_urls,
-            ).fetchall()
-            connection.executemany(
-                """INSERT INTO news_item_reads(
-                       user_id, normalized_url, is_read, read_at
-                   ) VALUES (?, ?, 0, ?)""",
-                [
-                    (user_id, row["normalized_url"], moment)
-                    for row in existing
-                ],
-            )
-    return True
+    """Один раз переносит старый список непрочитанного из localStorage."""
+    return _NEWS_STORAGE.migrate_legacy_unread(user_id, unread_urls)
 
 
 def mark_news_group_read(user_id, source_group):
-    """Отмечает прочитанными все текущие новости выбранного раздела."""
-    try:
-        user_id = int(user_id)
-    except (TypeError, ValueError) as error:
-        raise ValueError("Пользователь не найден") from error
-    if user_id <= 0:
-        raise ValueError("Пользователь не найден")
-
-    source_group = str(source_group or "").strip().casefold()
-    condition, parameters = _news_group_condition(source_group)
-    initialize_database()
-    moment = datetime.now().isoformat(timespec="microseconds")
-    with STORAGE_LOCK, _connection() as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        connection.execute(
-            """INSERT INTO user_news_read_state(
-                   user_id, source_group, read_all_before, initialized_at
-               ) VALUES (?, ?, ?, ?)
-               ON CONFLICT(user_id, source_group) DO UPDATE SET
-                   read_all_before = excluded.read_all_before""",
-            (user_id, source_group, moment, moment),
-        )
-        # Индивидуальные отметки до общей границы больше не нужны.
-        connection.execute(
-            f"""DELETE FROM news_item_reads
-                WHERE user_id = ? AND normalized_url IN (
-                    SELECT n.normalized_url FROM news_items AS n
-                    WHERE {condition}
-                )""",
-            [user_id, *parameters],
-        )
-    return True
-
+    """Отмечает прочитанными все новости выбранного раздела."""
+    return _NEWS_STORAGE.mark_news_group_read(user_id, source_group)
 
 _MONITORING_STORAGE = MonitoringStorage(
     initialize_database=lambda: initialize_database(),
