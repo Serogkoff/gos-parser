@@ -1,0 +1,68 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{'Первый запуск' if mode == 'setup' else 'Вход'}} — Монитор</title>
+    <style>
+        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45}
+        *{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:24px;color:var(--ink);background:radial-gradient(circle at 0 0,#fff,transparent 42rem),var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}
+        .card{width:min(440px,100%);padding:38px;border:1px solid var(--line);border-radius:9px;background:var(--surface);box-shadow:0 25px 70px rgba(46,38,27,.08)}
+        .eyebrow{margin:0 0 9px;color:var(--coral);font-size:11px;font-weight:750;letter-spacing:.12em;text-transform:uppercase}
+        h1{margin:0;font-size:38px;line-height:1;letter-spacing:-.045em}p{margin:15px 0 25px;color:var(--muted);font-size:14px;line-height:1.55}
+        label{display:block;margin-top:15px;color:#514c45;font-size:13px;font-weight:650}input{width:100%;height:48px;margin-top:7px;padding:0 13px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}input:focus{outline:3px solid rgba(228,79,69,.18);border-color:var(--coral)}
+        button{width:100%;height:49px;margin-top:23px;border:0;border-radius:6px;color:#fff;background:var(--coral);font:700 15px inherit;cursor:pointer}button:hover{background:#c93c35}
+        .error{margin:18px 0 0;padding:12px;color:#a72d27;border-left:3px solid var(--coral);background:#fff1ed;font-size:13px}
+        .hint{margin:13px 0 0;font-size:11px}.brand{margin-bottom:30px;font-size:19px;font-weight:800;letter-spacing:-.035em}.password-wrap{position:relative;display:block}.password-wrap input{padding-right:48px}.password-toggle{position:absolute;right:5px;top:12px;width:38px;height:38px;min-height:0;margin:0;padding:0;border:0;color:var(--muted);background:transparent}.password-toggle:hover{color:var(--coral);background:transparent}.password-toggle::before{content:"";display:block;width:21px;height:21px;margin:auto;background:currentColor;mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 5c5.5 0 9.5 5.1 9.7 5.3a2.7 2.7 0 0 1 0 3.4C21.5 13.9 17.5 19 12 19S2.5 13.9 2.3 13.7a2.7 2.7 0 0 1 0-3.4C2.5 10.1 6.5 5 12 5Zm0 2c-4.4 0-7.8 4.2-8.1 4.6a.7.7 0 0 0 0 .8C4.2 12.8 7.6 17 12 17s7.8-4.2 8.1-4.6a.7.7 0 0 0 0-.8C19.8 11.2 16.4 7 12 7Zm0 1.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z'/%3E%3C/svg%3E");-webkit-mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 5c5.5 0 9.5 5.1 9.7 5.3a2.7 2.7 0 0 1 0 3.4C21.5 13.9 17.5 19 12 19S2.5 13.9 2.3 13.7a2.7 2.7 0 0 1 0-3.4C2.5 10.1 6.5 5 12 5Zm0 2c-4.4 0-7.8 4.2-8.1 4.6a.7.7 0 0 0 0 .8C4.2 12.8 7.6 17 12 17s7.8-4.2 8.1-4.6a.7.7 0 0 0 0-.8C19.8 11.2 16.4 7 12 7Zm0 1.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z'/%3E%3C/svg%3E")}
+    </style>
+</head>
+<body><main class="card">
+    <div class="brand">Монитор</div>
+    <p class="eyebrow">{{'Настройка владельца' if mode == 'setup' else 'Личный кабинет'}}</p>
+    <h1>{{'Первый запуск' if mode == 'setup' else 'Вход'}}</h1>
+    <p>
+        {% if mode == 'setup' %}
+        Создай первую учётную запись. Она получит роль администратора и полный доступ к настройкам.
+        {% else %}
+        Войди в свою учётную запись, чтобы открыть мониторинг и личные данные.
+        {% endif %}
+    </p>
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="{{csrf_token}}">
+        <input type="hidden" name="next" value="{{next_url}}">
+        <label>Логин
+            <input name="username" value="{{username}}" minlength="3" maxlength="50" autocomplete="username" required autofocus>
+        </label>
+        <label>Пароль
+            <input type="password" name="password" minlength="10" maxlength="256" autocomplete="{{'new-password' if mode == 'setup' else 'current-password'}}" required>
+        </label>
+        {% if mode == 'setup' %}
+        <label>Повтори пароль
+            <input type="password" name="password_confirm" minlength="10" maxlength="256" autocomplete="new-password" required>
+        </label>
+        {% endif %}
+        <button type="submit">{{'Создать администратора' if mode == 'setup' else 'Войти'}}</button>
+    </form>
+    {% if error %}<div class="error">{{error}}</div>{% endif %}
+    {% if mode == 'setup' %}<p class="hint">Пароль хранится в SQLite только в виде защищённого хеша.</p>{% endif %}
+</main><script>
+document.querySelectorAll('input[type="password"]').forEach(input => {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'password-wrap';
+    input.parentNode.insertBefore(wrapper, input);
+    wrapper.appendChild(input);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'password-toggle';
+    toggle.setAttribute('aria-label', 'Показать пароль');
+    toggle.title = 'Показать пароль';
+    toggle.addEventListener('click', () => {
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        toggle.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
+        toggle.title = show ? 'Скрыть пароль' : 'Показать пароль';
+    });
+    wrapper.appendChild(toggle);
+});
+</script></body></html>

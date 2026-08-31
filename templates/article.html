@@ -1,0 +1,63 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{article.title}} — Монитор</title>
+    <style>
+        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45}
+        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}
+        a{color:inherit}.shell{width:min(900px,calc(100% - 36px));margin:auto;padding:28px 0 80px}
+        .back{display:inline-flex;gap:8px;color:var(--muted);text-decoration:none}.back:hover{color:var(--coral)}
+        article{margin-top:24px;padding:clamp(24px,5vw,58px);border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+        .meta{display:flex;flex-wrap:wrap;gap:10px;color:var(--muted);font-size:13px}
+        h1{margin:18px 0 30px;font-size:clamp(32px,5vw,54px);line-height:1.05;letter-spacing:-.045em}
+        .body{font-family:Georgia,"Times New Roman",serif;font-size:19px;line-height:1.72}
+        .body p{margin:0 0 1.15em}.notice{padding:18px;border-left:4px solid var(--coral);background:#fff4ee}
+        .actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:26px}
+        .original,.refresh{display:inline-flex;padding:12px 16px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;text-decoration:none;font:600 14px Inter,Arial,sans-serif;cursor:pointer}
+        .cache-note{color:var(--muted);font-size:12px}.refresh-error{margin-top:18px;color:var(--coral);font-size:13px}
+    </style>
+</head>
+<body><main class="shell">
+    <a class="back" id="article-back" href="{{back_url}}">← Вернуться к ленте</a>
+    <article>
+        <div class="meta"><span>{{item.source}}</span><span>•</span><time>{% if item.date %}{{item.publication_date_display or item.date}}{% if item.parser_added_time %} {{item.parser_added_time}}{% endif %}{% else %}{{item.parsed_date or ''}}{% endif %}</time></div>
+        <h1>{{article.title or item.title}}</h1>
+        <div class="body">
+            {% if article.paragraphs %}
+                {% for paragraph in article.paragraphs %}<p>{{paragraph}}</p>{% endfor %}
+            {% else %}<p class="notice">{{article.error}}</p>{% endif %}
+        </div>
+        {% if article.refresh_error %}<div class="refresh-error">{{article.refresh_error}}</div>{% endif %}
+        <div class="actions">
+            <a class="original" href="{{item.url}}" target="_blank" rel="noopener noreferrer">Открыть оригинал ↗</a>
+            {% if article.paragraphs %}
+            <form method="post" action="/article">
+                <input type="hidden" name="csrf_token" value="{{csrf_token}}">
+                <input type="hidden" name="url" value="{{item.url}}">
+                <input type="hidden" name="back_url" value="{{back_url}}">
+                <button class="refresh" type="submit">Обновить текст</button>
+            </form>
+            {% endif %}
+            {% if article.cached_at %}<span class="cache-note">Сохранено локально {{article.cached_at.replace('T', ' ')}}</span>{% endif %}
+        </div>
+    </article>
+</main>
+<script>
+    const articleBack = document.getElementById('article-back');
+    articleBack.addEventListener('click', event => {
+        if(
+            event.button !== 0 || event.ctrlKey || event.metaKey ||
+            event.shiftKey || event.altKey || window.history.length < 2
+        ) return;
+        try{
+            if(!document.referrer || new URL(document.referrer).origin !== window.location.origin) return;
+        }catch(error){
+            return;
+        }
+        event.preventDefault();
+        window.history.back();
+    });
+</script>
+</body></html>

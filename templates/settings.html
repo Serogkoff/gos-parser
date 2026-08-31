@@ -1,0 +1,99 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{title}} — Монитор</title>
+    <style>
+        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655}
+        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}.shell{width:min(1050px,calc(100% - 34px));margin:auto;padding:30px 0 80px}
+        a{color:inherit}.back{color:var(--muted);text-decoration:none}.back:hover{color:var(--coral)}header{display:flex;align-items:end;justify-content:space-between;gap:20px;margin:34px 0 25px}h1{margin:0;font-size:clamp(36px,5vw,58px);letter-spacing:-.05em}.subtitle{margin:8px 0 0;color:var(--muted)}
+        .card{padding:25px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.card h2{margin:0 0 18px;font-size:21px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.wide{grid-column:1/-1}label{display:grid;gap:7px;color:#5e574e;font-size:12px;font-weight:650}input,select{width:100%;height:44px;padding:0 12px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}button,.button{min-height:42px;padding:0 15px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;font:650 13px inherit;cursor:pointer}.primary{color:#fff;background:var(--coral)}button:disabled{cursor:not-allowed;opacity:.42}.message,.error{margin:0 0 18px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}
+        .users{display:grid;gap:12px;margin-top:18px}.user{display:grid;grid-template-columns:minmax(150px,1fr) 145px 130px minmax(230px,1.4fr);gap:14px;align-items:center;padding:18px;border:1px solid var(--line);border-radius:7px;background:var(--surface)}.identity strong{display:block}.identity small,.last-login{color:var(--muted);font-size:11px}.status{width:max-content;padding:5px 8px;border-radius:999px;color:var(--green);background:#edf6ef;font-size:10px;font-weight:750;text-transform:uppercase}.status.off{color:#9d302a;background:#fff0ed}.inline{display:flex;gap:7px;align-items:end}.inline label{flex:1}.inline button{flex:0 0 auto}.role-form{display:flex;gap:7px}.role-form select{min-width:0}.top-actions{display:flex;gap:9px;align-items:center}.button{display:inline-flex;align-items:center;text-decoration:none}.danger{color:#a52f29;border-color:#dca39d}.password-wrap{position:relative;display:block}.password-wrap input{padding-right:46px}.password-toggle{position:absolute;right:4px;top:3px;width:38px;height:38px;min-height:0;padding:0;border:0;color:var(--muted);background:transparent}.password-toggle:hover{color:var(--coral)}.password-toggle::before{content:"";display:block;width:20px;height:20px;margin:auto;background:currentColor;mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 5c5.5 0 9.5 5.1 9.7 5.3a2.7 2.7 0 0 1 0 3.4C21.5 13.9 17.5 19 12 19S2.5 13.9 2.3 13.7a2.7 2.7 0 0 1 0-3.4C2.5 10.1 6.5 5 12 5Zm0 2c-4.4 0-7.8 4.2-8.1 4.6a.7.7 0 0 0 0 .8C4.2 12.8 7.6 17 12 17s7.8-4.2 8.1-4.6a.7.7 0 0 0 0-.8C19.8 11.2 16.4 7 12 7Zm0 1.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z'/%3E%3C/svg%3E");-webkit-mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 5c5.5 0 9.5 5.1 9.7 5.3a2.7 2.7 0 0 1 0 3.4C21.5 13.9 17.5 19 12 19S2.5 13.9 2.3 13.7a2.7 2.7 0 0 1 0-3.4C2.5 10.1 6.5 5 12 5Zm0 2c-4.4 0-7.8 4.2-8.1 4.6a.7.7 0 0 0 0 .8C4.2 12.8 7.6 17 12 17s7.8-4.2 8.1-4.6a.7.7 0 0 0 0-.8C19.8 11.2 16.4 7 12 7Zm0 1.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z'/%3E%3C/svg%3E")}
+        @media(max-width:850px){.user{grid-template-columns:1fr 1fr}.user-actions{grid-column:1/-1}}@media(max-width:580px){header{align-items:start;flex-direction:column}.grid,.user{grid-template-columns:1fr}.wide,.user-actions{grid-column:auto}.inline,.role-form{align-items:stretch;flex-direction:column}}
+    </style>
+</head>
+<body><main class="shell">
+    <a class="back" href="/">← Вернуться к Монитору</a>
+    <header>
+        <div><h1>{{title}}</h1><p class="subtitle">{{subtitle}}</p></div>
+        <div class="top-actions">
+            {% if current_user.role == 'admin' %}<a class="button" href="/admin/sources">Источники</a><a class="button" href="/admin/system">Система</a>{% endif %}
+            {% if mode == 'account' and current_user.role == 'admin' %}<a class="button" href="/admin/users">Пользователи</a>{% endif %}
+            {% if mode == 'users' %}<a class="button" href="/account">Мой аккаунт</a>{% endif %}
+        </div>
+    </header>
+    {% if message %}<p class="message">{{message}}</p>{% endif %}
+    {% if error %}<p class="error">{{error}}</p>{% endif %}
+
+    {% if mode == 'account' %}
+    <section class="card">
+        <h2>Сменить пароль</h2>
+        <form method="post" class="grid">
+            <input type="hidden" name="csrf_token" value="{{csrf_token}}">
+            <label class="wide">Текущий пароль<input type="password" name="current_password" autocomplete="current-password" required></label>
+            <label>Новый пароль<input type="password" name="new_password" minlength="10" autocomplete="new-password" required></label>
+            <label>Повтори новый пароль<input type="password" name="password_confirm" minlength="10" autocomplete="new-password" required></label>
+            <div class="wide"><button class="primary" type="submit">Сохранить новый пароль</button></div>
+        </form>
+    </section>
+    {% else %}
+    <section class="card">
+        <h2>Новый пользователь</h2>
+        <form method="post" class="grid">
+            <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="create">
+            <label>Логин<input name="username" minlength="3" maxlength="50" required></label>
+            <label>Роль<select name="role"><option value="user">Пользователь</option><option value="admin">Администратор</option></select></label>
+            <label>Временный пароль<input type="password" name="password" minlength="10" autocomplete="new-password" required></label>
+            <label>Повтори пароль<input type="password" name="password_confirm" minlength="10" autocomplete="new-password" required></label>
+            <div class="wide"><button class="primary" type="submit">Создать аккаунт</button></div>
+        </form>
+    </section>
+
+    <section class="users">
+        {% for user in users %}
+        <article class="user">
+            <div class="identity"><strong>{{user.username}}{{' · это вы' if user.id == current_user.id else ''}}</strong><small>Создан {{user.created_at.replace('T',' ')}}</small></div>
+            <span class="status {{'off' if not user.is_active else ''}}">{{'Активен' if user.is_active else 'Отключён'}}</span>
+            <form class="role-form" method="post">
+                <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{user.id}}">
+                <select name="role" {{'disabled' if user.id == current_user.id else ''}}><option value="user" {{'selected' if user.role == 'user' else ''}}>Пользователь</option><option value="admin" {{'selected' if user.role == 'admin' else ''}}>Администратор</option></select>
+                <button type="submit" {{'disabled' if user.id == current_user.id else ''}}>Роль</button>
+            </form>
+            <div class="user-actions">
+                <form class="inline" method="post">
+                    <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="password"><input type="hidden" name="user_id" value="{{user.id}}">
+                    <label>Новый пароль<input type="password" name="password" minlength="10" autocomplete="new-password" required></label><button type="submit">Сменить</button>
+                </form>
+                <form method="post" style="margin-top:8px">
+                    <input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="toggle"><input type="hidden" name="user_id" value="{{user.id}}">
+                    <button type="submit" {{'disabled' if user.id == current_user.id else ''}}>{{'Отключить вход' if user.is_active else 'Включить вход'}}</button>
+                    <span class="last-login">Последний вход: {{user.last_login_at.replace('T',' ') if user.last_login_at else 'ещё не входил'}}</span>
+                </form>
+                {% if user.id != current_user.id %}<form method="post" style="margin-top:8px" onsubmit="return confirm('Удалить этого пользователя и все его личные данные?')"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{user.id}}"><button class="danger" type="submit">Удалить пользователя</button></form>{% endif %}
+            </div>
+        </article>
+        {% endfor %}
+    </section>
+    {% endif %}
+</main><script>
+document.querySelectorAll('input[type="password"]').forEach(input => {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'password-wrap';
+    input.parentNode.insertBefore(wrapper, input);
+    wrapper.appendChild(input);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'password-toggle';
+    toggle.setAttribute('aria-label', 'Показать пароль');
+    toggle.title = 'Показать пароль';
+    toggle.addEventListener('click', () => {
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        toggle.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
+        toggle.title = show ? 'Скрыть пароль' : 'Показать пароль';
+    });
+    wrapper.appendChild(toggle);
+});
+</script></body></html>

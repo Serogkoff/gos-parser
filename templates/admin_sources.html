@@ -1,0 +1,56 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% if auto_refresh %}<meta http-equiv="refresh" content="8">{% endif %}
+    <title>Управление источниками — Монитор</title>
+    <style>
+        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45;--green:#3e7655;--amber:#a86e16}
+        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}.shell{width:min(1450px,calc(100% - 34px));margin:auto;padding:30px 0 80px}a{color:inherit}.top{display:flex;align-items:center;justify-content:space-between;gap:18px}.back{color:var(--muted);text-decoration:none}.back:hover{color:var(--coral)}.top-actions{display:flex;gap:8px}.button,button{min-height:40px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:6px;color:#5b554c;background:var(--surface);font:650 12px inherit;text-decoration:none;cursor:pointer}.button:hover,button:hover{color:var(--coral);border-color:var(--coral)}header{margin:36px 0 24px}h1{margin:0;font-size:clamp(38px,5vw,64px);line-height:1;letter-spacing:-.055em}.subtitle{margin:10px 0 0;color:var(--muted)}
+        .message,.error{margin:0 0 18px;padding:13px 15px;border-left:3px solid var(--green);background:#eef8f0;font-size:13px}.error{color:#9d302a;border-color:var(--coral);background:#fff1ed}.summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:20px}.metric{padding:20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.metric span{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}.metric strong{display:block;margin-top:7px;font-size:31px;letter-spacing:-.04em}.metric small{display:block;margin-top:7px;color:var(--muted);font-size:10px;line-height:1.35}.metric.good strong{color:var(--green)}.metric.warn strong{color:var(--amber)}.metric.bad strong{color:var(--coral)}.metric.channel strong{font-size:18px;letter-spacing:-.02em}
+        .alerts{margin:0 0 20px;overflow:hidden;border:1px solid #e3b870;border-radius:8px;background:#fff9ed}.alerts.critical{border-color:#e7a39c;background:#fff4f1}.alerts-head{min-height:55px;padding:12px 17px;display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid rgba(168,110,22,.22)}.alerts-head h2{margin:0;font-size:16px}.alerts-head span{color:var(--muted);font-size:11px}.alert-row{padding:13px 17px;display:grid;grid-template-columns:78px minmax(180px,.7fr) minmax(0,1.5fr);align-items:center;gap:13px;border-top:1px solid rgba(168,110,22,.15);font-size:12px}.alert-row:first-of-type{border-top:0}.alert-level{width:max-content;padding:4px 7px;border-radius:999px;color:#8a5b12;background:#f8e4bc;font-size:9px;font-weight:800;text-transform:uppercase}.alert-row.critical .alert-level{color:#9d302a;background:#ffdcd7}.alert-row strong{font-size:12px}.alert-row p{margin:0;color:var(--muted);line-height:1.45}
+        .panel{overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.panel-head{min-height:64px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line)}.panel-head h2{margin:0;font-size:18px}.panel-head p{margin:4px 0 0;color:var(--muted);font-size:11px}.source-table{width:100%;border-collapse:collapse}.source-table th{padding:11px 13px;color:var(--muted);background:#faf6ef;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em}.source-table td{padding:13px;border-top:1px solid #e6dfd4;vertical-align:middle;font-size:12px}.source-table tbody tr:hover{background:#fff9f2}.source strong{display:block;font-size:13px}.source small,.muted{display:block;margin-top:3px;color:var(--muted);font-size:10px}.badge{width:max-content;padding:5px 8px;border-radius:999px;background:#edf6ef;color:var(--green);font-size:10px;font-weight:750}.badge.empty,.badge.pending,.badge.running{color:var(--amber);background:#fff4de}.badge.error{color:#a63a32;background:#fff0ed}.badge.disabled{color:#777267;background:#eee9e1}.result b{display:block;font-size:13px}.error-copy{max-width:260px;margin-top:4px;overflow:hidden;color:#a63a32;font-size:10px;text-overflow:ellipsis;white-space:nowrap}.actions{display:flex;justify-content:flex-end;gap:7px}.actions form{margin:0}.actions .run{color:var(--coral);border-color:rgba(228,79,69,.5)}.actions button:disabled{cursor:not-allowed;opacity:.4}.pause{min-width:86px}.jobs{margin-top:18px;padding:18px 20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.jobs h2{margin:0 0 12px;font-size:16px}.job{min-height:34px;display:grid;grid-template-columns:minmax(180px,1fr) 100px 155px minmax(0,2fr);align-items:center;gap:12px;border-top:1px solid #ece5da;font-size:11px}.job:first-of-type{border-top:0}.job-error{overflow:hidden;color:#a63a32;text-overflow:ellipsis;white-space:nowrap}.empty-jobs{color:var(--muted);font-size:12px}
+        @media(max-width:1050px){.summary{grid-template-columns:repeat(2,1fr)}.table-wrap{overflow-x:auto}.source-table{min-width:980px}}@media(max-width:620px){.shell{width:min(100% - 22px,1450px)}.top{align-items:flex-start;flex-direction:column}.summary{grid-template-columns:1fr 1fr}.metric{padding:15px}.metric strong{font-size:25px}.job{grid-template-columns:1fr 90px}.job span:nth-child(n+3){display:none}}
+    </style>
+</head>
+<body><main class="shell">
+    <div class="top">
+        <a class="back" href="/">← Вернуться к Монитору</a>
+        <div class="top-actions"><a class="button" href="/admin/incidents">Инциденты</a><a class="button" href="/admin/reliability">Надёжность</a><a class="button" href="/admin/system">Система</a><a class="button" href="/admin/users">Пользователи</a><a class="button" href="/account">Мой аккаунт</a></div>
+    </div>
+    <header><h1>Источники</h1><p class="subtitle">Состояние парсеров, ручные проверки и управление расписанием</p></header>
+    {% if message %}<p class="message">{{message}}</p>{% endif %}
+    {% if error %}<p class="error">{{error}}</p>{% endif %}
+    <section class="summary">
+        <article class="metric"><span>Всего источников</span><strong>{{summary.total}}</strong></article>
+        <article class="metric good"><span>Работают</span><strong>{{summary.ok}}</strong></article>
+        <article class="metric warn"><span>Ждут внимания</span><strong>{{summary.problem}}</strong></article>
+        <article class="metric bad"><span>На паузе</span><strong>{{summary.disabled}}</strong></article>
+        <article class="metric channel {{'good' if kyodo_vpn.ok else 'bad'}}"><span>Киодо</span><strong>{{kyodo_vpn.label}}</strong><small>{{kyodo_vpn.detail}}</small></article>
+    </section>
+    {% if alerts %}<section class="alerts {{'critical' if alert_counts.critical else ''}}">
+        <div class="alerts-head"><h2>Автоматическая диагностика</h2><span>{{alert_counts.total}} предупреждений · критичных: {{alert_counts.critical}}</span></div>
+        {% for alert in alerts %}<article class="alert-row {{alert.level}}"><span class="alert-level">{{alert.level_label}}</span><strong>{{alert.title}}</strong><p>{{alert.message}}</p></article>{% endfor %}
+    </section>{% endif %}
+    <section class="panel">
+        <div class="panel-head"><div><h2>Центр управления</h2><p>Задания выполняет запущенный main.py; страница обновляется сама, пока есть активная проверка.</p></div><a class="button" href="/admin/sources">Обновить страницу</a></div>
+        <div class="table-wrap"><table class="source-table">
+            <thead><tr><th>Источник</th><th>Состояние</th><th>Последняя проверка</th><th>Последняя новость</th><th>Результат</th><th></th></tr></thead>
+            <tbody>{% for item in sources %}
+            <tr>
+                <td class="source"><strong>{{item.source}}</strong><small>{{item.group_label}} · {{item.total_news}} в базе</small></td>
+                <td><span class="badge {{item.status_class}}">{{item.status_label}}</span>{% if item.job_label %}<small class="muted">{{item.job_label}}</small>{% endif %}</td>
+                <td>{{item.checked_at or 'ещё не проверялся'}}<small class="muted">успешно: {{item.last_success or '—'}}</small></td>
+                <td>{{item.last_received or '—'}}<small class="muted">публикация: {{item.newest_publication or '—'}}</small></td>
+                <td class="result"><b>{{item.news_count}} материалов · {{item.duration}} с</b>{% if item.error %}<div class="error-copy" title="{{item.error}}">{{item.error}}</div>{% endif %}</td>
+                <td><div class="actions">
+                    <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="refresh"><input type="hidden" name="source" value="{{item.source}}"><button class="run" type="submit" {{'disabled' if not item.enabled or item.job_active else ''}}>Обновить</button></form>
+                    <form method="post"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="toggle"><input type="hidden" name="source" value="{{item.source}}"><button class="pause" type="submit">{{'Пауза' if item.enabled else 'Включить'}}</button></form>
+                </div></td>
+            </tr>{% endfor %}</tbody>
+        </table></div>
+    </section>
+    <section class="jobs"><h2>Последние ручные проверки</h2>{% for job in jobs %}<div class="job"><strong>{{job.source}}</strong><span class="badge {{job.status}}">{{job.status_label}}</span><span>{{job.requested_at.replace('T',' ')}}</span><span class="job-error">{{job.error}}</span></div>{% else %}<p class="empty-jobs">Ручных проверок пока не было.</p>{% endfor %}</section>
+</main></body></html>
