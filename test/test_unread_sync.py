@@ -2,6 +2,7 @@ import gc
 import sqlite3
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -54,7 +55,8 @@ class UnreadSyncTests(unittest.TestCase):
     @staticmethod
     def _unread(client, group):
         response = client.get(f"/api/news-index?group={group}")
-        return response, response.get_json()["unread_urls"]
+        items = response.get_json()["items"]
+        return response, [item["url"] for item in items]
 
     @staticmethod
     def _insert_news(*items):
@@ -91,6 +93,48 @@ class UnreadSyncTests(unittest.TestCase):
         self.assertEqual(marked.status_code, 200)
         self.assertEqual(self._unread(second_device, "government")[1], [])
         self.assertEqual(self._unread(other_user, "government")[1], [fresh_url])
+
+    def test_news_index_returns_only_unread_items_with_sources(self):
+        client, _ = self._client_for(self.owner)
+        self.assertEqual(self._unread(client, "government")[1], [])
+
+        fresh_url = "https://mchs.gov.ru/news/compact-index"
+        self._insert_news(
+            {
+                "source": "МЧС",
+                "title": "Свежая публикация для компактного индекса",
+                "url": fresh_url,
+                "date": "2026-08-28",
+            }
+        )
+        response = client.get("/api/news-index?group=government")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.get_json(),
+            {"items": [{"source": "МЧС", "url": fresh_url}]},
+        )
+
+    def test_existing_read_state_uses_no_immediate_write_transaction(self):
+        client, _ = self._client_for(self.owner)
+        self.assertEqual(self._unread(client, "government")[1], [])
+        statements = []
+        original_connection = storage._connection
+
+        @contextmanager
+        def traced_connection():
+            with original_connection() as connection:
+                connection.set_trace_callback(statements.append)
+                yield connection
+
+        with patch.object(storage, "_connection", traced_connection):
+            response = client.get("/api/news-index?group=government")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(any(
+            statement.strip().upper().startswith("BEGIN IMMEDIATE")
+            for statement in statements
+        ))
 
     def test_read_all_affects_only_selected_source_group(self):
         client, token = self._client_for(self.owner)

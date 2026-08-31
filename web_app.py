@@ -74,7 +74,7 @@ from utils.storage import (
     list_dictionary_decks,
     list_personal_notes,
     list_news_index,
-    list_unread_news,
+    list_unread_news_index,
     list_news_page,
     list_shared_collections,
     load_collection,
@@ -2026,7 +2026,7 @@ def bookmarks_api():
 
 @app.get("/api/news-index")
 def news_index_api():
-    """Подгружает индекс и личные непрочитанные новости из SQLite."""
+    """Подгружает компактный индекс личных непрочитанных новостей."""
     source_group = str(request.args.get("group", "")).strip().casefold()
     if source_group not in {
         GOVERNMENT_GROUP,
@@ -2035,12 +2035,9 @@ def news_index_api():
     }:
         return jsonify(error="Неизвестный раздел источников"), 400
     user = current_user()
-    return jsonify(
-        items=list_news_index(source_group, UNREAD_INDEX_LIMIT),
-        unread_urls=list_unread_news(
-            user["id"], source_group, UNREAD_INDEX_LIMIT,
-        ),
-    )
+    return jsonify(items=list_unread_news_index(
+        user["id"], source_group, UNREAD_INDEX_LIMIT,
+    ))
 
 
 @app.post("/api/news-read")

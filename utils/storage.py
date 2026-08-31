@@ -493,6 +493,14 @@ def list_news_index(source_group, limit=2000):
 
 def list_unread_news(user_id, source_group, limit=2000):
     """Возвращает непрочитанные URL пользователя в одном разделе ленты."""
+    return [
+        item["url"]
+        for item in list_unread_news_index(user_id, source_group, limit)
+    ]
+
+
+def list_unread_news_index(user_id, source_group, limit=2000):
+    """Возвращает компактный индекс только непрочитанных новостей."""
     try:
         user_id = int(user_id)
         limit = min(5000, max(1, int(limit)))
@@ -504,44 +512,84 @@ def list_unread_news(user_id, source_group, limit=2000):
     source_group = str(source_group or "").strip().casefold()
     condition, parameters = _news_group_condition(source_group)
     initialize_database()
-    moment = datetime.now().isoformat(timespec="microseconds")
-    with STORAGE_LOCK, _connection() as connection:
-        connection.execute("BEGIN IMMEDIATE")
+    with _connection() as connection:
         state = connection.execute(
             """SELECT read_all_before
                FROM user_news_read_state
                WHERE user_id = ? AND source_group = ?""",
             (user_id, source_group),
         ).fetchone()
-        if state is None:
+
+    if state is None:
+        moment = datetime.now().isoformat(timespec="microseconds")
+        with STORAGE_LOCK, _connection() as connection:
             # При первом включении функции весь существующий архив считается
             # прочитанным. Новыми станут только последующие поступления.
-            connection.execute(
-                """INSERT INTO user_news_read_state(
+            inserted = connection.execute(
+                """INSERT OR IGNORE INTO user_news_read_state(
                        user_id, source_group, read_all_before, initialized_at
                    ) VALUES (?, ?, ?, ?)""",
                 (user_id, source_group, moment, moment),
-            )
+            ).rowcount
+            state = connection.execute(
+                """SELECT read_all_before
+                   FROM user_news_read_state
+                   WHERE user_id = ? AND source_group = ?""",
+                (user_id, source_group),
+            ).fetchone()
+        if inserted:
             return []
 
+    with _connection() as connection:
         rows = connection.execute(
             f"""
-            SELECT n.normalized_url AS url
-            FROM news_items AS n
-            LEFT JOIN news_item_reads AS r
-              ON r.user_id = ? AND r.normalized_url = n.normalized_url
-            WHERE {condition}
-              AND n.normalized_url != ''
-              AND (
-                  (n.first_seen_at > ? AND r.normalized_url IS NULL)
-                  OR r.is_read = 0
-              )
-            ORDER BY n.first_seen_at DESC, n.news_key DESC
+            SELECT unread.url, unread.source
+            FROM (
+                SELECT n.normalized_url AS url,
+                       n.source AS source,
+                       n.first_seen_at AS first_seen_at,
+                       n.news_key AS news_key
+                FROM news_items AS n
+                LEFT JOIN news_item_reads AS r
+                  ON r.user_id = ? AND r.normalized_url = n.normalized_url
+                WHERE {condition}
+                  AND n.normalized_url != ''
+                  AND n.first_seen_at > ?
+                  AND r.normalized_url IS NULL
+
+                UNION
+
+                SELECT n.normalized_url AS url,
+                       n.source AS source,
+                       n.first_seen_at AS first_seen_at,
+                       n.news_key AS news_key
+                FROM news_item_reads AS r
+                JOIN news_items AS n
+                  ON n.normalized_url = r.normalized_url
+                WHERE r.user_id = ?
+                  AND r.is_read = 0
+                  AND {condition}
+                  AND n.normalized_url != ''
+            ) AS unread
+            ORDER BY unread.first_seen_at DESC, unread.news_key DESC
             LIMIT ?
             """,
-            [user_id, *parameters, state["read_all_before"], limit],
+            [
+                user_id,
+                *parameters,
+                state["read_all_before"],
+                user_id,
+                *parameters,
+                limit,
+            ],
         ).fetchall()
-    return [row["url"] for row in rows]
+    return [
+        {
+            "url": row["url"],
+            "source": row["source"] or "Неизвестный источник",
+        }
+        for row in rows
+    ]
 
 
 def mark_news_read(user_id, url):

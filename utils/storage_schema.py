@@ -289,6 +289,8 @@ def create_schema(connection):
             ON user_source_orders(user_id, source_group);
         CREATE INDEX IF NOT EXISTS idx_news_item_reads_user
             ON news_item_reads(user_id, read_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_news_item_reads_unread
+            ON news_item_reads(user_id, is_read, normalized_url);
         CREATE INDEX IF NOT EXISTS idx_parser_jobs_status
             ON parser_jobs(status, requested_at);
         CREATE INDEX IF NOT EXISTS idx_parser_jobs_source

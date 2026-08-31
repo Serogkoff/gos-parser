@@ -583,7 +583,7 @@
             if(response.ok){
                 const data = await response.json();
                 if(Array.isArray(data.items)) newsIndex = data.items;
-                unread = new Set(data.unread_urls || []);
+                unread = new Set(newsIndex.map(item => item.url));
             }
         }catch(error){
             // Карточки уже доступны; счётчики обновятся при следующем открытии.
