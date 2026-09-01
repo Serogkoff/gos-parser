@@ -139,6 +139,16 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(known.status_code, 200)
         self.assertEqual(setup.status_code, 403)
 
+    def test_server_host_defaults_to_loopback_and_allows_lan_opt_in(self):
+        with patch.object(web_app, "environment_value", return_value=""):
+            self.assertEqual(web_app._server_host(), "127.0.0.1")
+        with patch.object(
+            web_app,
+            "environment_value",
+            return_value=" 0.0.0.0 ",
+        ):
+            self.assertEqual(web_app._server_host(), "0.0.0.0")
+
     def test_repeated_bad_password_temporarily_blocks_login(self):
         storage.create_user("limited-user", "limited-secret-2026", role="user")
         login_page = self.client.get("/login")

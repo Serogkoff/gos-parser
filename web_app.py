@@ -140,6 +140,11 @@ def _enabled_setting(name):
     return environment_value(name).casefold() in {"1", "true", "yes", "on"}
 
 
+def _server_host():
+    """Возвращает интерфейс веб-сервера; по умолчанию доступ только локальный."""
+    return environment_value("MONITOR_HOST", "127.0.0.1").strip() or "127.0.0.1"
+
+
 def _allowed_hosts():
     configured = environment_value("MONITOR_ALLOWED_HOSTS")
     return {
@@ -2147,7 +2152,7 @@ def collection_note_read_api():
 
 
 if __name__ == "__main__":
-    host = "127.0.0.1"
+    host = _server_host()
     try:
         port = int(environment_value("MONITOR_PORT", "5000"))
     except ValueError:
