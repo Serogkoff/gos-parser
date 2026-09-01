@@ -121,7 +121,7 @@ class KyodoParserTests(unittest.TestCase):
             "_fetch_category_page_props",
             return_value={},
         ):
-            result = kyodo.parse()
+            result = kyodo.parse(now=datetime(2026, 7, 31, 20, 0))
 
         self.assertEqual(len(result), 1)
         fetch.assert_called_once_with()
@@ -153,7 +153,7 @@ class KyodoParserTests(unittest.TestCase):
             "_fetch_category_page_props",
             side_effect=[page(2), page(3)],
         ) as categories:
-            result = kyodo.parse()
+            result = kyodo.parse(now=datetime(2026, 7, 31, 20, 0))
 
         self.assertEqual(len(result), 3)
         self.assertEqual([item["source_id"] for item in result], ["1", "2", "3"])

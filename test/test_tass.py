@@ -56,7 +56,9 @@ class TassParserTests(unittest.TestCase):
     def test_parse_uses_one_official_feed_request(self):
         soup = BeautifulSoup(RSS, "xml")
         with mock.patch.object(tass, "fetch_soup", return_value=soup) as fetch:
-            news = tass.parse()
+            news = tass.parse(
+                now=datetime(2026, 7, 29, 17, 0, tzinfo=timezone.utc),
+            )
 
         self.assertEqual(len(news), 1)
         fetch.assert_called_once_with(

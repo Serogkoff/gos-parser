@@ -67,7 +67,9 @@ class YonhapParserTests(unittest.TestCase):
     def test_parse_requests_official_rss_once(self):
         soup = BeautifulSoup(YONHAP_RSS, "xml")
         with mock.patch.object(yonhap, "fetch_soup", return_value=soup) as fetch:
-            result = yonhap.parse()
+            result = yonhap.parse(
+                now=datetime(2026, 7, 31, 12, 0, tzinfo=timezone.utc),
+            )
 
         self.assertEqual(len(result), 1)
         fetch.assert_called_once_with(

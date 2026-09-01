@@ -1,8 +1,8 @@
-import gc
 import re
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -46,10 +46,6 @@ class AuthenticationTests(unittest.TestCase):
         self.client = None
         for patcher in reversed(self.patchers):
             patcher.stop()
-        # sqlite3.Connection as a context manager commits/rolls back, but does
-        # not close the handle. CPython 3.13 keeps those unreachable handles
-        # long enough for Windows to reject deletion of the temporary DB.
-        gc.collect()
         self.temporary.cleanup()
 
     @staticmethod
@@ -91,7 +87,7 @@ class AuthenticationTests(unittest.TestCase):
         user = storage.authenticate_user("owner", "super-secret-2026")
         self.assertEqual(user["role"], "admin")
 
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection:
             password_hash = connection.execute(
                 "SELECT password_hash FROM users WHERE username = ?",
                 ("owner",),

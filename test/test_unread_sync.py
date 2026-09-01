@@ -1,8 +1,7 @@
-import gc
 import sqlite3
 import tempfile
 import unittest
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -41,7 +40,6 @@ class UnreadSyncTests(unittest.TestCase):
         web_app.app.config["TESTING"] = False
         for patcher in reversed(self.patchers):
             patcher.stop()
-        gc.collect()
         self.temporary.cleanup()
 
     @staticmethod
@@ -279,7 +277,7 @@ class UnreadSyncTests(unittest.TestCase):
 
     def test_existing_database_gains_first_seen_without_losing_news(self):
         legacy_database = Path(self.temporary.name) / "legacy-news.db"
-        with sqlite3.connect(legacy_database) as connection:
+        with closing(sqlite3.connect(legacy_database)) as connection:
             connection.execute(
                 """CREATE TABLE news_items (
                     news_key TEXT PRIMARY KEY,
@@ -299,6 +297,7 @@ class UnreadSyncTests(unittest.TestCase):
                     '2026-08-20T10:00:00'
                 )"""
             )
+            connection.commit()
 
         with patch.object(storage, "DATABASE_FILE", legacy_database):
             storage.initialize_database()

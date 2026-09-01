@@ -20,7 +20,7 @@ MAX_ITEMS_PER_FEED = 50
 MAX_AGE_DAYS = 30
 
 
-def parse():
+def parse(now=None):
     news = []
 
     for default_section, url in FEED_URLS:
@@ -36,6 +36,7 @@ def parse():
                 _parse_interfax_feed(
                     soup,
                     default_section=default_section,
+                    now=now,
                 )
             )
 

@@ -69,20 +69,24 @@ CATEGORY_ROUTES = (
 )
 
 
-def parse():
+def parse(now=None):
     first_page = _fetch_page_props()
     if not first_page:
         print("  ✅ 0")
         return []
 
-    news = _parse_47news_page(first_page)
+    news = _parse_47news_page(first_page, now=now)
     known_urls = {item.get("url") for item in news}
 
     for section, route in CATEGORY_ROUTES:
         page_props = _fetch_category_page_props(route)
         if not page_props:
             continue
-        page_news = _parse_47news_page(page_props, direct_section=section)
+        page_news = _parse_47news_page(
+            page_props,
+            now=now,
+            direct_section=section,
+        )
         fresh = [item for item in page_news if item.get("url") not in known_urls]
         news.extend(fresh)
         known_urls.update(item.get("url") for item in fresh)

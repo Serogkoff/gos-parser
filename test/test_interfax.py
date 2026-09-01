@@ -103,7 +103,9 @@ class InterfaxParserTests(unittest.TestCase):
             "fetch_soup",
             side_effect=soups,
         ) as fetch:
-            news = interfax.parse()
+            news = interfax.parse(
+                now=datetime(2026, 7, 30, 12, 0, tzinfo=timezone.utc),
+            )
 
         self.assertEqual(len(news), 2)
         self.assertEqual(fetch.call_count, 2)

@@ -17,7 +17,7 @@ MAX_ITEMS = 60
 MAX_AGE_DAYS = 30
 
 
-def parse():
+def parse(now=None):
     soup = fetch_soup(
         FEED_URL,
         SOURCE_NAME,
@@ -29,7 +29,7 @@ def parse():
         print("  ✅ 0")
         return []
 
-    news = _parse_yonhap_feed(soup)
+    news = _parse_yonhap_feed(soup, now=now)
     print(f"  ✅ {len(news)}")
     return news
 
