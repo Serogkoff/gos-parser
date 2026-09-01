@@ -14,6 +14,7 @@ from utils.dates import parse_date
 from utils.logger import get_logger
 from utils.news import deduplicate_news, merge_news, normalize_url
 from utils.storage_collections import CollectionStorage
+from utils.storage_initialization import DatabaseInitializer, load_json_list
 from utils.storage_maintenance import DatabaseMaintenance
 from utils.storage_monitoring import MonitoringStorage
 from utils.storage_news import NewsStorage
@@ -36,8 +37,6 @@ logger = get_logger("storage")
 STORAGE_LOCK = RLock()
 JSON_MIGRATION_KEY = "json_migration_v1"
 MAX_CACHED_ARTICLE_CHARS = 100_000
-_INITIALIZED_DATABASES = set()
-_INITIALIZATION_RESULTS = {}
 _COLLECTION_CACHE = {}
 
 
@@ -51,21 +50,6 @@ def _database_change_signature():
         except OSError:
             signature.extend((0, 0))
     return tuple(signature)
-
-
-def _load_json(path):
-    """Читает служебный JSON. Оставлен для настроек, статуса и миграции."""
-    if not path.exists():
-        return []
-    try:
-        with path.open("r", encoding="utf-8") as file:
-            data = json.load(file)
-        if not isinstance(data, list):
-            raise ValueError("ожидался JSON-массив")
-        return data
-    except (OSError, json.JSONDecodeError, ValueError) as error:
-        logger.error(f"Не удалось прочитать {path.name}: {error}")
-        return []
 
 
 def _write_json_atomic(path, data):
@@ -88,6 +72,11 @@ def _write_json_atomic(path, data):
     finally:
         if temp_name and os.path.exists(temp_name):
             os.unlink(temp_name)
+
+
+def _load_json(path):
+    """Совместимый помощник для небольших служебных JSON-массивов."""
+    return load_json_list(path, logger)
 
 
 def _connect():
@@ -596,89 +585,28 @@ def _validated_bookmark_note(value):
 def _bookmark_from_row(row):
     return _COLLECTION_STORAGE._bookmark_from_row(row)
 
+_DATABASE_INITIALIZER = DatabaseInitializer(
+    database_file=lambda: DATABASE_FILE,
+    all_news_file=lambda: ALL_NEWS_FILE,
+    found_news_file=lambda: FOUND_NEWS_FILE,
+    connection_factory=lambda: _connection(),
+    create_schema=_create_schema,
+    database_stats=lambda connection: database_stats(connection=connection),
+    replace_collections=lambda connection, all_news, found_news: (
+        _replace_collections(connection, all_news, found_news)
+    ),
+    deduplicate_news=deduplicate_news,
+    news_key=lambda item: _news_key(item),
+    lock=STORAGE_LOCK,
+    migration_key=JSON_MIGRATION_KEY,
+    logger=logger,
+    now=lambda: datetime.now(),
+)
+
+
 def initialize_database():
-    """
-    Создаёт базу и один раз переносит старые JSON-файлы.
-
-    Исходные JSON не удаляются: они остаются резервным снимком на случай,
-    если пользователь захочет проверить миграцию или откатиться.
-    """
-    database_id = str(DATABASE_FILE.resolve())
-    with STORAGE_LOCK:
-        if database_id in _INITIALIZED_DATABASES and DATABASE_FILE.exists():
-            return dict(_INITIALIZATION_RESULTS[database_id])
-
-        with _connection() as connection:
-            _create_schema(connection)
-            # ALTER TABLE при обновлении старой базы открывает транзакцию.
-            # Фиксируем только изменение схемы до BEGIN IMMEDIATE ниже.
-            connection.commit()
-            completed = connection.execute(
-                "SELECT 1 FROM metadata WHERE key = ?",
-                (JSON_MIGRATION_KEY,),
-            ).fetchone()
-            if completed:
-                stats = database_stats(connection=connection)
-                _INITIALIZED_DATABASES.add(database_id)
-                _INITIALIZATION_RESULTS[database_id] = dict(stats)
-                return stats
-
-            # Блокирует только конкурирующую первую миграцию. Обычные чтения
-            # продолжают работать благодаря WAL, а второй процесс дождётся
-            # завершения и повторно проверит metadata.
-            connection.execute("BEGIN IMMEDIATE")
-            completed = connection.execute(
-                "SELECT 1 FROM metadata WHERE key = ?",
-                (JSON_MIGRATION_KEY,),
-            ).fetchone()
-            if completed:
-                stats = database_stats(connection=connection)
-                _INITIALIZED_DATABASES.add(database_id)
-                _INITIALIZATION_RESULTS[database_id] = dict(stats)
-                return stats
-
-            all_news = deduplicate_news(_load_json(ALL_NEWS_FILE))
-            found_news = deduplicate_news(_load_json(FOUND_NEWS_FILE))
-            if all_news or found_news:
-                # Гарантируем, что каждая найденная запись существует в
-                # news_items, но не переносим поле keywords в общую ленту.
-                available = {_news_key(item) for item in all_news}
-                missing = []
-                for item in found_news:
-                    if _news_key(item) in available:
-                        continue
-                    clean_item = dict(item)
-                    clean_item.pop("keywords", None)
-                    missing.append(clean_item)
-                all_news = [*all_news, *missing]
-                _replace_collections(
-                    connection,
-                    all_news,
-                    found_news,
-                )
-                logger.info(
-                    "Миграция JSON → SQLite завершена: "
-                    f"{len(all_news)} новостей, {len(found_news)} совпадений"
-                )
-
-            connection.execute(
-                "INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)",
-                (
-                    JSON_MIGRATION_KEY,
-                    json.dumps(
-                        {
-                            "completed_at": datetime.now().isoformat(timespec="seconds"),
-                            "all_news": len(all_news),
-                            "found_news": len(found_news),
-                        },
-                        ensure_ascii=False,
-                    ),
-                ),
-            )
-            stats = database_stats(connection=connection)
-            _INITIALIZED_DATABASES.add(database_id)
-            _INITIALIZATION_RESULTS[database_id] = dict(stats)
-            return stats
+    """Создаёт базу и один раз переносит старые JSON-файлы."""
+    return _DATABASE_INITIALIZER.initialize_database()
 
 
 def load_all_news():
