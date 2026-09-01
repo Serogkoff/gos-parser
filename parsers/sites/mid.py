@@ -48,6 +48,8 @@ def parse():
             wait_until="domcontentloaded",
             use_partial_on_timeout=True,
             parser="xml",
+            response_body=True,
+            desktop_user_agent=True,
         )
         news = _parse_feed(soup)
         if news:

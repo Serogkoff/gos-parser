@@ -142,6 +142,8 @@ class MidFeedTests(unittest.TestCase):
             wait_until="domcontentloaded",
             use_partial_on_timeout=True,
             parser="xml",
+            response_body=True,
+            desktop_user_agent=True,
         )
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["date"], "2026-08-27")
