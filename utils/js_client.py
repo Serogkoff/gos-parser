@@ -26,8 +26,6 @@ def fetch_soup_js(
     use_partial_on_timeout=False,
     proxy_url="",
     parser="html.parser",
-    response_body=False,
-    desktop_user_agent=False,
 ):
     """
     Открывает страницу в headless-браузере (для сайтов, которые
@@ -43,30 +41,10 @@ def fetch_soup_js(
             if proxy:
                 launch_options["proxy"] = proxy
             browser = p.chromium.launch(**launch_options)
-            context_options = {"ignore_https_errors": True}
-            if desktop_user_agent:
-                context_options["user_agent"] = _desktop_chrome_user_agent(
-                    browser.version
-                )
-            context = browser.new_context(**context_options)
+            context = browser.new_context(ignore_https_errors=True)
             page = context.new_page()
-            document_responses = []
 
-            def remember_document_response(response):
-                try:
-                    if (
-                        response.request.resource_type == "document"
-                        and response.frame == page.main_frame
-                    ):
-                        document_responses.append(response)
-                except Exception:
-                    # Служебные ответы браузерных расширений и закрывающейся
-                    # страницы не должны прерывать загрузку основного документа.
-                    return
-
-            page.on("response", remember_document_response)
-
-            page_loaded = False
+            html = None
             for attempt in range(2):
                 try:
                     page.goto(
@@ -75,7 +53,7 @@ def fetch_soup_js(
                         timeout=timeout_ms,
                     )
                     page.wait_for_timeout(wait_ms)
-                    page_loaded = True
+                    html = page.content()
                     break
                 except PlaywrightTimeoutError:
                     logger.warning(
@@ -87,9 +65,9 @@ def fetch_soup_js(
                     # полезная часть страницы уже появилась в DOM.
                     try:
                         page.wait_for_timeout(min(wait_ms, 3000))
-                        page_loaded = True
+                        html = page.content()
                     except Exception:
-                        page_loaded = False
+                        html = None
                     break
                 except PlaywrightError as error:
                     transient = _is_transient_browser_error(error)
@@ -102,16 +80,10 @@ def fetch_soup_js(
                         continue
                     raise
 
-            if not page_loaded:
+            if html is None:
                 context.close()
                 browser.close()
                 return None
-
-            html = None
-            if response_body:
-                html = _latest_document_body(document_responses)
-            if html is None:
-                html = page.content()
 
             context.close()
             browser.close()
@@ -123,28 +95,6 @@ def fetch_soup_js(
         return None
 
     return BeautifulSoup(html, parser)
-
-
-def _latest_document_body(responses):
-    """Возвращает исходное тело последнего ответа главного документа."""
-    for response in reversed(responses):
-        try:
-            body = response.body()
-        except Exception:
-            continue
-        if body:
-            return body
-    return None
-
-
-def _desktop_chrome_user_agent(browser_version):
-    """Маскирует служебную метку HeadlessChrome, сохраняя версию Chromium."""
-    version = str(browser_version or "120.0.0.0").strip()
-    return (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        f"Chrome/{version} Safari/537.36"
-    )
 
 
 def _is_transient_browser_error(error):

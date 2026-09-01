@@ -4,60 +4,58 @@ from datetime import datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlsplit
 
+import requests
 from bs4 import BeautifulSoup
 
 from utils.dates import parse_date
-from utils.http_client import fetch_soup
-from utils.js_client import fetch_soup_js
+from utils.logger import get_logger
 from utils.news import deduplicate_news
 
 
 SOURCE_NAME = "МИД РФ"
-PRIMARY_FEED_URL = "https://mid.ru/ru/rss.php"
-FALLBACK_FEED_URL = "https://www.mid.ru/ru/rss"
+PRIMARY_FEED_URL = "https://www.mid.ru/ru/rss"
+FALLBACK_FEED_URL = "https://mid.ru/ru/rss.php"
 MAX_ITEMS = 60
-BROWSER_WAIT_MS = 7000
+FEED_TIMEOUT_SECONDS = 30
+FEED_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36"
+    ),
+}
+logger = get_logger("mid")
 
 
 def parse():
-    """Читает RSS МИДа, проходя JavaScript-защиту только при необходимости."""
+    """Читает официальную Atom-ленту МИДа с минимальными заголовками."""
     for feed_url in (PRIMARY_FEED_URL, FALLBACK_FEED_URL):
-        soup = fetch_soup(
-            feed_url,
-            SOURCE_NAME,
-            timeout=30,
-            verify=False,
-            parser="xml",
-            attempts=1,
-        )
+        soup = _fetch_feed(feed_url)
         news = _parse_feed(soup)
         if news:
             print(f"  ✅ {len(news)}")
             return news
 
-    # МИД периодически возвращает requests не RSS, а HTML-заглушку bobcmn.
-    # Браузер выполняет её JavaScript, получает служебную cookie и дожидается
-    # настоящей ленты. Этот более тяжёлый путь используется только после того,
-    # как оба обычных запроса не дали ни одной записи.
-    for feed_url in (PRIMARY_FEED_URL, FALLBACK_FEED_URL):
-        soup = fetch_soup_js(
-            feed_url,
-            SOURCE_NAME,
-            wait_ms=BROWSER_WAIT_MS,
-            timeout_ms=45000,
-            wait_until="domcontentloaded",
-            use_partial_on_timeout=True,
-            parser="xml",
-            response_body=True,
-            desktop_user_agent=True,
-        )
-        news = _parse_feed(soup)
-        if news:
-            print(f"  ✅ {len(news)} (через браузер)")
-            return news
-
     print("  ✅ 0")
     return []
+
+
+def _fetch_feed(url):
+    """Получает XML без общих браузерных заголовков, блокируемых WAF МИДа."""
+    try:
+        response = requests.get(
+            url,
+            headers=FEED_HEADERS,
+            timeout=FEED_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        if not response.content:
+            return None
+        return BeautifulSoup(response.content, "xml")
+    except requests.exceptions.RequestException as error:
+        logger.warning(
+            f"[{SOURCE_NAME}] Не удалось получить RSS {url}: {error}"
+        )
+        return None
 
 
 def _parse_feed(soup):
