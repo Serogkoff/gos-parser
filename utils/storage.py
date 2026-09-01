@@ -2,7 +2,6 @@
 
 import json
 import os
-import re
 import sqlite3
 import tempfile
 from contextlib import contextmanager
@@ -10,14 +9,14 @@ from datetime import datetime
 from pathlib import Path
 from threading import RLock
 
-from utils.dates import parse_date
 from utils.logger import get_logger
-from utils.news import deduplicate_news, merge_news, normalize_url
+from utils.news import deduplicate_news, normalize_url
 from utils.storage_collections import CollectionStorage
 from utils.storage_initialization import DatabaseInitializer, load_json_list
 from utils.storage_maintenance import DatabaseMaintenance
 from utils.storage_monitoring import MonitoringStorage
 from utils.storage_news import NewsStorage
+from utils.storage_news_persistence import NewsPersistenceStorage
 from utils.storage_schema import create_schema as _create_schema
 from utils.storage_source_control import SourceControlStorage
 from utils.storage_users import UserStorage
@@ -37,19 +36,6 @@ logger = get_logger("storage")
 STORAGE_LOCK = RLock()
 JSON_MIGRATION_KEY = "json_migration_v1"
 MAX_CACHED_ARTICLE_CHARS = 100_000
-_COLLECTION_CACHE = {}
-
-
-def _database_change_signature():
-    """Отслеживает изменения основной SQLite-базы и её WAL-журнала."""
-    signature = [str(DATABASE_FILE.resolve())]
-    for path in (DATABASE_FILE, Path(f"{DATABASE_FILE}-wal")):
-        try:
-            stat = path.stat()
-            signature.extend((stat.st_size, stat.st_mtime_ns))
-        except OSError:
-            signature.extend((0, 0))
-    return tuple(signature)
 
 
 def _write_json_atomic(path, data):
@@ -609,211 +595,74 @@ def initialize_database():
     return _DATABASE_INITIALIZER.initialize_database()
 
 
+_NEWS_PERSISTENCE = NewsPersistenceStorage(
+    initialize_database=lambda: initialize_database(),
+    connect=lambda: _connect(),
+    connection_factory=lambda: _connection(),
+    lock=STORAGE_LOCK,
+    database_file=lambda: DATABASE_FILE,
+    logger=logger,
+    load_all_news=lambda: load_all_news(),
+    load_found_news=lambda: load_found_news(),
+    load_collection=lambda connection, table: _load_collection(
+        connection, table
+    ),
+    max_cached_article_chars=MAX_CACHED_ARTICLE_CHARS,
+    now=lambda: datetime.now(),
+)
+
+
+def _database_change_signature():
+    return _NEWS_PERSISTENCE.database_change_signature()
+
+
 def load_all_news():
-    initialize_database()
-    return _load_collection_cached("news_items")
+    return _NEWS_PERSISTENCE.load_all_news()
 
 
 def load_found_news():
-    initialize_database()
-    return _load_collection_cached("found_items")
+    return _NEWS_PERSISTENCE.load_found_news()
 
 
 def _load_collection_cached(table):
     """Не разбирает десятки тысяч JSON-записей заново на каждой странице."""
-    if table not in {"news_items", "found_items"}:
-        raise ValueError("неизвестная таблица новостей")
-    signature = _database_change_signature()
-    cache_key = (signature[0], table)
-    with STORAGE_LOCK:
-        cached = _COLLECTION_CACHE.get(cache_key)
-        if cached and cached["signature"] == signature:
-            return list(cached["items"])
-
-    connection = _connect()
-    try:
-        items = deduplicate_news(_load_collection(connection, table))
-    finally:
-        connection.close()
-
-    final_signature = _database_change_signature()
-    # Если запись шла одновременно с чтением, не закрепляем снимок под новой
-    # сигнатурой: следующий запрос безопасно перечитает актуальную коллекцию.
-    if final_signature == signature:
-        with STORAGE_LOCK:
-            _COLLECTION_CACHE[cache_key] = {
-                "signature": signature,
-                "items": tuple(items),
-            }
-    return list(items)
+    return _NEWS_PERSISTENCE.load_collection_cached(table)
 
 
 def find_news_by_url(url):
     """Находит одну публикацию без загрузки всей базы в веб-приложение."""
-    normalized = normalize_url(url)
-    if not normalized:
-        return None
-    initialize_database()
-    with _connection() as connection:
-        row = connection.execute(
-            """
-            SELECT payload_json, parsed_date, first_seen_at
-            FROM news_items
-            WHERE normalized_url = ?
-            LIMIT 1
-            """,
-            (normalized,),
-        ).fetchone()
-    if row is None:
-        return None
-    item = _decode_item(row["payload_json"])
-    if item is not None:
-        _attach_news_display_fields(
-            item, row["parsed_date"], row["first_seen_at"],
-        )
-    return item
+    return _NEWS_PERSISTENCE.find_news_by_url(url)
 
 
 def load_cached_article(url):
     """Возвращает сохранённый текст статьи, если её уже открывали."""
-    normalized = normalize_url(url)
-    if not normalized:
-        return None
-    initialize_database()
-    with _connection() as connection:
-        row = connection.execute(
-            """
-            SELECT source, title, paragraphs_json, fetched_at
-            FROM article_cache
-            WHERE normalized_url = ?
-            """,
-            (normalized,),
-        ).fetchone()
-    if row is None:
-        return None
-    try:
-        paragraphs = json.loads(row["paragraphs_json"])
-    except (TypeError, json.JSONDecodeError):
-        logger.warning("В SQLite обнаружён повреждённый кеш статьи")
-        return None
-    if not isinstance(paragraphs, list) or not paragraphs:
-        return None
-    return {
-        "title": row["title"],
-        "paragraphs": paragraphs,
-        "error": "",
-        "source": row["source"],
-        "cached": True,
-        "cached_at": row["fetched_at"],
-    }
+    return _NEWS_PERSISTENCE.load_cached_article(url)
 
 
 def save_cached_article(url, article, source=""):
     """Сохраняет только успешный очищенный текст открытой статьи."""
-    normalized = normalize_url(url)
-    if not normalized or not isinstance(article, dict) or article.get("error"):
-        return None
-    paragraphs = _clean_cached_paragraphs(article.get("paragraphs", []))
-    if not paragraphs:
-        return None
-    title = " ".join(str(article.get("title", "")).split())[:500]
-    fetched_at = datetime.now().isoformat(timespec="seconds")
-    initialize_database()
-    with STORAGE_LOCK, _connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO article_cache(
-                normalized_url, source, title, paragraphs_json, fetched_at
-            ) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(normalized_url) DO UPDATE SET
-                source = excluded.source,
-                title = excluded.title,
-                paragraphs_json = excluded.paragraphs_json,
-                fetched_at = excluded.fetched_at
-            """,
-            (
-                normalized,
-                str(source),
-                title,
-                json.dumps(paragraphs, ensure_ascii=False, separators=(",", ":")),
-                fetched_at,
-            ),
-        )
-    return load_cached_article(normalized)
+    return _NEWS_PERSISTENCE.save_cached_article(url, article, source)
 
 
 def load_existing_urls():
-    initialize_database()
-    with _connection() as connection:
-        rows = connection.execute(
-            "SELECT normalized_url FROM news_items WHERE normalized_url != ''"
-        ).fetchall()
-    return {row["normalized_url"] for row in rows}
+    return _NEWS_PERSISTENCE.load_existing_urls()
 
 
 def save_results(all_news, found_news, existing_urls):
-    with STORAGE_LOCK:
-        return _save_results(all_news, found_news, existing_urls)
+    return _NEWS_PERSISTENCE.save_results(
+        all_news, found_news, existing_urls
+    )
 
 
 def _save_results(all_news, found_news, existing_urls):
-    initialize_database()
-    all_news = deduplicate_news(all_news)
-    found_news = deduplicate_news(found_news)
-    new_all = [
-        item
-        for item in all_news
-        if normalize_url(item.get("url", "")) not in existing_urls
-    ]
-    new_found = [
-        item
-        for item in found_news
-        if normalize_url(item.get("url", "")) not in existing_urls
-    ]
-
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    for item in new_all:
-        if not item.get("parsed_date"):
-            item["parsed_date"] = now
-    for item in new_found:
-        if not item.get("parsed_date"):
-            item["parsed_date"] = now
-
-    old_all = load_all_news()
-    old_found = load_found_news()
-
-    # Передаём все свежие записи, а не только новые: уже сохранённые
-    # материалы смогут получить исправленную дату, ссылку или анонс.
-    merged_all = merge_news(old_all, all_news)
-    merged_found = merge_news(old_found, found_news)
-    merged_all = _sort_items(merged_all)
-    merged_found = _sort_items(merged_found)
-
-    with _connection() as connection:
-        _replace_collections(connection, merged_all, merged_found)
-
-    print(f"✅ Новых: {len(new_all)} | Всего: {len(merged_all)}")
-    print(
-        f"🔴 Новых совпадений: {len(new_found)} | "
-        f"Всего: {len(merged_found)}"
+    return _NEWS_PERSISTENCE._save_results(
+        all_news, found_news, existing_urls
     )
-    return new_found
 
 
 def replace_found_news(items):
     """Полностью пересобирает таблицу совпадений после изменения слов."""
-    with STORAGE_LOCK:
-        initialize_database()
-        all_news = load_all_news()
-        found_news = deduplicate_news(items)
-        available = {_news_key(item) for item in all_news}
-        found_news = [
-            item for item in found_news if _news_key(item) in available
-        ]
-        with _connection() as connection:
-            connection.execute("DELETE FROM found_items")
-            _insert_found_items(connection, found_news)
-        return _sort_items(found_news)
+    return _NEWS_PERSISTENCE.replace_found_news(items)
 
 
 _DATABASE_MAINTENANCE = DatabaseMaintenance(
@@ -874,149 +723,47 @@ def _remove_old_manual_backups(retention):
 
 def _replace_collections(connection, all_news, found_news):
     """Заменяет обе коллекции в одной транзакции: либо всё, либо ничего."""
-    first_seen_by_key = {
-        row["news_key"]: row["first_seen_at"]
-        for row in connection.execute(
-            "SELECT news_key, first_seen_at FROM news_items"
-        ).fetchall()
-    }
-    connection.execute("DELETE FROM found_items")
-    connection.execute("DELETE FROM news_items")
-    _insert_news_items(connection, all_news, first_seen_by_key=first_seen_by_key)
-
-    available = {_news_key(item) for item in all_news}
-    safe_found = [item for item in found_news if _news_key(item) in available]
-    _insert_found_items(connection, safe_found)
+    return _NEWS_PERSISTENCE.replace_collections(
+        connection, all_news, found_news
+    )
 
 
 def _insert_news_items(connection, items, first_seen_by_key=None):
-    updated_at = datetime.now().isoformat(timespec="seconds")
-    first_seen_at = datetime.now().isoformat(timespec="microseconds")
-    first_seen_by_key = first_seen_by_key or {}
-    rows = []
-    for item in deduplicate_news(items):
-        news_key = _news_key(item)
-        rows.append(
-            (
-                news_key,
-                normalize_url(item.get("url", "")),
-                str(item.get("source", "")),
-                str(item.get("title", "")),
-                str(item.get("date", "")),
-                str(item.get("parsed_date", "")),
-                _encode_item(item),
-                updated_at,
-                first_seen_by_key.get(news_key) or first_seen_at,
-            )
-        )
-    connection.executemany(
-        """
-        INSERT INTO news_items(
-            news_key, normalized_url, source, title,
-            publication_date, parsed_date, payload_json, updated_at,
-            first_seen_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        rows,
+    return _NEWS_PERSISTENCE.insert_news_items(
+        connection, items, first_seen_by_key
     )
 
 
 def _insert_found_items(connection, items):
-    updated_at = datetime.now().isoformat(timespec="seconds")
-    connection.executemany(
-        """
-        INSERT INTO found_items(news_key, payload_json, updated_at)
-        VALUES (?, ?, ?)
-        """,
-        [
-            (_news_key(item), _encode_item(item), updated_at)
-            for item in deduplicate_news(items)
-        ],
-    )
+    return _NEWS_PERSISTENCE.insert_found_items(connection, items)
 
 
 def _load_collection(connection, table):
-    if table not in {"news_items", "found_items"}:
-        raise ValueError("неизвестная таблица новостей")
-    rows = connection.execute(
-        f"SELECT payload_json FROM {table}"
-    ).fetchall()
-    return _sort_items(
-        item
-        for item in (_decode_item(row["payload_json"]) for row in rows)
-        if item is not None
-    )
+    return _NEWS_PERSISTENCE.load_collection(connection, table)
 
 
 def _encode_item(item):
-    return json.dumps(dict(item), ensure_ascii=False, separators=(",", ":"))
+    return _NEWS_PERSISTENCE.encode_item(item)
 
 
 def _decode_item(payload):
-    try:
-        item = json.loads(payload)
-        return item if isinstance(item, dict) else None
-    except (TypeError, json.JSONDecodeError):
-        logger.warning("В SQLite обнаружена повреждённая запись новости")
-        return None
+    return _NEWS_PERSISTENCE.decode_item(payload)
 
 
 def _attach_news_display_fields(item, parsed_date, first_seen_at):
     """Добавляет готовые дату публикации и время первого получения."""
-    publication_date = parse_date(item.get("date", ""))
-    item["publication_date_display"] = (
-        datetime.strptime(publication_date, "%Y-%m-%d").strftime("%d.%m.%Y")
-        if publication_date
-        else str(item.get("date", ""))
+    return _NEWS_PERSISTENCE.attach_news_display_fields(
+        item, parsed_date, first_seen_at
     )
-    item["parser_added_time"] = ""
-    for value in (parsed_date, first_seen_at):
-        match = re.search(
-            r"(?:^|[T\s])(\d{2}:\d{2})(?::\d{2})?",
-            str(value or ""),
-        )
-        if match:
-            item["parser_added_time"] = match.group(1)
-            break
 
 
 def _clean_cached_paragraphs(paragraphs):
-    if not isinstance(paragraphs, (list, tuple)):
-        return []
-    result = []
-    seen = set()
-    remaining = MAX_CACHED_ARTICLE_CHARS
-    for paragraph in paragraphs:
-        text = " ".join(str(paragraph or "").split())
-        if not text or text in seen or remaining <= 0:
-            continue
-        text = text[:remaining]
-        result.append(text)
-        seen.add(text)
-        remaining -= len(text)
-    return result
+    return _NEWS_PERSISTENCE.clean_cached_paragraphs(paragraphs)
 
 
 def _news_key(item):
-    normalized = normalize_url(item.get("url", ""))
-    if normalized:
-        return f"url:{normalized}"
-    source = " ".join(str(item.get("source", "")).casefold().split())
-    title = re.sub(
-        r"[^\wа-яё]+",
-        " ",
-        str(item.get("title", "")).casefold(),
-        flags=re.IGNORECASE,
-    )
-    return f"title:{source}:{' '.join(title.split())}"
+    return _NEWS_PERSISTENCE.news_key(item)
 
 
 def _sort_items(items):
-    return sorted(
-        items,
-        key=lambda item: (
-            str(item.get("date", "")),
-            str(item.get("parsed_date", "")),
-        ),
-        reverse=True,
-    )
+    return _NEWS_PERSISTENCE.sort_items(items)
