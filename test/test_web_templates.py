@@ -38,6 +38,9 @@ class WebTemplateTests(unittest.TestCase):
             'Найдено {{page_total_display}} материалов',
             '<svg viewBox="0 0 20 24" aria-hidden="true">',
             '-webkit-line-clamp:3',
+            'overflow-x:hidden',
+            'class="panel-action-icon order-arrows"',
+            'aria-label="Прочитать все новости"',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)

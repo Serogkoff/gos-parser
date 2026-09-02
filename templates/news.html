@@ -259,14 +259,14 @@
             --line:#e7e6e1;--coral:#e9362a;--coral-dark:#c92d24;
             --green:#41814f;--amber:#b67a22
         }
-        html,body{min-height:100%;background:var(--paper)}
+        html,body{width:100%;max-width:100%;min-height:100%;overflow-x:hidden;background:var(--paper)}
         body{
             background:var(--paper);
             font-family:Inter,"Segoe UI",Arial,sans-serif;
             font-size:14px
         }
         .app-layout{
-            min-height:100vh;display:grid;
+            width:100%;max-width:100%;min-height:100vh;display:grid;overflow-x:clip;
             grid-template-columns:205px minmax(0,1fr)
         }
         .left-rail{
@@ -321,7 +321,7 @@
         }
         .topbar{
             min-height:124px;display:grid;
-            grid-template-columns:minmax(440px,1fr) auto;
+            min-width:0;grid-template-columns:minmax(0,1fr) auto;
             grid-template-rows:70px 54px;gap:0 24px;
             align-items:end;border-bottom:1px solid var(--line)
         }
@@ -345,7 +345,7 @@
         .site-section.active{color:var(--coral-dark)}
         .topbar-tools{
             grid-column:2;grid-row:1;align-self:start;
-            padding-top:27px;gap:0
+            justify-self:end;padding-top:27px;gap:0
         }
         .account-status{display:none}
         .clocks{gap:0}
@@ -374,24 +374,25 @@
         .search,.source-select,.tool-button{
             height:42px;border-color:var(--line);border-radius:4px;background:#fff
         }
-        .search{width:286px;max-width:286px;flex:0 0 286px;padding:0 13px}
+        .search{width:220px;max-width:220px;flex:0 0 220px;padding:0 13px}
         .search-icon{font-size:19px}
         .search input{font-size:13px}
         .tool-button{min-width:105px;max-width:140px;padding:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
         .source-summary{max-width:105px;padding:0 4px;overflow:hidden;font-size:10px;white-space:nowrap}
         .content-grid{
+            min-width:0;
             display:grid;grid-template-columns:minmax(0,1fr) 250px;
             gap:18px;align-items:start
         }
         .feed,.panel{border-radius:3px;background:#fff}
-        .feed{margin-top:14px;overflow:visible;border:0;background:transparent}
+        .feed{min-width:0;margin-top:14px;overflow:visible;border:0;background:transparent}
         .feed-heading{
             min-height:52px;padding:0 2px;background:var(--paper);border:0
         }
         .feed-heading h2{color:var(--muted);font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:12px;font-weight:400}
         #news-list{overflow:hidden;border:1px solid var(--line);border-radius:3px;background:#fff}
         .news-card{
-            min-height:110px;padding:16px 72px 16px 16px;display:grid;
+            min-height:110px;padding:16px 82px 16px 16px;display:grid;
             grid-template-columns:184px minmax(0,1fr);grid-auto-rows:min-content;
             column-gap:18px;border-bottom:1px solid var(--line);background:#fff
         }
@@ -431,11 +432,11 @@
         }
         .chips{grid-column:2;margin-top:10px;gap:6px}
         .chips a{padding:3px 7px;border-radius:3px;font-size:10px}
-        .save{top:17px;right:14px;width:26px;height:28px;display:grid;place-items:center}
+        .save{top:50px;right:25px;width:26px;height:28px;display:grid;place-items:center}
         .save svg{width:15px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
         .save.active svg{fill:var(--coral);stroke:var(--coral)}
         .unread-label{
-            position:absolute;z-index:2;top:19px;right:49px;margin:0;
+            position:absolute;z-index:2;top:14px;right:12px;margin:0;
             padding:5px 9px;border-color:#d5e8d5;border-radius:4px;
             color:var(--green);background:#f0f8ed;font-size:10px;text-transform:none
         }
@@ -446,7 +447,7 @@
             min-width:34px;height:34px;border:0;border-radius:50%;background:transparent
         }
         .page-current{color:#fff;background:var(--coral)}
-        .sidebar{margin-top:14px;gap:14px}
+        .sidebar{min-width:0;margin-top:14px;gap:14px}
         .panel{overflow:visible;border:0;background:transparent}
         .panel-title{
             min-height:52px;padding:0 8px;border:0;background:var(--paper)
@@ -454,10 +455,19 @@
         .panel-title h2,.coverage>h2{
             font-family:Georgia,"Times New Roman",serif;font-size:18px;font-weight:400
         }
-        .panel-title-actions{gap:2px}
-        .panel-title-actions button{font-size:9px}
+        .panel-title-actions{flex:0 0 auto;gap:3px}
+        .panel-title-actions button{
+            width:28px;height:28px;padding:0!important;display:grid;place-items:center;
+            border-radius:50%!important;font-size:0
+        }
+        .panel-title-actions button:hover,.panel-title-actions button[aria-pressed="true"]{color:var(--coral-dark);background:#fff3ed}
+        .panel-action-icon{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+        .source-order-toggle .order-done{display:none}
+        .source-order-toggle[aria-pressed="true"] .order-arrows{display:none}
+        .source-order-toggle[aria-pressed="true"] .order-done{display:block}
+        .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
         .source-list{
-            padding:0;overflow:hidden;border:1px solid var(--line);
+            min-width:0;padding:0;overflow:hidden;border:1px solid var(--line);
             border-radius:3px;background:#fff
         }
         .source-row{min-height:50px;border-bottom:1px solid var(--line);font-size:11px}
@@ -471,8 +481,8 @@
         }
         .source-row.active .check{color:#fff;background:var(--coral)}
         .unread-count{
-            min-width:34px;padding:4px 6px;border-radius:4px;
-            color:var(--green);background:#f1f8ed;font-size:10px
+            min-width:0;padding:0;border-radius:0;
+            color:var(--green);background:transparent;font-size:10px
         }
         .coverage{padding-top:12px;border:1px solid var(--line);background:#fff}
         .coverage>h2{font-size:17px}
@@ -507,7 +517,8 @@
             .news-card.match{padding-left:16px}
             .meta{min-height:48px;padding-left:54px;margin-bottom:10px}
             .source-mark{left:0;width:40px;height:40px;font-size:18px}
-            .unread-label{top:20px;right:45px}
+            .unread-label{top:14px;right:10px}
+            .save{top:49px;right:23px}
         }
     </style>
 </head>
@@ -613,7 +624,7 @@
                 {% for src in source_filters %}<input type="hidden" name="source" value="{{src}}">{% endfor %}
                 {% if keyword_filter %}<input type="hidden" name="keyword" value="{{keyword_filter}}">{% endif %}
                 <input id="news-search" name="q" value="{{search_query}}"
-                       placeholder="Поиск по новостям" autocomplete="off">
+                       placeholder="Поиск" autocomplete="off">
             </form>
             {% if source_filters %}<div class="source-summary"><span>Выбрано: {{source_filters|length}}</span><a href="{{clear_sources_url}}">Сбросить</a></div>{% endif %}
             <button class="tool-button {{'active' if keyword_filter else ''}}" id="keywords-open" type="button">☷ {{keyword_filter or 'Фильтры'}}</button>
@@ -700,8 +711,15 @@
                 <header class="panel-title">
                     <h2>Источники</h2>
                     <div class="panel-title-actions">
-                        <button class="source-order-toggle" id="source-order-toggle" type="button" aria-pressed="false">Изменить</button>
-                        <button class="mark-all-read" id="mark-all-read" type="button">Прочитать всё</button>
+                        <button class="source-order-toggle" id="source-order-toggle" type="button" aria-pressed="false" aria-label="Изменить порядок источников" title="Изменить порядок источников">
+                            <svg class="panel-action-icon order-arrows" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4v16M5 7l3-3 3 3M16 20V4M13 17l3 3 3-3"/></svg>
+                            <svg class="panel-action-icon order-done" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
+                            <span class="visually-hidden">Изменить порядок источников</span>
+                        </button>
+                        <button class="mark-all-read" id="mark-all-read" type="button" aria-label="Прочитать все новости" title="Прочитать все новости">
+                            <svg class="panel-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 13h18M3 19h18"/></svg>
+                            <span class="visually-hidden">Прочитать все новости</span>
+                        </button>
                         <button class="collapse-button" id="collapse-sources" type="button" aria-label="Свернуть список">−</button>
                     </div>
                 </header>
@@ -1138,7 +1156,10 @@
             yahooSourceToggle.setAttribute('aria-expanded', 'true');
         }
         sourceOrderToggle.setAttribute('aria-pressed', String(editing));
-        sourceOrderToggle.textContent = editing ? 'Готово' : 'Изменить';
+        const actionLabel = editing ? 'Сохранить порядок источников' : 'Изменить порядок источников';
+        sourceOrderToggle.setAttribute('aria-label', actionLabel);
+        sourceOrderToggle.setAttribute('title', actionLabel);
+        sourceOrderToggle.querySelector('.visually-hidden').textContent = actionLabel;
         orderedSourceRows().forEach(row => row.draggable = editing);
     }
     sourceOrderToggle.addEventListener('click', async () => {
