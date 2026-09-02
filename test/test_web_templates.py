@@ -36,9 +36,8 @@ class WebTemplateTests(unittest.TestCase):
             'class="source-mark"',
             'class="source-emblem source-emblem-main',
             'class="source-emblem source-emblem-compact',
-            'source-emblems-security.png',
-            'background-size:100px 50px',
-            'background-size:54px 27px',
+            'background-size:330px 275px',
+            'background-size:180px 150px',
             'class="news-summary"',
             'Найдено {{page_total_display}} материалов',
             '<svg viewBox="0 0 20 24" aria-hidden="true">',
@@ -49,6 +48,9 @@ class WebTemplateTests(unittest.TestCase):
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)
+
+        self.assertNotIn("source-emblems-security.png", template)
+        self.assertNotIn("source-emblem-security", template)
 
 
 if __name__ == "__main__":

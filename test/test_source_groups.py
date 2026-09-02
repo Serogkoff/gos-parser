@@ -298,7 +298,7 @@ class SourceGroupPageTests(unittest.TestCase):
             html,
         )
         self.assertIn(
-            'style="--emblem-x:5;--emblem-y:0;--security-x:0"',
+            'style="--emblem-x:5;--emblem-y:0"',
             html,
         )
         self.assertIn(
@@ -317,7 +317,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn('class="source-mark"', article)
         self.assertNotIn("source-emblem-main", article)
 
-    def test_mvd_and_defense_use_matching_security_sprite_cells(self):
+    def test_mvd_and_defense_use_approved_unified_sprite_cells(self):
         self.files["all_news.json"] = [
             {
                 "source": "МВД РФ",
@@ -338,15 +338,16 @@ class SourceGroupPageTests(unittest.TestCase):
         html = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn(
-            'source-emblem-main source-emblem-security"\n'
-            '                              style="--emblem-x:4;--emblem-y:0;--security-x:0"',
+            'class="source-emblem source-emblem-main"\n'
+            '                              style="--emblem-x:0;--emblem-y:1"',
             html,
         )
         self.assertIn(
-            'source-emblem-main source-emblem-security"\n'
-            '                              style="--emblem-x:0;--emblem-y:1;--security-x:1"',
+            'class="source-emblem source-emblem-main"\n'
+            '                              style="--emblem-x:4;--emblem-y:0"',
             html,
         )
+        self.assertNotIn("source-emblem-security", html)
 
     def test_keyword_click_filters_all_matches_by_exact_word(self):
         self.files["found_news.json"] = [

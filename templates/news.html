@@ -419,11 +419,11 @@
             background-repeat:no-repeat
         }
         .source-emblem-main{
-            position:absolute;left:0;top:0;width:48px;height:44px;
-            background-size:330px 220px;
+            position:absolute;left:0;top:0;width:48px;height:48px;
+            background-size:330px 275px;
             background-position:
                 calc(var(--emblem-x) * -55px - 3px)
-                calc(var(--emblem-y) * -44px)
+                calc(var(--emblem-y) * -55px - 3px)
         }
         .news-card h3{
             grid-column:2;margin:0;max-width:none;color:#181816;
@@ -493,21 +493,10 @@
         .source-row.active .check{color:#fff;background:var(--coral)}
         .source-emblem-compact{
             position:relative;width:24px;height:24px;
-            background-size:180px 120px;
+            background-size:180px 150px;
             background-position:
                 calc(var(--emblem-x) * -30px - 3px)
-                calc(var(--emblem-y) * -24px)
-        }
-        .source-emblem-security{
-            background-image:url("/static/source-emblems-security.png")
-        }
-        .source-emblem-main.source-emblem-security{
-            background-size:100px 50px;
-            background-position:calc(-1px - var(--security-x) * 50px) center
-        }
-        .source-emblem-compact.source-emblem-security{
-            background-size:54px 27px;
-            background-position:calc(-1.5px - var(--security-x) * 27px) center
+                calc(var(--emblem-y) * -30px - 3px)
         }
         .source-row.active .source-emblem-compact:after{
             content:"✓";position:absolute;right:-3px;bottom:-2px;width:11px;height:11px;
@@ -696,10 +685,9 @@
                     <button class="save" type="button" aria-label="Сохранить новость" data-save="{{item.url}}"><svg viewBox="0 0 20 24" aria-hidden="true"><path d="M3 2.5h14v19l-7-4-7 4Z"/></svg></button>
                     <div class="meta">
                         {% set emblem = source_emblems.get(item.source) if source_group == 'government' else none %}
-                        {% set security_emblem = special_source_emblems.get(item.source) %}
                         {% if emblem %}
-                        <span class="source-emblem source-emblem-main{{' source-emblem-security' if security_emblem is not none else ''}}"
-                              style="--emblem-x:{{emblem[0]}};--emblem-y:{{emblem[1]}};--security-x:{{security_emblem if security_emblem is not none else 0}}"
+                        <span class="source-emblem source-emblem-main"
+                              style="--emblem-x:{{emblem[0]}};--emblem-y:{{emblem[1]}}"
                               role="img" aria-label="Эмблема: {{item.source}}"></span>
                         {% else %}
                         <span class="source-mark" aria-hidden="true">{{(item.source or '?')[:1]}}</span>
@@ -780,10 +768,9 @@
                         <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
                         <button class="source-link" type="button" data-source-filter="{{src}}">
                             {% set emblem = source_emblems.get(src) if source_group == 'government' else none %}
-                            {% set security_emblem = special_source_emblems.get(src) %}
                             {% if emblem %}
-                            <span class="source-emblem source-emblem-compact{{' source-emblem-security' if security_emblem is not none else ''}}"
-                                  style="--emblem-x:{{emblem[0]}};--emblem-y:{{emblem[1]}};--security-x:{{security_emblem if security_emblem is not none else 0}}"
+                            <span class="source-emblem source-emblem-compact"
+                                  style="--emblem-x:{{emblem[0]}};--emblem-y:{{emblem[1]}}"
                                   aria-hidden="true"></span>
                             {% else %}
                             <span class="check">{{'✓' if src in source_filters else (src or '?')[:1]}}</span>
