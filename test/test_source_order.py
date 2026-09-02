@@ -119,7 +119,7 @@ class PersonalSourceOrderTests(unittest.TestCase):
         self.assertNotIn("data-source-up", html)
         self.assertNotIn("data-source-down", html)
 
-    def test_header_is_compact_and_filters_button_is_removed(self):
+    def test_header_is_compact_and_keeps_existing_filter_tools(self):
         client = web_app.app.test_client()
         self._login(client, self.first["id"])
         with patch.object(web_app, "load_json", side_effect=self._app_data):
@@ -130,7 +130,7 @@ class PersonalSourceOrderTests(unittest.TestCase):
         self.assertNotIn("Информагентства <span>", header)
         self.assertNotIn("Газеты <span>", header)
         self.assertNotIn('id="toggle-sidebar"', html)
-        self.assertNotIn("☷ Фильтры", html)
+        self.assertIn("☷ Фильтры", html)
         self.assertIn('id="keywords-open"', html)
         self.assertIn('id="source-order-toggle"', html)
         self.assertIn('class="account-status"', header)
