@@ -280,6 +280,7 @@ _NEWS_STORAGE = NewsStorage(
     decode_item=lambda payload: _decode_item(payload),
     attach_display_fields=lambda item, parsed_date, first_seen_at:
         _attach_news_display_fields(item, parsed_date, first_seen_at),
+    database_change_signature=lambda: _database_change_signature(),
 )
 
 

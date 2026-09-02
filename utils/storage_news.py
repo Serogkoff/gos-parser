@@ -8,6 +8,7 @@ from utils.source_groups import (
     GOVERNMENT_GROUP,
     NEWSPAPERS_GROUP,
     NEWSPAPER_SOURCES,
+    source_group as get_source_group,
 )
 
 
@@ -15,6 +16,7 @@ class NewsStorage:
     def __init__(
         self, initialize_database, connection_factory, lock,
         normalize_url, decode_item, attach_display_fields,
+        database_change_signature,
     ):
         self._initialize_database = initialize_database
         self._connection_factory = connection_factory
@@ -22,6 +24,8 @@ class NewsStorage:
         self._normalize_url = normalize_url
         self._decode_item = decode_item
         self._attach_display_fields = attach_display_fields
+        self._database_change_signature = database_change_signature
+        self._overview_cache = None
 
     @staticmethod
     def news_group_condition(source_group, source_column="n.source"):
@@ -59,40 +63,63 @@ class NewsStorage:
 
     def news_group_counts(self, source_group):
         """Считает все материалы и совпадения раздела без загрузки JSON."""
-        condition, parameters = self.news_group_condition(source_group)
-        self._initialize_database()
-        with self._connection_factory() as connection:
-            row = connection.execute(
-                f"""
-                SELECT COUNT(*) AS total,
-                       COUNT(f.news_key) AS found
-                FROM news_items AS n
-                LEFT JOIN found_items AS f ON f.news_key = n.news_key
-                WHERE {condition}
-                """,
-                parameters,
-            ).fetchone()
-        return int(row["total"]), int(row["found"])
+        overview = self._news_group_overview(source_group)
+        return overview["total"], overview["found"]
 
     def news_source_counts(self, source_group):
         """Возвращает размеры источников раздела одним SQL GROUP BY."""
-        condition, parameters = self.news_group_condition(source_group)
+        return dict(self._news_group_overview(source_group)["by_source"])
+
+    def _news_group_overview(self, source_group):
+        """Переиспользует агрегаты до следующего изменения SQLite/WAL."""
+        source_group = str(source_group or "").strip().casefold()
+        self.news_group_condition(source_group)
         self._initialize_database()
+        signature = self._database_change_signature()
+        with self._lock:
+            cached = self._overview_cache
+            if cached and cached["signature"] == signature:
+                return cached["groups"][source_group]
+
+        groups = self._query_news_overview()
+        final_signature = self._database_change_signature()
+        if final_signature == signature:
+            with self._lock:
+                self._overview_cache = {
+                    "signature": signature,
+                    "groups": groups,
+                }
+        return groups[source_group]
+
+    def _query_news_overview(self):
+        groups = {
+            group: {"total": 0, "found": 0, "by_source": {}}
+            for group in (
+                GOVERNMENT_GROUP,
+                AGENCIES_GROUP,
+                NEWSPAPERS_GROUP,
+            )
+        }
         with self._connection_factory() as connection:
             rows = connection.execute(
-                f"""
-                SELECT n.source, COUNT(*) AS news_count
+                """
+                SELECT n.source,
+                       COUNT(*) AS news_count,
+                       COUNT(f.news_key) AS found_count
                 FROM news_items AS n
-                WHERE {condition}
+                LEFT JOIN found_items AS f ON f.news_key = n.news_key
                 GROUP BY n.source
-                ORDER BY news_count DESC, n.source
-                """,
-                parameters,
+                """
             ).fetchall()
-        return {
-            (row["source"] or "Неизвестный источник"): int(row["news_count"])
-            for row in rows
-        }
+        for row in rows:
+            source = row["source"] or "Неизвестный источник"
+            group = get_source_group(source)
+            news_count = int(row["news_count"])
+            found_count = int(row["found_count"])
+            groups[group]["total"] += news_count
+            groups[group]["found"] += found_count
+            groups[group]["by_source"][source] = news_count
+        return groups
 
     def list_news_page(
         self, source_group, *, found_only=False, sources=None,
@@ -150,19 +177,25 @@ class NewsStorage:
         )
         payload_column = "f.payload_json" if found_only else "n.payload_json"
         where_clause = " AND ".join(conditions)
+        cached_total = None
+        if not selected_sources and not search_query and not keyword:
+            overview = self._news_group_overview(source_group)
+            cached_total = overview["found" if found_only else "total"]
         self._initialize_database()
         with self._connection_factory() as connection:
-            total = int(
-                connection.execute(
-                    f"""
-                    SELECT COUNT(*)
-                    FROM news_items AS n
-                    {join}
-                    WHERE {where_clause}
-                    """,
-                    parameters,
-                ).fetchone()[0]
-            )
+            total = cached_total
+            if total is None:
+                total = int(
+                    connection.execute(
+                        f"""
+                        SELECT COUNT(*)
+                        FROM news_items AS n
+                        {join}
+                        WHERE {where_clause}
+                        """,
+                        parameters,
+                    ).fetchone()[0]
+                )
             rows = connection.execute(
                 f"""
                 SELECT {payload_column} AS payload_json,

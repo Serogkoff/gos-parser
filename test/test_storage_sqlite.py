@@ -2,7 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
-from contextlib import closing
+from contextlib import closing, contextmanager
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -129,6 +129,87 @@ class SQLiteStorageTests(unittest.TestCase):
             storage.news_source_counts("newspapers"),
             {"Коммерсантъ": 55},
         )
+
+    def test_news_overview_cache_is_shared_until_database_changes(self):
+        items = [
+            {
+                "source": "МЧС",
+                "title": "Материал ведомства",
+                "url": "https://mchs.gov.ru/news/overview-government",
+            },
+            {
+                "source": "ТАСС",
+                "title": "Материал агентства",
+                "url": "https://tass.ru/politika/overview-agency",
+            },
+            {
+                "source": "Коммерсантъ",
+                "title": "Материал газеты",
+                "url": "https://www.kommersant.ru/doc/overview-newspaper",
+            },
+        ]
+        self._write_json(self.all_json, items)
+        self._write_json(self.found_json, [items[1]])
+        storage.initialize_database()
+
+        with patch.object(
+            storage._NEWS_STORAGE,
+            "_query_news_overview",
+            wraps=storage._NEWS_STORAGE._query_news_overview,
+        ) as query:
+            self.assertEqual(storage.news_group_counts("government"), (1, 0))
+            self.assertEqual(storage.news_group_counts("agencies"), (1, 1))
+            self.assertEqual(
+                storage.news_source_counts(" NEWSPAPERS "),
+                {"Коммерсантъ": 1},
+            )
+            self.assertEqual(query.call_count, 1)
+
+            with storage._connection() as connection:
+                storage._insert_news_items(
+                    connection,
+                    [{
+                        "source": "Минфин",
+                        "title": "Ещё один материал ведомства",
+                        "url": "https://minfin.gov.ru/news/overview-updated",
+                    }],
+                )
+
+            self.assertEqual(storage.news_group_counts("government"), (2, 0))
+            self.assertEqual(query.call_count, 2)
+
+    def test_default_news_page_reuses_cached_total(self):
+        items = [
+            {
+                "source": "Коммерсантъ",
+                "title": f"Материал {number:02d}",
+                "url": f"https://www.kommersant.ru/doc/cached-{number}",
+                "date": "2026-09-01",
+            }
+            for number in range(45)
+        ]
+        self._write_json(self.all_json, items)
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+        self.assertEqual(storage.news_group_counts("newspapers"), (45, 0))
+        statements = []
+        original_connection = storage._connection
+
+        @contextmanager
+        def traced_connection():
+            with original_connection() as connection:
+                connection.set_trace_callback(statements.append)
+                yield connection
+
+        with patch.object(storage, "_connection", traced_connection):
+            page, total = storage.list_news_page("newspapers", limit=20)
+
+        self.assertEqual(len(page), 20)
+        self.assertEqual(total, 45)
+        self.assertFalse(any(
+            "SELECT COUNT(*)" in statement.upper()
+            for statement in statements
+        ))
 
     def test_sql_found_page_filters_by_exact_keyword_case_insensitively(self):
         items = [
