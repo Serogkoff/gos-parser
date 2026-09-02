@@ -425,10 +425,6 @@
                 calc(var(--emblem-x) * -55px - 3px)
                 calc(var(--emblem-y) * -44px)
         }
-        .source-emblem-defense{
-            background-image:url("/static/source-emblem-defense.png");
-            background-position:center;background-size:contain
-        }
         .news-card h3{
             grid-column:2;margin:0;max-width:none;color:#181816;
             font-family:Georgia,"Times New Roman",serif;
@@ -501,6 +497,17 @@
             background-position:
                 calc(var(--emblem-x) * -30px - 3px)
                 calc(var(--emblem-y) * -24px)
+        }
+        .source-emblem-security{
+            background-image:url("/static/source-emblems-security.png")
+        }
+        .source-emblem-main.source-emblem-security{
+            background-size:88px 44px;
+            background-position:calc(2px - var(--security-x) * 44px) center
+        }
+        .source-emblem-compact.source-emblem-security{
+            background-size:48px 24px;
+            background-position:calc(var(--security-x) * -24px) center
         }
         .source-row.active .source-emblem-compact:after{
             content:"✓";position:absolute;right:-3px;bottom:-2px;width:11px;height:11px;
@@ -689,9 +696,10 @@
                     <button class="save" type="button" aria-label="Сохранить новость" data-save="{{item.url}}"><svg viewBox="0 0 20 24" aria-hidden="true"><path d="M3 2.5h14v19l-7-4-7 4Z"/></svg></button>
                     <div class="meta">
                         {% set emblem = source_emblems.get(item.source) if source_group == 'government' else none %}
+                        {% set security_emblem = special_source_emblems.get(item.source) %}
                         {% if emblem %}
-                        <span class="source-emblem source-emblem-main{{' source-emblem-defense' if item.source == defense_source else ''}}"
-                              style="--emblem-x:{{emblem[0]}};--emblem-y:{{emblem[1]}}"
+                        <span class="source-emblem source-emblem-main{{' source-emblem-security' if security_emblem is not none else ''}}"
+                              style="--emblem-x:{{emblem[0]}};--emblem-y:{{emblem[1]}};--security-x:{{security_emblem if security_emblem is not none else 0}}"
                               role="img" aria-label="Эмблема: {{item.source}}"></span>
                         {% else %}
                         <span class="source-mark" aria-hidden="true">{{(item.source or '?')[:1]}}</span>
@@ -772,9 +780,10 @@
                         <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
                         <button class="source-link" type="button" data-source-filter="{{src}}">
                             {% set emblem = source_emblems.get(src) if source_group == 'government' else none %}
+                            {% set security_emblem = special_source_emblems.get(src) %}
                             {% if emblem %}
-                            <span class="source-emblem source-emblem-compact{{' source-emblem-defense' if src == defense_source else ''}}"
-                                  style="--emblem-x:{{emblem[0]}};--emblem-y:{{emblem[1]}}"
+                            <span class="source-emblem source-emblem-compact{{' source-emblem-security' if security_emblem is not none else ''}}"
+                                  style="--emblem-x:{{emblem[0]}};--emblem-y:{{emblem[1]}};--security-x:{{security_emblem if security_emblem is not none else 0}}"
                                   aria-hidden="true"></span>
                             {% else %}
                             <span class="check">{{'✓' if src in source_filters else (src or '?')[:1]}}</span>

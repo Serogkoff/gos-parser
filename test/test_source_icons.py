@@ -1,7 +1,12 @@
 import unittest
 
 from utils.source_groups import GOVERNMENT_SOURCES
-from utils.source_icons import DEFENSE_SOURCE, SOURCE_EMBLEMS
+from utils.source_icons import (
+    DEFENSE_SOURCE,
+    INTERIOR_SOURCE,
+    SOURCE_EMBLEMS,
+    SPECIAL_SOURCE_EMBLEMS,
+)
 
 
 class SourceIconTests(unittest.TestCase):
@@ -17,6 +22,10 @@ class SourceIconTests(unittest.TestCase):
     def test_defense_uses_dedicated_emblem(self):
         self.assertIn(DEFENSE_SOURCE, SOURCE_EMBLEMS)
         self.assertEqual(DEFENSE_SOURCE, "Минобороны РФ")
+
+    def test_security_emblems_share_one_two_cell_sprite(self):
+        self.assertEqual(SPECIAL_SOURCE_EMBLEMS[INTERIOR_SOURCE], 0)
+        self.assertEqual(SPECIAL_SOURCE_EMBLEMS[DEFENSE_SOURCE], 1)
 
     def test_sprite_coordinates_stay_inside_the_grid(self):
         for source, (column, row) in SOURCE_EMBLEMS.items():

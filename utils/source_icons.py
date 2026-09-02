@@ -2,6 +2,12 @@
 
 
 DEFENSE_SOURCE = "Минобороны РФ"
+INTERIOR_SOURCE = "МВД РФ"
+
+SPECIAL_SOURCE_EMBLEMS = {
+    INTERIOR_SOURCE: 0,
+    DEFENSE_SOURCE: 1,
+}
 
 # Координаты ячеек в спрайте: столбец и строка, начиная с нуля.
 # Трутнев намеренно использует эмблему Правительства РФ.
