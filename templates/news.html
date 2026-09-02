@@ -414,6 +414,21 @@
             color:#666661;background:#fafaf8;font-family:Georgia,"Times New Roman",serif;
             font-size:20px;font-weight:400
         }
+        .source-emblem{
+            display:block;background-image:url("/static/source-emblems.png");
+            background-repeat:no-repeat
+        }
+        .source-emblem-main{
+            position:absolute;left:0;top:0;width:48px;height:44px;
+            background-size:330px 220px;
+            background-position:
+                calc(var(--emblem-x) * -55px - 3px)
+                calc(var(--emblem-y) * -44px)
+        }
+        .source-emblem-defense{
+            background-image:url("/static/source-emblem-defense.png");
+            background-position:center;background-size:contain
+        }
         .news-card h3{
             grid-column:2;margin:0;max-width:none;color:#181816;
             font-family:Georgia,"Times New Roman",serif;
@@ -480,6 +495,18 @@
             font-size:12px
         }
         .source-row.active .check{color:#fff;background:var(--coral)}
+        .source-emblem-compact{
+            position:relative;width:24px;height:24px;
+            background-size:180px 120px;
+            background-position:
+                calc(var(--emblem-x) * -30px - 3px)
+                calc(var(--emblem-y) * -24px)
+        }
+        .source-row.active .source-emblem-compact:after{
+            content:"✓";position:absolute;right:-3px;bottom:-2px;width:11px;height:11px;
+            display:grid;place-items:center;border:1px solid #fff;border-radius:50%;
+            color:#fff;background:var(--coral);font:700 7px/1 Inter,"Segoe UI",Arial,sans-serif
+        }
         .unread-count{
             min-width:0;padding:0;border-radius:0;
             color:var(--green);background:transparent;font-size:10px
@@ -496,6 +523,7 @@
             .content-grid{grid-template-columns:minmax(0,1fr) 230px}
             .news-card{grid-template-columns:165px minmax(0,1fr)}
             .meta{padding-left:54px}.source-mark{width:40px;height:40px;font-size:18px}
+            .source-emblem-main{width:46px}
         }
         @media(max-width:920px){
             .app-layout{grid-template-columns:1fr}
@@ -517,6 +545,7 @@
             .news-card.match{padding-left:16px}
             .meta{min-height:48px;padding-left:54px;margin-bottom:10px}
             .source-mark{left:0;width:40px;height:40px;font-size:18px}
+            .source-emblem-main{left:0}
             .unread-label{top:14px;right:10px}
             .save{top:49px;right:23px}
         }
@@ -659,7 +688,14 @@
                     {% endif %}
                     <button class="save" type="button" aria-label="Сохранить новость" data-save="{{item.url}}"><svg viewBox="0 0 20 24" aria-hidden="true"><path d="M3 2.5h14v19l-7-4-7 4Z"/></svg></button>
                     <div class="meta">
+                        {% set emblem = source_emblems.get(item.source) if source_group == 'government' else none %}
+                        {% if emblem %}
+                        <span class="source-emblem source-emblem-main{{' source-emblem-defense' if item.source == defense_source else ''}}"
+                              style="--emblem-x:{{emblem[0]}};--emblem-y:{{emblem[1]}}"
+                              role="img" aria-label="Эмблема: {{item.source}}"></span>
+                        {% else %}
                         <span class="source-mark" aria-hidden="true">{{(item.source or '?')[:1]}}</span>
+                        {% endif %}
                         <span class="source-name">{{item.source}}</span><i></i>
                         {% if item.section %}<span>{{item.section}}</span><i></i>{% endif %}
                         <time>
@@ -735,7 +771,14 @@
                     <div class="source-row sortable-source {{'active' if src in source_filters else ''}}" data-source-row data-source-name="{{src}}">
                         <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
                         <button class="source-link" type="button" data-source-filter="{{src}}">
+                            {% set emblem = source_emblems.get(src) if source_group == 'government' else none %}
+                            {% if emblem %}
+                            <span class="source-emblem source-emblem-compact{{' source-emblem-defense' if src == defense_source else ''}}"
+                                  style="--emblem-x:{{emblem[0]}};--emblem-y:{{emblem[1]}}"
+                                  aria-hidden="true"></span>
+                            {% else %}
                             <span class="check">{{'✓' if src in source_filters else (src or '?')[:1]}}</span>
+                            {% endif %}
                             <span>{{src}}</span>
                             <span class="unread-count" data-unread-source="{{src}}">{{('+' ~ unread_counts.get(src, 0)) if unread_counts.get(src, 0) else ''}}</span>
                         </button>

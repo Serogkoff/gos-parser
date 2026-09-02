@@ -293,6 +293,29 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Материал государственного ведомства", html)
         self.assertNotIn("Материал информационного агентства", html)
         self.assertNotIn("Yahoo! JAPANのニュース", html)
+        self.assertIn(
+            'class="source-emblem source-emblem-main"',
+            html,
+        )
+        self.assertIn(
+            'style="--emblem-x:5;--emblem-y:0"',
+            html,
+        )
+        self.assertIn(
+            'class="source-emblem source-emblem-compact"',
+            html,
+        )
+
+    def test_agency_feed_keeps_letter_marks(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get("/agencies")
+
+        html = response.get_data(as_text=True)
+        article_start = html.index('<article class="news-card')
+        article_end = html.index("</article>", article_start)
+        article = html[article_start:article_end]
+        self.assertIn('class="source-mark"', article)
+        self.assertNotIn("source-emblem-main", article)
 
     def test_keyword_click_filters_all_matches_by_exact_word(self):
         self.files["found_news.json"] = [

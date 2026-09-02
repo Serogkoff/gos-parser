@@ -43,6 +43,7 @@ from utils.source_groups import (
     is_yahoo_source,
     source_group as get_source_group,
 )
+from utils.source_icons import DEFENSE_SOURCE, SOURCE_EMBLEMS
 from utils.storage import (
     authenticate_user,
     create_manual_backup,
@@ -1755,6 +1756,8 @@ def render_news_page(
         feed_title=feed_title,
         mode=mode,
         source_group=source_group,
+        source_emblems=SOURCE_EMBLEMS,
+        defense_source=DEFENSE_SOURCE,
         group_title=group_title,
         group_eyebrow=group_eyebrow,
         group_home=group_home,
