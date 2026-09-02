@@ -37,6 +37,8 @@ class WebTemplateTests(unittest.TestCase):
             'class="source-emblem source-emblem-main',
             'class="source-emblem source-emblem-compact',
             'source-emblems-security.png',
+            'background-size:100px 50px',
+            'background-size:54px 27px',
             'class="news-summary"',
             'Найдено {{page_total_display}} материалов',
             '<svg viewBox="0 0 20 24" aria-hidden="true">',
