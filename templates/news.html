@@ -267,7 +267,7 @@
         }
         .app-layout{
             min-height:100vh;display:grid;
-            grid-template-columns:240px minmax(0,1fr)
+            grid-template-columns:205px minmax(0,1fr)
         }
         .left-rail{
             position:sticky;z-index:12;top:0;height:100vh;min-height:620px;
@@ -276,7 +276,7 @@
         }
         .rail-heading{
             min-height:42px;padding:0 8px;display:flex;align-items:center;
-            gap:13px;font-size:17px;font-weight:750
+            gap:11px;font-size:15px;font-weight:720
         }
         .rail-logo{
             width:24px;height:24px;display:grid;place-items:center;border-radius:3px;
@@ -285,8 +285,8 @@
         .rail-nav{display:grid;gap:7px;margin-top:24px}
         .rail-link{
             position:relative;min-height:47px;padding:0 12px;display:flex;
-            align-items:center;gap:15px;border-radius:3px;color:#292925;
-            font-size:14px;font-weight:520;transition:.15s
+            align-items:center;gap:12px;border-radius:3px;color:#292925;
+            font-size:13px;font-weight:520;transition:.15s
         }
         .rail-link:hover{background:#f7f5f1}
         .rail-link.active{color:var(--coral-dark);background:#fff7f5}
@@ -316,35 +316,35 @@
         .profile-copy small{color:var(--muted);font-size:11px}
         .profile-arrow{color:var(--muted);font-size:15px}
         .shell{
-            width:auto;min-width:0;margin:0;padding:0 28px 48px;
+            width:auto;min-width:0;margin:0;padding:0 22px 48px;
             background:var(--paper)
         }
         .topbar{
-            min-height:116px;display:grid;
-            grid-template-columns:minmax(0,1fr) auto;
-            grid-template-rows:70px 46px;gap:0 28px;
+            min-height:124px;display:grid;
+            grid-template-columns:minmax(440px,1fr) auto;
+            grid-template-rows:70px 54px;gap:0 24px;
             align-items:end;border-bottom:1px solid var(--line)
         }
         .brand{
             grid-column:1;grid-row:1;align-self:center;min-height:0;
             font-family:Georgia,"Times New Roman",serif;
-            font-size:48px;font-weight:700;letter-spacing:-.045em
+            font-size:47px;font-weight:400;letter-spacing:-.035em
         }
         .brand-easter-logo{left:-4px;width:190px}
         .site-sections{
-            grid-column:1;grid-row:2;height:46px;justify-content:flex-start;
-            gap:52px;overflow:visible
+            grid-column:1;grid-row:2;height:54px;justify-content:flex-start;
+            gap:42px;overflow:visible
         }
         .site-section{
-            padding:0 0 15px;color:#23231f;
+            padding:0 0 16px;color:#23231f;
             font-family:Georgia,"Times New Roman",serif;
-            font-size:17px;font-weight:400
+            font-size:16px;font-weight:400
         }
         .site-section:nth-child(n+4){display:none}
         .site-section:after{height:2px}
         .site-section.active{color:var(--coral-dark)}
         .topbar-tools{
-            grid-column:2;grid-row:1 / span 2;align-self:start;
+            grid-column:2;grid-row:1;align-self:start;
             padding-top:27px;gap:0
         }
         .account-status{display:none}
@@ -367,56 +367,58 @@
         .clock-date{display:block;margin-top:7px;color:var(--muted);font-size:12px}
         .intro{display:none}
         .toolbar{
-            min-height:66px;padding:12px 0;display:flex;justify-content:flex-end;
-            gap:12px;border-bottom:1px solid var(--line)
+            grid-column:2;grid-row:2;align-self:stretch;min-height:54px;
+            padding:6px 0 10px;display:flex;justify-content:flex-end;
+            gap:10px;border:0
         }
         .search,.source-select,.tool-button{
             height:42px;border-color:var(--line);border-radius:4px;background:#fff
         }
-        .search{max-width:340px;flex:0 1 340px;padding:0 13px}
+        .search{width:286px;max-width:286px;flex:0 0 286px;padding:0 13px}
         .search-icon{font-size:19px}
         .search input{font-size:13px}
-        .tool-button{min-width:112px;padding:0 14px;font-size:13px}
-        .source-summary{font-size:11px}
+        .tool-button{min-width:105px;max-width:140px;padding:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+        .source-summary{max-width:105px;padding:0 4px;overflow:hidden;font-size:10px;white-space:nowrap}
         .content-grid{
-            display:grid;grid-template-columns:minmax(0,1fr) 292px;
-            gap:20px;align-items:start
+            display:grid;grid-template-columns:minmax(0,1fr) 250px;
+            gap:18px;align-items:start
         }
         .feed,.panel{border-radius:3px;background:#fff}
-        .feed{margin-top:14px;border-color:var(--line)}
+        .feed{margin-top:14px;overflow:visible;border:0;background:transparent}
         .feed-heading{
-            min-height:52px;padding:0 20px;background:var(--paper)
+            min-height:52px;padding:0 2px;background:var(--paper);border:0
         }
-        .feed-heading h2{font-family:Georgia,"Times New Roman",serif;font-size:16px}
-        .feed-heading span{font-size:12px}
+        .feed-heading h2{color:var(--muted);font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:12px;font-weight:400}
+        #news-list{overflow:hidden;border:1px solid var(--line);border-radius:3px;background:#fff}
         .news-card{
-            min-height:118px;padding:18px 72px 18px 18px;display:grid;
-            grid-template-columns:226px minmax(0,1fr);grid-auto-rows:min-content;
-            column-gap:20px;border-bottom:1px solid var(--line);background:#fff
+            min-height:110px;padding:16px 72px 16px 16px;display:grid;
+            grid-template-columns:184px minmax(0,1fr);grid-auto-rows:min-content;
+            column-gap:18px;border-bottom:1px solid var(--line);background:#fff
         }
         .news-card:hover{background:#fffdfb}
-        .news-card.match{padding-left:18px;border-left:0}
+        .news-card.match{padding-left:16px;border-left:0}
         .meta{
             grid-column:1;grid-row:1 / span 4;position:relative;
-            min-height:76px;padding:5px 0 0 76px;display:flex;
-            align-items:flex-start;flex-direction:column;gap:7px;
+            min-height:68px;padding:4px 0 0 60px;display:flex;
+            align-items:flex-start;flex-direction:column;gap:6px;
             color:#454540;font-family:Georgia,"Times New Roman",serif;
-            font-size:12px;line-height:1.2
+            font-size:11px;line-height:1.2
         }
         .source-name{font-weight:700}
         .meta i{display:none}
-        .meta time{color:#4f4f4a;font-size:12px;font-variant-numeric:tabular-nums}
+        .meta time{color:#4f4f4a;font-size:11px;font-variant-numeric:tabular-nums}
         .source-mark{
-            position:absolute;left:7px;top:4px;width:52px;height:52px;
+            position:absolute;left:3px;top:3px;width:44px;height:44px;
             display:grid;place-items:center;border:1px solid #a8a8a2;border-radius:50%;
             color:#666661;background:#fafaf8;font-family:Georgia,"Times New Roman",serif;
-            font-size:24px;font-weight:700
+            font-size:20px;font-weight:400
         }
         .news-card h3{
             grid-column:2;margin:0;max-width:none;color:#181816;
             font-family:Georgia,"Times New Roman",serif;
-            font-size:19px;line-height:1.25;letter-spacing:-.015em;font-weight:700
+            font-size:17px;line-height:1.28;letter-spacing:-.01em;font-weight:700
         }
+        .news-card h3 a{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3}
         .news-summary{
             grid-column:2;margin:7px 0 0;color:#666660;
             display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;
@@ -429,9 +431,11 @@
         }
         .chips{grid-column:2;margin-top:10px;gap:6px}
         .chips a{padding:3px 7px;border-radius:3px;font-size:10px}
-        .save{top:24px;right:16px;width:28px;height:28px;font-size:23px}
+        .save{top:17px;right:14px;width:26px;height:28px;display:grid;place-items:center}
+        .save svg{width:15px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+        .save.active svg{fill:var(--coral);stroke:var(--coral)}
         .unread-label{
-            position:absolute;z-index:2;top:26px;right:51px;margin:0;
+            position:absolute;z-index:2;top:19px;right:49px;margin:0;
             padding:5px 9px;border-color:#d5e8d5;border-radius:4px;
             color:var(--green);background:#f0f8ed;font-size:10px;text-transform:none
         }
@@ -448,7 +452,7 @@
             min-height:52px;padding:0 8px;border:0;background:var(--paper)
         }
         .panel-title h2,.coverage>h2{
-            font-family:Georgia,"Times New Roman",serif;font-size:20px
+            font-family:Georgia,"Times New Roman",serif;font-size:18px;font-weight:400
         }
         .panel-title-actions{gap:2px}
         .panel-title-actions button{font-size:9px}
@@ -456,12 +460,12 @@
             padding:0;overflow:hidden;border:1px solid var(--line);
             border-radius:3px;background:#fff
         }
-        .source-row{min-height:55px;border-bottom:1px solid var(--line);font-size:12px}
+        .source-row{min-height:50px;border-bottom:1px solid var(--line);font-size:11px}
         .source-row:last-child{border-bottom:0}
-        .source-link{min-height:55px;padding:0 12px;grid-template-columns:26px minmax(0,1fr) auto;gap:10px}
+        .source-link{min-height:50px;padding:0 10px;grid-template-columns:24px minmax(0,1fr) auto;gap:9px}
         .source-row:hover{background:#fffdfb}
         .check{
-            width:25px;height:25px;border:0;border-radius:50%;
+            width:23px;height:23px;border:0;border-radius:50%;
             color:#666;background:#f2f2ef;font-family:Georgia,"Times New Roman",serif;
             font-size:12px
         }
@@ -475,21 +479,22 @@
         .keyword-dialog{border-radius:4px;background:#fff}
 
         @media(max-width:1180px){
-            .app-layout{grid-template-columns:205px minmax(0,1fr)}
+            .app-layout{grid-template-columns:185px minmax(0,1fr)}
             .left-rail{padding-left:14px;padding-right:14px}
             .rail-link.active:before{left:-14px}
             .shell{padding-left:20px;padding-right:20px}
-            .content-grid{grid-template-columns:minmax(0,1fr) 260px}
-            .news-card{grid-template-columns:190px minmax(0,1fr)}
-            .meta{padding-left:62px}.source-mark{width:44px;height:44px;font-size:20px}
+            .content-grid{grid-template-columns:minmax(0,1fr) 230px}
+            .news-card{grid-template-columns:165px minmax(0,1fr)}
+            .meta{padding-left:54px}.source-mark{width:40px;height:40px;font-size:18px}
         }
         @media(max-width:920px){
             .app-layout{grid-template-columns:1fr}
             .left-rail{display:none}
-            .topbar{grid-template-columns:1fr;grid-template-rows:auto auto auto;padding-top:12px}
+            .topbar{grid-template-columns:1fr;grid-template-rows:auto auto auto auto;padding-top:12px}
             .brand{grid-column:1;grid-row:1;font-size:40px}
             .topbar-tools{grid-column:1;grid-row:2;justify-self:start;padding:8px 0}
             .site-sections{grid-column:1;grid-row:3;gap:28px}
+            .toolbar{grid-column:1;grid-row:4;justify-content:flex-start}
             .content-grid{grid-template-columns:1fr}
             .sidebar{grid-template-columns:1fr;grid-row:auto}
         }
@@ -602,6 +607,17 @@
                 </a>{% else %}<div class="health {{'warning' if health_ok < health_total else ''}}"><span class="health-dot"></span>{{health_ok}} из {{health_total}} источников работают</div>{% endif %}
             </div>
         </div>
+        <section class="toolbar">
+            <form class="search" method="get" action="{{current_path}}">
+                <span class="search-icon">⌕</span>
+                {% for src in source_filters %}<input type="hidden" name="source" value="{{src}}">{% endfor %}
+                {% if keyword_filter %}<input type="hidden" name="keyword" value="{{keyword_filter}}">{% endif %}
+                <input id="news-search" name="q" value="{{search_query}}"
+                       placeholder="Поиск по новостям" autocomplete="off">
+            </form>
+            {% if source_filters %}<div class="source-summary"><span>Выбрано: {{source_filters|length}}</span><a href="{{clear_sources_url}}">Сбросить</a></div>{% endif %}
+            <button class="tool-button {{'active' if keyword_filter else ''}}" id="keywords-open" type="button">☷ {{keyword_filter or 'Фильтры'}}</button>
+        </section>
     </header>
 
     <section class="intro">
@@ -613,23 +629,10 @@
         </nav>
     </section>
 
-    <section class="toolbar">
-        <form class="search" method="get" action="{{current_path}}">
-            <span class="search-icon">⌕</span>
-            {% for src in source_filters %}<input type="hidden" name="source" value="{{src}}">{% endfor %}
-            {% if keyword_filter %}<input type="hidden" name="keyword" value="{{keyword_filter}}">{% endif %}
-            <input id="news-search" name="q" value="{{search_query}}"
-                   placeholder="Поиск по заголовкам · Enter" autocomplete="off">
-        </form>
-        {% if source_filters %}<div class="source-summary"><span>Выбрано: {{source_filters|length}}</span><a href="{{clear_sources_url}}">Сбросить</a></div>{% endif %}
-        <button class="tool-button {{'active' if keyword_filter else ''}}" id="keywords-open" type="button">☷ {{keyword_filter or 'Фильтры'}}</button>
-    </section>
-
     <div class="content-grid">
         <section class="feed">
-            <header class="feed-heading">
-                <h2>{{feed_title}}</h2>
-                <span id="visible-count" data-default="{{page_label}}">{{page_label}}</span>
+            <header class="feed-heading" aria-label="{{feed_title}} · {{page_label}}">
+                <h2 id="visible-count" data-default="Найдено {{page_total_display}} материалов">Найдено {{page_total_display}} материалов</h2>
             </header>
             <div id="empty-state" class="empty hidden">
                 <strong>Ничего не найдено</strong>
@@ -643,7 +646,7 @@
                     {% if item.keywords %}
                     <div class="match-label">✣ Совпадение с ключевыми словами</div>
                     {% endif %}
-                    <button class="save" type="button" aria-label="Сохранить новость" data-save="{{item.url}}">♡</button>
+                    <button class="save" type="button" aria-label="Сохранить новость" data-save="{{item.url}}"><svg viewBox="0 0 20 24" aria-hidden="true"><path d="M3 2.5h14v19l-7-4-7 4Z"/></svg></button>
                     <div class="meta">
                         <span class="source-mark" aria-hidden="true">{{(item.source or '?')[:1]}}</span>
                         <span class="source-name">{{item.source}}</span><i></i>
@@ -653,21 +656,21 @@
                             {% elif item.parsed_date %}Получено {{item.parsed_date}}
                             {% endif %}
                         </time>
-                        <button class="unread-label{{'' if item.url in unread_urls else ' hidden'}}" type="button" data-mark-read="{{item.url}}">Новая</button>
                     </div>
                     {% if item.source in ('МИД РФ', 'Минсельхоз') %}
                     <h3>
                         <a href="{{item.url}}" target="_blank" rel="noopener noreferrer" data-read-url="{{item.url}}">
-                            {{item.title}}
+                            <span title="{{item.title}}">{{item.title}}</span>
                         </a>
                     </h3>
                     {% else %}
-                    <h3><a href="/article?url={{item.url|urlencode}}&back_url={{current_url|urlencode}}" target="_blank" rel="noopener" data-read-url="{{item.url}}">{{item.title}}</a></h3>
+                    <h3><a href="/article?url={{item.url|urlencode}}&back_url={{current_url|urlencode}}" target="_blank" rel="noopener" data-read-url="{{item.url}}" title="{{item.title}}">{{item.title}}</a></h3>
                     {% endif %}
                     {% if item.summary %}<p class="news-summary">{{item.summary}}</p>{% endif %}
                     {% if item.keywords %}
                     <div class="chips">{% for keyword in item.keywords %}<a class="{{'active' if keyword|lower == keyword_filter|lower else ''}}" href="{{keyword_urls.get(keyword, group_found_url)}}">{{keyword}}</a>{% endfor %}</div>
                     {% endif %}
+                    <button class="unread-label{{'' if item.url in unread_urls else ' hidden'}}" type="button" data-mark-read="{{item.url}}">Новая</button>
                 </article>
             {% endfor %}
             </div>
@@ -959,7 +962,6 @@
         document.querySelectorAll('[data-save]').forEach(button => {
             const active = saved.has(button.dataset.save);
             button.classList.toggle('active', active);
-            button.textContent = active ? '♥' : '♡';
             button.setAttribute('aria-label', active ? 'Удалить из сохранённых' : 'Сохранить новость');
         });
         if(savedCount){
@@ -1007,7 +1009,7 @@
         });
         visibleCount.textContent = !query
             ? visibleCount.dataset.default
-            : count + ' материалов';
+            : 'Найдено ' + count + ' материалов';
         emptyState.classList.toggle('hidden', count !== 0);
     }
     document.querySelectorAll('[data-save]').forEach(button => {

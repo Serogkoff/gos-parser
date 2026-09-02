@@ -35,6 +35,9 @@ class WebTemplateTests(unittest.TestCase):
             'class="clock-date"',
             'class="source-mark"',
             'class="news-summary"',
+            'Найдено {{page_total_display}} материалов',
+            '<svg viewBox="0 0 20 24" aria-hidden="true">',
+            '-webkit-line-clamp:3',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)

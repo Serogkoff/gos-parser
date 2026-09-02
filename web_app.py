@@ -1784,6 +1784,7 @@ def render_news_page(
         previous_url=page_url(page - 1) if page > 1 else "",
         next_url=page_url(page + 1) if page < page_count else "",
         page_label=page_label,
+        page_total_display=f"{page_total:,}".replace(",", " "),
         show_admin_diagnostics=can_view_admin_diagnostics(),
         current_user=user,
         csrf_token=csrf_token(),
