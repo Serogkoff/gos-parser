@@ -304,7 +304,7 @@ class SourceGroupPageTests(unittest.TestCase):
             html,
         )
         self.assertIn(
-            '/static/source-logos/mchs.png?v=2026.08.17.16.51',
+            '/static/source-logos/mchs.png?v=2026.08.17.16.52',
             html,
         )
         self.assertIn(
@@ -431,6 +431,14 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('class="source-list yahoo-expanded"', html)
         self.assertIn('aria-expanded="true"', html)
+
+    def test_yahoo_header_selects_or_clears_all_subsections(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            html = web_app.app.test_client().get("/agencies").get_data(as_text=True)
+
+        self.assertIn('aria-pressed="false"', html)
+        self.assertIn("yahooSources.every(source => selectedSources.has(source))", html)
+        self.assertIn("allSelected ? selectedSources.delete(source) : selectedSources.add(source)", html)
 
     def test_main_sections_are_rendered_inside_header(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):

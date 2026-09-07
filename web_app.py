@@ -1652,7 +1652,14 @@ def render_news_page(
         yahoo_sources = []
         sidebar_sources = sources
     checkpoint("overview")
-    yahoo_active = any(is_yahoo_source(source) for source in source_filters)
+    yahoo_source_names = [source[0] for source in yahoo_sources]
+    selected_yahoo_sources = [
+        source for source in source_filters if is_yahoo_source(source)
+    ]
+    yahoo_active = bool(selected_yahoo_sources)
+    yahoo_all_active = bool(yahoo_source_names) and all(
+        source in selected_yahoo_sources for source in yahoo_source_names
+    )
     yahoo_expanded = yahoo_active
 
     status_sources = [
@@ -1862,6 +1869,7 @@ def render_news_page(
         sidebar_sources=sidebar_sources,
         yahoo_sources=yahoo_sources,
         yahoo_active=yahoo_active,
+        yahoo_all_active=yahoo_all_active,
         yahoo_expanded=yahoo_expanded,
         keyword_filter=keyword_filter,
         keyword_urls=keyword_urls,

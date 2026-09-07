@@ -44,9 +44,20 @@ class WebTemplateTests(unittest.TestCase):
             'overflow-x:hidden',
             'class="panel-action-icon order-arrows"',
             'aria-label="Прочитать все новости"',
+            '@media(min-width:921px)',
+            'grid-template-rows:124px minmax(0,1fr)',
+            'overscroll-behavior:contain',
+            '<circle cx="10.5" cy="10.5" r="6.5"/>',
+            'M3.5 7.5h6l2-2h3l2 2h4',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)
+
+        rail = template[
+            template.index('<aside class="left-rail"'):
+            template.index('</aside>', template.index('<aside class="left-rail"'))
+        ]
+        self.assertNotIn('<span>Настройки</span>', rail)
 
     def test_system_template_keeps_storage_controls_explicit(self):
         template_path = Path(web_app.app.template_folder) / "admin_system.html"
