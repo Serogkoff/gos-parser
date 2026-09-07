@@ -104,6 +104,18 @@
         .search-icon{font-size:25px;line-height:1}
         .search input{width:100%;border:0;outline:0;color:var(--ink);background:transparent;font-size:16px}
         .search input::placeholder{color:#918b81}
+        .search{position:relative}
+        .search-range{flex:0 0 auto}
+        .search-range summary{padding:5px;color:var(--muted);cursor:pointer;list-style:none;font-size:12px}
+        .search-range summary::-webkit-details-marker{display:none}
+        .search-range[open] summary,.search-range.active summary{color:var(--coral-dark)}
+        .search-range-panel{
+            position:absolute;z-index:20;top:46px;right:0;width:255px;padding:14px;
+            display:grid;grid-template-columns:1fr 1fr;gap:10px;border:1px solid var(--line);
+            border-radius:5px;background:#fff;box-shadow:0 12px 30px rgba(45,39,31,.14)
+        }
+        .search-range-panel label{display:grid;gap:5px;color:var(--muted);font-size:10px}
+        .search-range-panel input{width:100%;padding:7px;border:1px solid var(--line);border-radius:4px;font-size:11px}
         .source-select select{width:100%;border:0;outline:0;color:var(--ink);background:transparent}
         .source-summary{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--muted);font-size:12px}
         .source-summary a{color:var(--coral-dark);font-weight:700}
@@ -639,6 +651,13 @@
                 {% if keyword_filter %}<input type="hidden" name="keyword" value="{{keyword_filter}}">{% endif %}
                 <input id="news-search" name="q" value="{{search_query}}"
                        placeholder="Поиск" autocomplete="off">
+                <details class="search-range {{'active' if search_date_from or search_date_to else ''}}">
+                    <summary title="Диапазон поиска" aria-label="Выбрать диапазон поиска">Дата</summary>
+                    <div class="search-range-panel">
+                        <label>С даты<input type="date" name="date_from" value="{{search_date_from}}"></label>
+                        <label>По дату<input type="date" name="date_to" value="{{search_date_to}}"></label>
+                    </div>
+                </details>
             </form>
             {% if source_filters %}<div class="source-summary"><span>Выбрано: {{source_filters|length}}</span><a href="{{clear_sources_url}}">Сбросить</a></div>{% endif %}
             <button class="tool-button {{'active' if keyword_filter else ''}}" id="keywords-open" type="button">☷ {{keyword_filter or 'Фильтры'}}</button>
@@ -659,7 +678,7 @@
             <header class="feed-heading" aria-label="{{feed_title}} · {{page_label}}">
                 <h2 id="visible-count" data-default="Найдено {{page_total_display}} материалов">Найдено {{page_total_display}} материалов</h2>
             </header>
-            <div id="empty-state" class="empty hidden">
+            <div id="empty-state" class="empty {{'hidden' if news else ''}}">
                 <strong>Ничего не найдено</strong>
                 <span>Измени запрос или отключи фильтр.</span>
             </div>
@@ -840,8 +859,6 @@
 <script>
     const cards = [...document.querySelectorAll('.news-card')];
     const search = document.getElementById('news-search');
-    const visibleCount = document.getElementById('visible-count');
-    const emptyState = document.getElementById('empty-state');
     const savedCount = document.getElementById('saved-count');
     const brandHome = document.getElementById('brand-home');
     const sourceFilterHome = {{filter_home|tojson}};
@@ -1046,20 +1063,6 @@
             // поэтому перенос безопасно повторится при следующем открытии.
         }
     }
-    function applyFilters(){
-        const query = search.value.trim().toLowerCase();
-        let count = 0;
-        cards.forEach(card => {
-            const matchesText = !query || card.dataset.search.includes(query);
-            const visible = matchesText;
-            card.classList.toggle('hidden', !visible);
-            if(visible) count++;
-        });
-        visibleCount.textContent = !query
-            ? visibleCount.dataset.default
-            : 'Найдено ' + count + ' материалов';
-        emptyState.classList.toggle('hidden', count !== 0);
-    }
     document.querySelectorAll('[data-save]').forEach(button => {
         button.addEventListener('click', async () => {
             const id = button.dataset.save;
@@ -1120,7 +1123,15 @@
         }
     });
     initializeUnread();
-    search.addEventListener('input', applyFilters);
+    const searchForm = search.closest('form');
+    let searchTimer = null;
+    search.addEventListener('input', () => {
+        window.clearTimeout(searchTimer);
+        searchTimer = window.setTimeout(() => searchForm.requestSubmit(), 450);
+    });
+    searchForm.querySelectorAll('input[type="date"]').forEach(input => {
+        input.addEventListener('change', () => searchForm.requestSubmit());
+    });
     document.getElementById('collapse-sources').addEventListener('click', event => {
         const list = document.getElementById('source-list');
         list.classList.toggle('hidden');

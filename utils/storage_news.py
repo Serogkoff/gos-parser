@@ -16,7 +16,7 @@ class NewsStorage:
     def __init__(
         self, initialize_database, connection_factory, lock,
         normalize_url, decode_item, attach_display_fields,
-        database_change_signature,
+        database_change_signature, news_overview_signature=None,
     ):
         self._initialize_database = initialize_database
         self._connection_factory = connection_factory
@@ -25,7 +25,11 @@ class NewsStorage:
         self._decode_item = decode_item
         self._attach_display_fields = attach_display_fields
         self._database_change_signature = database_change_signature
+        self._news_overview_signature = (
+            news_overview_signature or database_change_signature
+        )
         self._overview_cache = None
+        self._unread_counts_cache = {}
 
     @staticmethod
     def news_group_condition(source_group, source_column="n.source"):
@@ -75,14 +79,14 @@ class NewsStorage:
         source_group = str(source_group or "").strip().casefold()
         self.news_group_condition(source_group)
         self._initialize_database()
-        signature = self._database_change_signature()
+        signature = self._news_overview_signature()
         with self._lock:
             cached = self._overview_cache
             if cached and cached["signature"] == signature:
                 return cached["groups"][source_group]
 
         groups = self._query_news_overview()
-        final_signature = self._database_change_signature()
+        final_signature = self._news_overview_signature()
         if final_signature == signature:
             with self._lock:
                 self._overview_cache = {
@@ -123,7 +127,8 @@ class NewsStorage:
 
     def list_news_page(
         self, source_group, *, found_only=False, sources=None,
-        search_query="", keyword="", limit=20, offset=0,
+        search_query="", keyword="", date_from="", date_to="",
+        limit=20, offset=0,
     ):
         """Читает одну страницу новостей и считает результат средствами SQLite."""
         try:
@@ -160,14 +165,19 @@ class NewsStorage:
             )
             parameters.extend((pattern, pattern, pattern))
 
+        date_from = str(date_from or "").strip()
+        date_to = str(date_to or "").strip()
+        if date_from:
+            conditions.append("n.publication_date >= ?")
+            parameters.append(date_from)
+        if date_to:
+            conditions.append("n.publication_date <= ?")
+            parameters.append(date_to)
+
         keyword = " ".join(str(keyword or "").split())
         if found_only and keyword:
             conditions.append(
-                "EXISTS ("
-                "SELECT 1 FROM json_each(f.payload_json, '$.keywords') "
-                "AS matched_keyword "
-                "WHERE CASEFOLD(matched_keyword.value) = ?"
-                ")"
+                "matched_keyword.keyword_folded = ?"
             )
             parameters.append(keyword.casefold())
 
@@ -175,10 +185,18 @@ class NewsStorage:
             "JOIN found_items AS f ON f.news_key = n.news_key"
             if found_only else ""
         )
+        if found_only and keyword:
+            join += (
+                " JOIN found_item_keywords AS matched_keyword "
+                "ON matched_keyword.news_key = f.news_key"
+            )
         payload_column = "f.payload_json" if found_only else "n.payload_json"
         where_clause = " AND ".join(conditions)
         cached_total = None
-        if not selected_sources and not search_query and not keyword:
+        if (
+            not selected_sources and not search_query and not keyword
+            and not date_from and not date_to
+        ):
             overview = self._news_group_overview(source_group)
             cached_total = overview["found" if found_only else "total"]
         self._initialize_database()
@@ -314,22 +332,10 @@ class NewsStorage:
               ON r.user_id = ? AND r.normalized_url = n.normalized_url
             WHERE {condition}
               AND n.normalized_url != ''
-              AND n.first_seen_at > ?
-              AND r.normalized_url IS NULL
-
-            UNION
-
-            SELECT n.normalized_url AS url,
-                   n.source AS source,
-                   n.first_seen_at AS first_seen_at,
-                   n.news_key AS news_key
-            FROM news_item_reads AS r
-            JOIN news_items AS n
-              ON n.normalized_url = r.normalized_url
-            WHERE r.user_id = ?
-              AND r.is_read = 0
-              AND {condition}
-              AND n.normalized_url != ''
+              AND (
+                  (n.first_seen_at > ? AND r.normalized_url IS NULL)
+                  OR r.is_read = 0
+              )
         """
 
     @staticmethod
@@ -339,8 +345,6 @@ class NewsStorage:
             context["user_id"],
             *parameters,
             context["read_all_before"],
-            context["user_id"],
-            *parameters,
         ]
 
     def list_unread_news_index(self, user_id, source_group, limit=2000):
@@ -390,15 +394,33 @@ class NewsStorage:
             visible_candidates.append((original, normalized))
 
         unread_select = self._unread_news_select(context["condition"])
+        signature = self._database_change_signature()
+        cache_key = (
+            context["user_id"],
+            str(source_group or "").strip().casefold(),
+            context["read_all_before"],
+        )
+        with self._lock:
+            cached = self._unread_counts_cache.get(cache_key)
+            if cached and cached["signature"] == signature:
+                by_source = dict(cached["by_source"])
+            else:
+                by_source = None
         with self._connection_factory() as connection:
-            rows = connection.execute(
-                f"""
-                SELECT unread.source, COUNT(*) AS unread_count
-                FROM ({unread_select}) AS unread
-                GROUP BY unread.source
-                """,
-                self._unread_news_parameters(context),
-            ).fetchall()
+            if by_source is None:
+                rows = connection.execute(
+                    f"""
+                    SELECT unread.source, COUNT(*) AS unread_count
+                    FROM ({unread_select}) AS unread
+                    GROUP BY unread.source
+                    """,
+                    self._unread_news_parameters(context),
+                ).fetchall()
+                by_source = {
+                    (row["source"] or "Неизвестный источник"):
+                        int(row["unread_count"])
+                    for row in rows
+                }
             visible_unread = set()
             if visible_candidates:
                 placeholders = ", ".join("?" for _ in visible_candidates)
@@ -422,11 +444,17 @@ class NewsStorage:
                 ).fetchall()
                 visible_unread = {row["url"] for row in visible_rows}
 
-        by_source = {
-            (row["source"] or "Неизвестный источник"):
-                int(row["unread_count"])
-            for row in rows
-        }
+        final_signature = self._database_change_signature()
+        if by_source is not None and final_signature == signature:
+            with self._lock:
+                self._unread_counts_cache[cache_key] = {
+                    "signature": signature,
+                    "by_source": dict(by_source),
+                }
+                if len(self._unread_counts_cache) > 64:
+                    self._unread_counts_cache = {
+                        cache_key: self._unread_counts_cache[cache_key]
+                    }
         return {
             "total": sum(by_source.values()),
             "by_source": by_source,

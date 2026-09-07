@@ -252,6 +252,49 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual([item["title"] for item in page], ["Точное совпадение"])
         self.assertEqual(all_total, 3)
         self.assertEqual(len(all_matches), 3)
+        with storage._connection() as connection:
+            indexed = connection.execute(
+                """SELECT keyword_folded FROM found_item_keywords
+                   ORDER BY keyword_folded"""
+            ).fetchall()
+        self.assertEqual(
+            [row["keyword_folded"] for row in indexed],
+            ["курил", "курилы", "япония"],
+        )
+
+    def test_sql_search_supports_publication_date_range(self):
+        items = [
+            {
+                "source": "Коммерсантъ",
+                "title": "Искомый архивный материал",
+                "url": "https://www.kommersant.ru/doc/archive-range",
+                "date": "2026-08-11",
+            },
+            {
+                "source": "Коммерсантъ",
+                "title": "Искомый свежий материал",
+                "url": "https://www.kommersant.ru/doc/fresh-range",
+                "date": "2026-09-07",
+            },
+        ]
+        self._write_json(self.all_json, items)
+        self._write_json(self.found_json, [])
+
+        page, total = storage.list_news_page(
+            "newspapers",
+            search_query="Искомый",
+            date_from="2026-08-01",
+            date_to="2026-08-31",
+        )
+
+        self.assertEqual(total, 1)
+        self.assertEqual(page[0]["title"], "Искомый архивный материал")
+
+    def test_unread_query_uses_single_join_without_union(self):
+        query = storage._unread_news_select("n.source = ?")
+
+        self.assertNotIn("UNION", query.upper())
+        self.assertEqual(query.upper().count("FROM NEWS_ITEMS"), 1)
 
     def test_feed_route_does_not_load_complete_news_collections(self):
         items = [

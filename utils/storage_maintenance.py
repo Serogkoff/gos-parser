@@ -232,6 +232,11 @@ class DatabaseMaintenance:
                     (cutoff_date,),
                 )
                 connection.execute(
+                    """UPDATE metadata
+                       SET value = CAST(value AS INTEGER) + 1
+                       WHERE key = 'news_revision'"""
+                )
+                connection.execute(
                     """
                     DELETE FROM article_cache
                     WHERE normalized_url NOT IN (

@@ -281,7 +281,17 @@ _NEWS_STORAGE = NewsStorage(
     attach_display_fields=lambda item, parsed_date, first_seen_at:
         _attach_news_display_fields(item, parsed_date, first_seen_at),
     database_change_signature=lambda: _database_change_signature(),
+    news_overview_signature=lambda: _news_overview_signature(),
 )
+
+
+def _news_overview_signature():
+    """Отделяет изменения ленты от личных отметок и других таблиц."""
+    with _connection() as connection:
+        row = connection.execute(
+            "SELECT value FROM metadata WHERE key = 'news_revision'"
+        ).fetchone()
+    return int(row["value"]) if row is not None else 0
 
 
 def _news_group_condition(source_group, source_column="n.source"):
@@ -300,7 +310,8 @@ def news_source_counts(source_group):
 
 
 def list_news_page(source_group, *, found_only=False, sources=None,
-                   search_query="", keyword="", limit=20, offset=0):
+                   search_query="", keyword="", date_from="", date_to="",
+                   limit=20, offset=0):
     """Читает одну страницу новостей и считает результат средствами SQLite."""
     return _NEWS_STORAGE.list_news_page(
         source_group,
@@ -308,6 +319,8 @@ def list_news_page(source_group, *, found_only=False, sources=None,
         sources=sources,
         search_query=search_query,
         keyword=keyword,
+        date_from=date_from,
+        date_to=date_to,
         limit=limit,
         offset=offset,
     )

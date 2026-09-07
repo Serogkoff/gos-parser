@@ -1,6 +1,13 @@
 """Создание и совместимые миграции схемы SQLite."""
 
+import json
 from datetime import datetime
+
+from utils.dates import parse_date
+
+
+FOUND_KEYWORDS_MIGRATION_KEY = "found_item_keywords_v1"
+NEWS_DATES_MIGRATION_KEY = "news_publication_dates_v1"
 
 
 def create_schema(connection):
@@ -30,6 +37,15 @@ def create_schema(connection):
             payload_json TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(news_key) REFERENCES news_items(news_key)
+                ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS found_item_keywords (
+            news_key TEXT NOT NULL,
+            keyword TEXT NOT NULL,
+            keyword_folded TEXT NOT NULL,
+            PRIMARY KEY(news_key, keyword_folded),
+            FOREIGN KEY(news_key) REFERENCES found_items(news_key)
                 ON DELETE CASCADE
         );
 
@@ -259,6 +275,8 @@ def create_schema(connection):
             ON news_items(source, publication_date DESC, parsed_date DESC);
         CREATE INDEX IF NOT EXISTS idx_news_normalized_url
             ON news_items(normalized_url);
+        CREATE INDEX IF NOT EXISTS idx_found_keywords_lookup
+            ON found_item_keywords(keyword_folded, news_key);
         CREATE INDEX IF NOT EXISTS idx_users_role
             ON users(role, is_active);
         CREATE INDEX IF NOT EXISTS idx_bookmark_folders_user
@@ -303,6 +321,9 @@ def create_schema(connection):
             ON source_incidents(source, started_at DESC);
         """
     )
+    connection.execute(
+        "INSERT OR IGNORE INTO metadata(key, value) VALUES ('news_revision', '0')"
+    )
 
     news_columns = {
         row["name"] for row in connection.execute(
@@ -326,6 +347,71 @@ def create_schema(connection):
         """CREATE INDEX IF NOT EXISTS idx_news_first_seen
            ON news_items(first_seen_at DESC)"""
     )
+
+    date_migration = connection.execute(
+        "SELECT 1 FROM metadata WHERE key = ?",
+        (NEWS_DATES_MIGRATION_KEY,),
+    ).fetchone()
+    if date_migration is None:
+        normalized_dates = []
+        for row in connection.execute(
+            """SELECT news_key, publication_date, parsed_date
+               FROM news_items
+               WHERE publication_date = ''
+                  OR publication_date NOT GLOB '????-??-??'"""
+        ).fetchall():
+            normalized = (
+                parse_date(row["publication_date"])
+                or parse_date(row["parsed_date"])
+            )
+            if normalized != row["publication_date"]:
+                normalized_dates.append((normalized, row["news_key"]))
+        connection.executemany(
+            "UPDATE news_items SET publication_date = ? WHERE news_key = ?",
+            normalized_dates,
+        )
+        connection.execute(
+            "INSERT INTO metadata(key, value) VALUES (?, ?)",
+            (
+                NEWS_DATES_MIGRATION_KEY,
+                datetime.now().isoformat(timespec="seconds"),
+            ),
+        )
+
+    keyword_migration = connection.execute(
+        "SELECT 1 FROM metadata WHERE key = ?",
+        (FOUND_KEYWORDS_MIGRATION_KEY,),
+    ).fetchone()
+    if keyword_migration is None:
+        keyword_rows = []
+        for row in connection.execute(
+            "SELECT news_key, payload_json FROM found_items"
+        ).fetchall():
+            try:
+                payload = json.loads(row["payload_json"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            seen = set()
+            for value in payload.get("keywords", []) or []:
+                keyword = " ".join(str(value or "").split())
+                folded = keyword.casefold()
+                if not keyword or folded in seen:
+                    continue
+                seen.add(folded)
+                keyword_rows.append((row["news_key"], keyword, folded))
+        connection.executemany(
+            """INSERT OR IGNORE INTO found_item_keywords(
+                   news_key, keyword, keyword_folded
+               ) VALUES (?, ?, ?)""",
+            keyword_rows,
+        )
+        connection.execute(
+            "INSERT INTO metadata(key, value) VALUES (?, ?)",
+            (
+                FOUND_KEYWORDS_MIGRATION_KEY,
+                datetime.now().isoformat(timespec="seconds"),
+            ),
+        )
 
     read_columns = {
         row["name"] for row in connection.execute(

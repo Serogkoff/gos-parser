@@ -5,6 +5,7 @@ from calendar import monthrange
 from io import BytesIO
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from time import perf_counter
 from urllib.parse import quote, urlencode
 
 from flask import (
@@ -174,6 +175,7 @@ app.config.update(
     ALLOWED_HOSTS=_allowed_hosts(),
 )
 security_logger = get_logger("web_security")
+performance_logger = get_logger("web_performance")
 LOGIN_PAIR_LIMITER = AttemptLimiter(5, 15 * 60, 15 * 60)
 LOGIN_ACCOUNT_LIMITER = AttemptLimiter(10, 15 * 60, 30 * 60)
 LOGIN_IP_LIMITER = AttemptLimiter(20, 15 * 60, 30 * 60)
@@ -1593,6 +1595,16 @@ def render_news_page(
     source_filters=None,
     source_group=GOVERNMENT_GROUP,
 ):
+    request_started = perf_counter()
+    last_checkpoint = request_started
+    timings = {}
+
+    def checkpoint(name):
+        nonlocal last_checkpoint
+        now = perf_counter()
+        timings[name] = round((now - last_checkpoint) * 1000, 1)
+        last_checkpoint = now
+
     user = current_user()
     if user["id"]:
         user_saved_urls = bookmarked_urls(user["id"])
@@ -1600,6 +1612,7 @@ def render_news_page(
     else:
         user_saved_urls = []
         user_bookmark_count = 0
+    checkpoint("account")
     status = load_json("parser_status.json", {})
     total, found_count = news_group_counts(source_group)
     counts = news_source_counts(source_group)
@@ -1638,6 +1651,7 @@ def render_news_page(
     else:
         yahoo_sources = []
         sidebar_sources = sources
+    checkpoint("overview")
     yahoo_active = any(is_yahoo_source(source) for source in source_filters)
     yahoo_expanded = yahoo_active
 
@@ -1702,9 +1716,16 @@ def render_news_page(
         persistent_query_parameters.append(("keyword", keyword_filter))
     clear_query = urlencode(persistent_query_parameters, doseq=True)
     clear_sources_url = filter_home + (f"?{clear_query}" if clear_query else "")
-    source_query = urlencode([("source", source) for source in source_filters])
-    group_home_url = group_home + (f"?{source_query}" if source_query else "")
+    group_home_parameters = [
+        *shared_query_parameters,
+        *(("source", source) for source in source_filters),
+    ]
+    group_home_query = urlencode(group_home_parameters, doseq=True)
+    group_home_url = group_home + (
+        f"?{group_home_query}" if group_home_query else ""
+    )
     found_query_parameters = [
+        *shared_query_parameters,
         *(('source', source) for source in source_filters),
         *((('keyword', keyword_filter),) if keyword_filter else ()),
     ]
@@ -1723,7 +1744,31 @@ def render_news_page(
     else:
         feed_title = "Последние публикации"
 
-    search_query = request.args.get("q", "").strip()
+    search_query = request.args.get("q", "").strip()[:200]
+
+    def valid_search_date(name):
+        value = str(request.args.get(name, "")).strip()
+        if not value:
+            return ""
+        try:
+            return date.fromisoformat(value).isoformat()
+        except ValueError:
+            return ""
+
+    search_date_from = valid_search_date("date_from")
+    search_date_to = valid_search_date("date_to")
+    if not search_query:
+        search_date_from = ""
+        search_date_to = ""
+    elif not search_date_from and not search_date_to:
+        today = date.today().isoformat()
+        search_date_from = today
+        search_date_to = today
+    if (
+        search_date_from and search_date_to
+        and search_date_from > search_date_to
+    ):
+        search_date_from, search_date_to = search_date_to, search_date_from
     try:
         page = max(1, int(request.args.get("page", "1")))
     except (TypeError, ValueError):
@@ -1735,9 +1780,12 @@ def render_news_page(
         sources=source_filters,
         search_query=search_query,
         keyword=keyword_filter,
+        date_from=search_date_from,
+        date_to=search_date_to,
         limit=NEWS_PER_PAGE,
         offset=page_offset,
     )
+    checkpoint("news")
     page_count = max(1, (page_total + NEWS_PER_PAGE - 1) // NEWS_PER_PAGE)
     if page > page_count:
         page = page_count
@@ -1748,6 +1796,8 @@ def render_news_page(
             sources=source_filters,
             search_query=search_query,
             keyword=keyword_filter,
+            date_from=search_date_from,
+            date_to=search_date_to,
             limit=NEWS_PER_PAGE,
             offset=page_offset,
         )
@@ -1801,8 +1851,9 @@ def render_news_page(
         [item.get("url", "") for item in page_news],
     )
     unread_counts = unread_summary["by_source"]
+    checkpoint("unread")
 
-    return render_template(
+    response = render_template(
         "news.html",
         news=page_news,
         total=total,
@@ -1852,6 +1903,8 @@ def render_news_page(
         current_path=request.path,
         current_url=request.full_path.rstrip("?"),
         search_query=search_query,
+        search_date_from=search_date_from,
+        search_date_to=search_date_to,
         page=page,
         page_count=page_count,
         page_links=page_links,
@@ -1865,6 +1918,15 @@ def render_news_page(
         saved_urls=user_saved_urls,
         bookmark_count=user_bookmark_count,
     )
+    checkpoint("template")
+    timings["total"] = round((perf_counter() - request_started) * 1000, 1)
+    performance_logger.info(
+        "Лента %s/%s: %s",
+        source_group,
+        mode,
+        " ".join(f"{name}={value}ms" for name, value in timings.items()),
+    )
+    return response
 
 
 @app.template_filter("urlencode")

@@ -285,7 +285,7 @@ class NewsPersistenceStorage:
                     normalize_url(item.get("url", "")),
                     str(item.get("source", "")),
                     str(item.get("title", "")),
-                    str(item.get("date", "")),
+                    parse_date(item.get("date", "")),
                     str(item.get("parsed_date", "")),
                     self.encode_item(item),
                     updated_at,
@@ -302,18 +302,44 @@ class NewsPersistenceStorage:
             """,
             rows,
         )
+        self.bump_news_revision(connection)
 
     def insert_found_items(self, connection, items):
         updated_at = self._now().isoformat(timespec="seconds")
+        keyword_rows = []
+        encoded_rows = []
+        for item in deduplicate_news(items):
+            news_key = self.news_key(item)
+            encoded_rows.append((news_key, self.encode_item(item), updated_at))
+            seen = set()
+            for value in item.get("keywords", []) or []:
+                keyword = " ".join(str(value or "").split())
+                folded = keyword.casefold()
+                if not keyword or folded in seen:
+                    continue
+                seen.add(folded)
+                keyword_rows.append((news_key, keyword, folded))
         connection.executemany(
             """
             INSERT INTO found_items(news_key, payload_json, updated_at)
             VALUES (?, ?, ?)
             """,
-            [
-                (self.news_key(item), self.encode_item(item), updated_at)
-                for item in deduplicate_news(items)
-            ],
+            encoded_rows,
+        )
+        connection.executemany(
+            """INSERT INTO found_item_keywords(
+                   news_key, keyword, keyword_folded
+               ) VALUES (?, ?, ?)""",
+            keyword_rows,
+        )
+        self.bump_news_revision(connection)
+
+    @staticmethod
+    def bump_news_revision(connection):
+        connection.execute(
+            """UPDATE metadata
+               SET value = CAST(value AS INTEGER) + 1
+               WHERE key = 'news_revision'"""
         )
 
     def load_collection(self, connection, table):

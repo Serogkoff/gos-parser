@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from unittest.mock import patch
 
 import config
@@ -218,7 +219,8 @@ class SourceGroupPageTests(unittest.TestCase):
         return counts
 
     def _list_news_page(self, source_group, *, found_only=False, sources=None,
-                        search_query="", keyword="", limit=20, offset=0):
+                        search_query="", keyword="", date_from="", date_to="",
+                        limit=20, offset=0):
         items = self._group_items(source_group, found_only=found_only)
         selected_sources = set(sources or [])
         if selected_sources:
@@ -249,6 +251,10 @@ class SourceGroupPageTests(unittest.TestCase):
                     for item_keyword in item.get("keywords", []) or []
                 )
             ]
+        if date_from:
+            items = [item for item in items if item.get("date", "") >= date_from]
+        if date_to:
+            items = [item for item in items if item.get("date", "") <= date_to]
         items = sort_news_by_publication(items)
         return items[offset:offset + limit], len(items)
 
@@ -298,7 +304,7 @@ class SourceGroupPageTests(unittest.TestCase):
             html,
         )
         self.assertIn(
-            '/static/source-logos/mchs.png?v=2026.08.17.16.50',
+            '/static/source-logos/mchs.png?v=2026.08.17.16.51',
             html,
         )
         self.assertIn(
@@ -455,7 +461,7 @@ class SourceGroupPageTests(unittest.TestCase):
                 "source": "Коммерсантъ",
                 "title": f"Газетный материал {number:02d}",
                 "url": f"https://www.kommersant.ru/doc/{number}",
-                "date": "2026-08-11",
+                "date": date.today().isoformat(),
             }
             for number in range(80)
         ]
@@ -483,7 +489,7 @@ class SourceGroupPageTests(unittest.TestCase):
                     else f"Обычный материал {number:02d}"
                 ),
                 "url": f"https://www.kommersant.ru/doc/{number}",
-                "date": "2026-08-11",
+                "date": date.today().isoformat(),
             }
             for number in range(80)
         ]
@@ -496,6 +502,23 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Особый материал для поиска", html)
         self.assertEqual(html.count('class="news-card '), 1)
         self.assertIn("1–1 из 1", html)
+
+    def test_server_search_accepts_explicit_deep_date_range(self):
+        self.files["all_news.json"] = [{
+            "source": "Коммерсантъ",
+            "title": "Архивный материал для поиска",
+            "url": "https://www.kommersant.ru/doc/archive-search",
+            "date": "2026-08-11",
+        }]
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get(
+                "/newspapers?q=Архивный&date_from=2026-08-01&date_to=2026-08-31"
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertIn("Архивный материал для поиска", html)
+        self.assertIn('value="2026-08-01"', html)
+        self.assertIn('value="2026-08-31"', html)
 
     def test_minselkhoz_news_opens_original_page(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
