@@ -110,12 +110,21 @@
         .search-range summary::-webkit-details-marker{display:none}
         .search-range[open] summary,.search-range.active summary{color:var(--coral-dark)}
         .search-range-panel{
-            position:absolute;z-index:20;top:46px;right:0;width:255px;padding:14px;
-            display:grid;grid-template-columns:1fr 1fr;gap:10px;border:1px solid var(--line);
+            position:absolute;z-index:20;top:48px;right:0;width:330px;padding:16px;
+            display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;border:1px solid var(--line);
             border-radius:5px;background:#fff;box-shadow:0 12px 30px rgba(45,39,31,.14)
         }
         .search-range-panel label{display:grid;gap:5px;color:var(--muted);font-size:10px}
-        .search-range-panel input{width:100%;padding:7px;border:1px solid var(--line);border-radius:4px;font-size:11px}
+        .search-range-panel input{
+            width:100%;min-width:0;box-sizing:border-box;padding:9px 8px;
+            border:1px solid var(--line);border-radius:4px;font-size:12px
+        }
+        .search-range-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;padding-top:2px}
+        .search-range-actions button{
+            min-height:32px;padding:0 12px;border:1px solid var(--line);
+            border-radius:4px;color:var(--ink);background:#fff;font-size:11px
+        }
+        .search-range-actions .apply-dates{color:#fff;border-color:var(--coral);background:var(--coral)}
         .source-select select{width:100%;border:0;outline:0;color:var(--ink);background:transparent}
         .source-summary{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--muted);font-size:12px}
         .source-summary a{color:var(--coral-dark);font-weight:700}
@@ -656,6 +665,10 @@
                     <div class="search-range-panel">
                         <label>С даты<input type="date" name="date_from" value="{{search_date_from}}"></label>
                         <label>По дату<input type="date" name="date_to" value="{{search_date_to}}"></label>
+                        <div class="search-range-actions">
+                            <button type="button" data-clear-dates>Сегодня</button>
+                            <button class="apply-dates" type="submit">Применить</button>
+                        </div>
                     </div>
                 </details>
             </form>
@@ -1129,8 +1142,12 @@
         window.clearTimeout(searchTimer);
         searchTimer = window.setTimeout(() => searchForm.requestSubmit(), 450);
     });
-    searchForm.querySelectorAll('input[type="date"]').forEach(input => {
-        input.addEventListener('change', () => searchForm.requestSubmit());
+    const clearDates = searchForm.querySelector('[data-clear-dates]');
+    clearDates.addEventListener('click', () => {
+        searchForm.querySelectorAll('input[type="date"]').forEach(input => {
+            input.value = '';
+        });
+        searchForm.requestSubmit();
     });
     document.getElementById('collapse-sources').addEventListener('click', event => {
         const list = document.getElementById('source-list');
