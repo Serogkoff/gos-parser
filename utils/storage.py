@@ -707,9 +707,11 @@ def prepare_database(retention=3):
     return _DATABASE_MAINTENANCE.prepare_database(retention)
 
 
-def purge_news_archive(backup_retention=3, now=None):
-    """Очищает архив новостей только после создания проверенной копии."""
-    return _DATABASE_MAINTENANCE.purge_news_archive(backup_retention, now)
+def purge_news_archive(backup_retention=3, retention_days=14, now=None):
+    """Удаляет старые новости после копии, сохраняя свежую ленту."""
+    return _DATABASE_MAINTENANCE.purge_news_archive(
+        backup_retention, retention_days, now
+    )
 
 
 def _automatic_backup_pattern():

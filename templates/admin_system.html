@@ -45,7 +45,7 @@
             </section>
             <section class="panel danger">
                 <div class="panel-head"><div><h2>Очистка новостного архива</h2><p>Только по ручной команде администратора.</p></div></div>
-                <div class="danger-copy"><strong>Перед удалением автоматически создаётся и проверяется резервная копия.</strong> Будут удалены новости, совпадения, сохранённые тексты статей и отметки чтения. Пользователи, избранное, подборки, заметки, календарь, словари и настройки останутся.</div>
+                <div class="danger-copy"><strong>Перед удалением автоматически создаётся и проверяется резервная копия.</strong> Во всех источниках сохраняются новости и совпадения за последние {{news_retention_days}} дней. Удаляются только более старые материалы и их служебные данные. Пользователи, избранное, подборки, заметки, календарь, словари и настройки останутся.</div>
                 <form class="danger-form" method="post" onsubmit="return confirm('Очистить новостной архив после создания резервной копии?')"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="purge_news_archive"><label>Введите «ОЧИСТИТЬ АРХИВ»<input name="confirmation" required autocomplete="off" spellcheck="false"></label><button class="danger-button" type="submit">Очистить архив</button></form>
             </section>
         </div>

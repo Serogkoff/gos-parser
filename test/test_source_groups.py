@@ -298,7 +298,7 @@ class SourceGroupPageTests(unittest.TestCase):
             html,
         )
         self.assertIn(
-            '/static/source-logos/mchs.png?v=2026.08.17.16.49',
+            '/static/source-logos/mchs.png?v=2026.08.17.16.50',
             html,
         )
         self.assertIn(

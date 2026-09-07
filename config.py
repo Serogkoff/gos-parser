@@ -1,4 +1,4 @@
-PROJECT_VERSION = "2026.08.17.16.49"
+PROJECT_VERSION = "2026.08.17.16.50"
 
 KEYWORDS = [
     "Курил", "Сахалин", "Владивосток", "Хабаровск", "Камчатка", "Дальний Восток",
@@ -51,3 +51,4 @@ DATABASE_BACKUP_RETENTION = 3
 # Администратор получает предупреждение, но очистка запускается только вручную.
 DATABASE_SIZE_LIMIT_GB = 30
 DATABASE_SIZE_LIMIT_BYTES = DATABASE_SIZE_LIMIT_GB * 1024 ** 3
+NEWS_ARCHIVE_RETENTION_DAYS = 14

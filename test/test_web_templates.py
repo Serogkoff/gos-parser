@@ -57,6 +57,7 @@ class WebTemplateTests(unittest.TestCase):
             "не больше {{backup_retention}} копий всего",
             'name="action" value="purge_news_archive"',
             "ОЧИСТИТЬ АРХИВ",
+            "за последние {{news_retention_days}} дней",
             "Пользователи, избранное, подборки, заметки",
         ):
             with self.subTest(marker=marker):

@@ -538,18 +538,27 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertFalse(Path(oldest["path"]).exists())
         self.assertTrue(Path(latest["path"]).exists())
 
-    def test_archive_cleanup_preserves_accounts_bookmarks_and_notes(self):
-        item = {
+    def test_archive_cleanup_keeps_two_weeks_and_personal_data(self):
+        old_item = {
             "source": "МЧС",
-            "title": "Материал перед очисткой",
-            "url": "https://mchs.gov.ru/news/archive-cleanup",
-            "date": "2026-08-17",
+            "title": "Старый материал",
+            "url": "https://mchs.gov.ru/news/archive-old",
+            "date": "2026-07-01",
         }
-        self._write_json(self.all_json, [item])
-        self._write_json(self.found_json, [item])
+        recent_item = {
+            "source": "МЧС",
+            "title": "Свежий материал",
+            "url": "https://mchs.gov.ru/news/archive-recent",
+            "date": "2026-08-10",
+        }
+        stale_cache_url = "https://example.test/archive-stale-cache"
+        self._write_json(self.all_json, [old_item, recent_item])
+        self._write_json(self.found_json, [old_item, recent_item])
         user = storage.create_user("archivist", "safe-password-2026")
         folder = storage.create_bookmark_folder(user["id"], "Важное")
-        storage.save_bookmark(user["id"], item, folder["id"], "Сохранить")
+        storage.save_bookmark(
+            user["id"], old_item, folder["id"], "Сохранить навсегда"
+        )
         storage.save_collection_note(
             user["id"], folder["id"], "Справка", "Текст справки"
         )
@@ -557,24 +566,40 @@ class SQLiteStorageTests(unittest.TestCase):
             user["id"], "Работа", "Личная заметка", "Не удалять"
         )
         storage.save_cached_article(
-            item["url"],
-            {"title": item["title"], "paragraphs": ["Полный текст"]},
-            item["source"],
+            old_item["url"],
+            {"title": old_item["title"], "paragraphs": ["Полный текст"]},
+            old_item["source"],
+        )
+        storage.save_cached_article(
+            stale_cache_url,
+            {"title": "Лишний кэш", "paragraphs": ["Удалить"]},
+            "Тест",
         )
 
         result = storage.purge_news_archive(
             backup_retention=3,
+            retention_days=14,
             now=datetime(2026, 8, 17, 16, 49),
         )
 
-        self.assertEqual(storage.load_all_news(), [])
-        self.assertEqual(storage.load_found_news(), [])
-        self.assertIsNone(storage.load_cached_article(item["url"]))
+        self.assertEqual(
+            [item["url"] for item in storage.load_all_news()],
+            [recent_item["url"]],
+        )
+        self.assertEqual(
+            [item["url"] for item in storage.load_found_news()],
+            [recent_item["url"]],
+        )
+        self.assertIsNotNone(storage.load_cached_article(old_item["url"]))
+        self.assertIsNone(storage.load_cached_article(stale_cache_url))
         self.assertIsNotNone(storage.load_user(user["id"]))
         self.assertEqual(len(storage.list_bookmarks(user["id"])), 1)
         self.assertEqual(len(storage.list_collection_notes(user["id"], folder["id"])), 1)
         self.assertEqual(len(storage.list_personal_notes(user["id"])), 1)
         self.assertEqual(result["removed"]["news_items"], 1)
+        self.assertEqual(result["retained_news"], 1)
+        self.assertEqual(result["retention_days"], 14)
+        self.assertEqual(result["cutoff_date"], "2026-08-03")
         self.assertTrue(Path(result["backup"]["path"]).exists())
 
     def test_prepare_database_reports_operational_status(self):

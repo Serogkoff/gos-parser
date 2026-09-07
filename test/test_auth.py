@@ -476,7 +476,7 @@ class AuthenticationTests(unittest.TestCase):
             )
 
         self.assertEqual(accepted.status_code, 302)
-        purge.assert_called_once_with(backup_retention=3)
+        purge.assert_called_once_with(backup_retention=3, retention_days=14)
         self.assertIn("news-manual-safe.db", accepted.headers["Location"])
 
     def test_admin_can_open_incident_history(self):

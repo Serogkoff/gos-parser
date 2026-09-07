@@ -24,6 +24,7 @@ from config import (
     DATABASE_BACKUP_RETENTION,
     DATABASE_SIZE_LIMIT_BYTES,
     DATABASE_SIZE_LIMIT_GB,
+    NEWS_ARCHIVE_RETENTION_DAYS,
     PROJECT_VERSION,
 )
 from utils.auth import environment_value, load_secret_key
@@ -822,7 +823,8 @@ def admin_system():
                 ))
             try:
                 result = purge_news_archive(
-                    backup_retention=DATABASE_BACKUP_RETENTION
+                    backup_retention=DATABASE_BACKUP_RETENTION,
+                    retention_days=NEWS_ARCHIVE_RETENTION_DAYS,
                 )
             except Exception as purge_error:
                 return redirect(url_for(
@@ -839,7 +841,7 @@ def admin_system():
                 return redirect(url_for(
                     "admin_system",
                     error=(
-                        f"Архив очищен, удалено {removed_news} новостей и "
+                        f"Старый архив удалён, удалено {removed_news} новостей и "
                         f"создана копия {backup_name}, но файл SQLite не сжат: "
                         f"{result['compaction_error']}"
                     ),
@@ -847,7 +849,8 @@ def admin_system():
             return redirect(url_for(
                 "admin_system",
                 message=(
-                    f"Архив очищен: удалено {removed_news} новостей, "
+                    f"Старый архив удалён: удалено {removed_news} новостей, "
+                    f"сохранены последние {NEWS_ARCHIVE_RETENTION_DAYS} дней, "
                     f"освобождено {freed}. Копия: {backup_name}"
                 ),
             ))
@@ -889,6 +892,7 @@ def admin_system():
         alert_counts=alert_summary(alerts),
         version=PROJECT_VERSION,
         backup_retention=DATABASE_BACKUP_RETENTION,
+        news_retention_days=NEWS_ARCHIVE_RETENTION_DAYS,
         current_user=administrator,
         csrf_token=csrf_token(),
         message=str(request.args.get("message", "")).strip(),

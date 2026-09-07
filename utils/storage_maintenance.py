@@ -4,7 +4,7 @@ import os
 import re
 import shutil
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 class DatabaseMaintenance:
@@ -189,27 +189,81 @@ class DatabaseMaintenance:
         stats["backup_created"] = backup["created"]
         return stats
 
-    def purge_news_archive(self, backup_retention=3, now=None):
-        """Создаёт проверенную копию, удаляет только новости и сжимает базу."""
+    def purge_news_archive(
+        self, backup_retention=3, retention_days=14, now=None,
+    ):
+        """Удаляет старый архив после копии, сохраняя свежую ленту."""
         self._initialize_database()
+        moment = now or datetime.now()
+        try:
+            retention_days = max(1, int(retention_days))
+        except (TypeError, ValueError):
+            retention_days = 14
+        cutoff_date = (moment - timedelta(days=retention_days)).date().isoformat()
         size_before = self._database_storage_size()
         backup = self.create_manual_backup(
             retention=backup_retention,
-            now=now,
+            now=moment,
         )
         tables = ("found_items", "news_items", "article_cache", "news_item_reads")
         removed = {}
+        retained_news = 0
         compaction_error = ""
         with self._lock:
             connection = self._connect()
             try:
                 connection.execute("BEGIN IMMEDIATE")
-                for table in tables:
-                    removed[table] = connection.execute(
+                counts_before = {
+                    table: connection.execute(
                         f"SELECT COUNT(*) FROM {table}"
                     ).fetchone()[0]
-                for table in tables:
-                    connection.execute(f"DELETE FROM {table}")
+                    for table in tables
+                }
+                connection.execute(
+                    """
+                    DELETE FROM news_items
+                    WHERE COALESCE(
+                        date(NULLIF(publication_date, '')),
+                        date(NULLIF(first_seen_at, '')),
+                        date(NULLIF(parsed_date, '')),
+                        date(NULLIF(updated_at, ''))
+                    ) < date(?)
+                    """,
+                    (cutoff_date,),
+                )
+                connection.execute(
+                    """
+                    DELETE FROM article_cache
+                    WHERE normalized_url NOT IN (
+                        SELECT normalized_url FROM news_items
+                        WHERE normalized_url <> ''
+                    )
+                    AND normalized_url NOT IN (
+                        SELECT normalized_url FROM bookmarks
+                        WHERE normalized_url <> ''
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    DELETE FROM news_item_reads
+                    WHERE normalized_url NOT IN (
+                        SELECT normalized_url FROM news_items
+                        WHERE normalized_url <> ''
+                    )
+                    """
+                )
+                counts_after = {
+                    table: connection.execute(
+                        f"SELECT COUNT(*) FROM {table}"
+                    ).fetchone()[0]
+                    for table in tables
+                }
+                removed = {
+                    table: counts_before[table] - counts_after[table]
+                    for table in tables
+                }
+                retained_news = counts_after["news_items"]
                 connection.commit()
             except Exception:
                 connection.rollback()
@@ -234,6 +288,9 @@ class DatabaseMaintenance:
             "size_after": size_after,
             "freed_bytes": max(0, size_before - size_after),
             "compaction_error": compaction_error,
+            "cutoff_date": cutoff_date,
+            "retention_days": retention_days,
+            "retained_news": retained_news,
         }
 
     def _automatic_backup_pattern(self):
