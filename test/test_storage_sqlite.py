@@ -178,6 +178,25 @@ class SQLiteStorageTests(unittest.TestCase):
             self.assertEqual(storage.news_group_counts("government"), (2, 0))
             self.assertEqual(query.call_count, 2)
 
+    def test_news_overview_cache_does_not_leak_between_databases(self):
+        first_database = self.database
+        second_database = first_database.with_name("second-news.db")
+        first_item = {
+            "source": "МЧС",
+            "title": "Материал первой базы",
+            "url": "https://mchs.gov.ru/news/first-database",
+        }
+        self._write_json(self.all_json, [first_item])
+        self._write_json(self.found_json, [])
+        self.assertEqual(storage.news_group_counts("government"), (1, 0))
+
+        with patch.object(storage, "DATABASE_FILE", second_database):
+            self._write_json(self.all_json, [])
+            storage.initialize_database()
+            self.assertEqual(storage.news_group_counts("government"), (0, 0))
+
+        self.assertEqual(storage.news_group_counts("government"), (1, 0))
+
     def test_default_news_page_reuses_cached_total(self):
         items = [
             {

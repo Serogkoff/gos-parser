@@ -291,7 +291,8 @@ def _news_overview_signature():
         row = connection.execute(
             "SELECT value FROM metadata WHERE key = 'news_revision'"
         ).fetchone()
-    return int(row["value"]) if row is not None else 0
+    revision = int(row["value"]) if row is not None else 0
+    return str(DATABASE_FILE.resolve()), revision
 
 
 def _news_group_condition(source_group, source_column="n.source"):
