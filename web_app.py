@@ -2114,11 +2114,33 @@ def article_page():
             if request.referrer and request.host in request.referrer
             else "/"
         )
+    article_source_group = get_source_group(item.get("source", ""))
+    if article_source_group == AGENCIES_GROUP:
+        group_home = "/agencies"
+        group_found = "/agencies/found"
+    elif article_source_group == NEWSPAPERS_GROUP:
+        group_home = "/newspapers"
+        group_found = "/newspapers/found"
+    else:
+        group_home = "/"
+        group_found = "/found"
+    article_mode = (
+        "found"
+        if back_url.startswith(("/found", "/agencies/found", "/newspapers/found"))
+        else "all"
+    )
     return render_template(
         "article.html",
         article=article,
         item=item,
         back_url=back_url,
+        article_mode=article_mode,
+        source_group=article_source_group,
+        source_emblem=SOURCE_EMBLEMS.get(item.get("source", "")),
+        asset_version=PROJECT_VERSION,
+        group_home=group_home,
+        group_found=group_found,
+        current_user=current_user(),
         csrf_token=csrf_token(),
     )
 

@@ -762,6 +762,12 @@ class SQLiteStorageTests(unittest.TestCase):
         finder.assert_called_once_with(item["url"])
         self.assertIn('id="article-back"'.encode(), response.data)
         self.assertIn("window.history.back()".encode(), response.data)
+        self.assertIn('class="article-card"'.encode(), response.data)
+        self.assertIn(
+            b'/static/source-logos/mchs.png?v=2026.08.17.16.53',
+            response.data,
+        )
+        self.assertNotIn("Ключевые факты".encode("utf-8"), response.data)
 
     def test_refresh_replaces_cached_text_and_keeps_old_copy_on_error(self):
         item = {

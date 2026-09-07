@@ -1,63 +1,164 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{article.title}} — Монитор</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{article.title or item.title}} — Монитор</title>
     <style>
-        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45}
-        *{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}
-        a{color:inherit}.shell{width:min(900px,calc(100% - 36px));margin:auto;padding:28px 0 80px}
-        .back{display:inline-flex;gap:8px;color:var(--muted);text-decoration:none}.back:hover{color:var(--coral)}
-        article{margin-top:24px;padding:clamp(24px,5vw,58px);border:1px solid var(--line);border-radius:8px;background:var(--surface)}
-        .meta{display:flex;flex-wrap:wrap;gap:10px;color:var(--muted);font-size:13px}
-        h1{margin:18px 0 30px;font-size:clamp(32px,5vw,54px);line-height:1.05;letter-spacing:-.045em}
-        .body{font-family:Georgia,"Times New Roman",serif;font-size:19px;line-height:1.72}
-        .body p{margin:0 0 1.15em}.notice{padding:18px;border-left:4px solid var(--coral);background:#fff4ee}
-        .actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:26px}
-        .original,.refresh{display:inline-flex;padding:12px 16px;border:1px solid var(--coral);border-radius:6px;color:var(--coral);background:transparent;text-decoration:none;font:600 14px Inter,Arial,sans-serif;cursor:pointer}
-        .cache-note{color:var(--muted);font-size:12px}.refresh-error{margin-top:18px;color:var(--coral);font-size:13px}
+        :root{
+            --paper:#fafaf8;--surface:#fff;--ink:#11110f;--muted:#73736f;
+            --line:#e7e6e1;--coral:#e9362a;--coral-dark:#c92d24
+        }
+        *{box-sizing:border-box}
+        html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--paper)}
+        body{color:var(--ink);font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:14px}
+        a{color:inherit;text-decoration:none}
+        button,input{font:inherit}
+        button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid rgba(233,54,42,.2);outline-offset:2px}
+        .app-layout{height:100vh;display:grid;grid-template-columns:205px minmax(0,1fr);overflow:hidden}
+        .left-rail{
+            height:100vh;min-height:0;padding:28px 18px 44px;display:flex;flex-direction:column;
+            border-right:1px solid var(--line);background:#fdfdfb
+        }
+        .rail-heading{min-height:42px;padding:0 8px;display:flex;align-items:center;gap:11px;font-size:15px;font-weight:720}
+        .rail-logo{width:24px;height:24px;display:grid;place-items:center;border-radius:3px;color:#fff;background:var(--coral)}
+        .rail-logo svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+        .rail-nav{display:grid;gap:7px;margin-top:24px}
+        .rail-link{position:relative;min-height:47px;padding:0 12px;display:flex;align-items:center;gap:12px;border-radius:3px;color:#292925;font-size:13px;font-weight:520}
+        .rail-link:hover{background:#f7f5f1}.rail-link.active{color:var(--coral-dark);background:#fff7f5}
+        .rail-link.active:before{content:"";position:absolute;left:-18px;top:4px;bottom:4px;width:3px;border-radius:0 3px 3px 0;background:var(--coral)}
+        .rail-icon{width:24px;height:24px;display:grid;place-items:center;color:#343430}
+        .rail-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+        .rail-link.active .rail-icon{color:var(--coral)}
+        .rail-profile{margin-top:auto;padding:15px 8px 2px;display:grid;grid-template-columns:40px minmax(0,1fr) 18px;align-items:center;gap:10px;border-top:1px solid var(--line)}
+        .profile-avatar{width:38px;height:38px;display:grid;place-items:center;border-radius:50%;color:#555;background:#efeee9;font-size:18px}
+        .profile-copy{min-width:0;display:grid;gap:3px}.profile-copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+        .profile-copy small{color:var(--muted);font-size:11px}.profile-arrow{color:var(--muted);font-size:15px}
+        .shell{height:100vh;min-width:0;padding:0 22px;display:grid;grid-template-rows:124px minmax(0,1fr);overflow:hidden}
+        .topbar{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:70px 54px;gap:0 24px;align-items:end;border-bottom:1px solid var(--line)}
+        .brand{grid-column:1;grid-row:1;align-self:center;font-family:Georgia,"Times New Roman",serif;font-size:47px;letter-spacing:-.035em}
+        .site-sections{grid-column:1;grid-row:2;height:54px;display:flex;align-items:stretch;gap:42px}
+        .site-section{position:relative;padding:0 0 16px;display:flex;align-items:center;color:#23231f;font-family:Georgia,"Times New Roman",serif;font-size:16px;white-space:nowrap}
+        .site-section:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--coral);transform:scaleX(0)}
+        .site-section.active{color:var(--coral-dark)}.site-section.active:after{transform:scaleX(1)}
+        .clocks{grid-column:2;grid-row:1;align-self:start;padding-top:27px;display:flex}
+        .clock-card{min-width:132px;padding:0 24px;border-left:1px solid var(--line);text-align:center}
+        .clock-card:first-child{border-left:0}.clock-city{font-size:14px}.clock-time{margin-left:7px;font-family:Georgia,"Times New Roman",serif;font-size:19px}
+        .clock-date{display:block;margin-top:7px;color:var(--muted);font-size:12px}
+        .article-tools{grid-column:2;grid-row:2;align-self:stretch;padding:6px 0 10px;display:flex;justify-content:flex-end;gap:10px}
+        .article-search{width:220px;height:42px;padding:0 13px;display:flex;align-items:center;gap:11px;border:1px solid var(--line);border-radius:4px;background:#fff}
+        .article-search svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+        .article-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;font-size:13px}
+        .filter-link{height:42px;min-width:105px;padding:0 14px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);border-radius:4px;background:#fff;font-size:12px}
+        .filter-link:hover{color:var(--coral-dark);border-color:#efb6b0}
+        .article-viewport{min-height:0;padding:14px 0 36px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;-ms-overflow-style:none}
+        .article-viewport::-webkit-scrollbar{display:none}
+        .article-card{min-height:100%;padding:16px 26px 54px;border:1px solid var(--line);border-radius:5px;background:var(--surface)}
+        .back{min-height:38px;display:inline-flex;align-items:center;gap:8px;color:#575752;font-size:12px}
+        .back svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+        .back:hover{color:var(--coral-dark)}
+        .article-header{margin-top:18px;display:flex;align-items:center;gap:18px}
+        .source-emblem{width:58px;height:58px;object-fit:contain}.source-mark{width:54px;height:54px;display:grid;place-items:center;border:1px solid #aaa9a3;border-radius:50%;color:#666;background:#fafaf8;font-family:Georgia,"Times New Roman",serif;font-size:23px}
+        .source-copy{min-width:0;display:grid;gap:5px;font-family:Georgia,"Times New Roman",serif}.source-copy strong{font-size:13px}.source-copy time{font-size:12px;font-variant-numeric:tabular-nums}
+        .header-divider{width:1px;height:48px;margin-left:4px;background:var(--line)}
+        .original{height:42px;padding:0 15px;display:inline-flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:4px;background:#fff;font-size:12px;font-weight:650}
+        .original:hover{color:var(--coral-dark);border-color:#efb6b0}.original svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+        h1{max-width:1000px;margin:28px 0 27px;font-family:Georgia,"Times New Roman",serif;font-size:clamp(34px,3.1vw,48px);line-height:1.08;letter-spacing:-.025em}
+        .body{max-width:920px;font-family:Georgia,"Times New Roman",serif;font-size:17px;line-height:1.68}
+        .body p{margin:0 0 1.18em}.body p:first-child{font-size:18px}.notice{padding:18px;border-left:3px solid var(--coral);background:#fff5f1}
+        .article-footer{max-width:920px;margin-top:34px;padding-top:18px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;border-top:1px solid var(--line)}
+        .refresh{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:4px;color:var(--muted);background:#fff;cursor:pointer;font-size:11px}
+        .refresh:hover{color:var(--coral-dark);border-color:#efb6b0}.cache-note{color:var(--muted);font-size:11px}.refresh-error{max-width:920px;margin-top:18px;color:var(--coral-dark);font-size:12px}
+        @media(max-width:920px){
+            html,body{height:auto;overflow:auto}.app-layout{height:auto;display:block;overflow:visible}.left-rail{display:none}
+            .shell{height:auto;min-height:100vh;padding:0 14px;display:block;overflow:visible}.topbar{grid-template-columns:1fr;grid-template-rows:auto auto auto;padding-top:12px}
+            .brand{grid-row:1;font-size:40px}.clocks{grid-column:1;grid-row:1;justify-self:end;padding-top:9px}.clock-card{min-width:100px;padding:0 10px}.clock-date{display:none}
+            .site-sections{grid-column:1;grid-row:2;gap:26px;overflow-x:auto}.article-tools{grid-column:1;grid-row:3;justify-content:stretch}.article-search{flex:1;width:auto}
+            .article-viewport{padding-top:14px;overflow:visible}.article-card{padding:14px 18px 38px}.article-header{align-items:flex-start;flex-wrap:wrap}.header-divider{display:none}
+            h1{font-size:34px}.body{font-size:16px}.body p:first-child{font-size:17px}
+        }
+        @media(max-width:560px){.clocks{display:none}.site-sections{gap:22px}.filter-link{min-width:92px}.article-header{gap:12px}.source-emblem{width:50px;height:50px}.source-mark{width:48px;height:48px}.original{width:100%;justify-content:center}h1{font-size:30px}}
     </style>
 </head>
-<body><main class="shell">
-    <a class="back" id="article-back" href="{{back_url}}">← Вернуться к ленте</a>
-    <article>
-        <div class="meta"><span>{{item.source}}</span><span>•</span><time>{% if item.date %}{{item.publication_date_display or item.date}}{% if item.parser_added_time %} {{item.parser_added_time}}{% endif %}{% else %}{{item.parsed_date or ''}}{% endif %}</time></div>
-        <h1>{{article.title or item.title}}</h1>
-        <div class="body">
-            {% if article.paragraphs %}
-                {% for paragraph in article.paragraphs %}<p>{{paragraph}}</p>{% endfor %}
-            {% else %}<p class="notice">{{article.error}}</p>{% endif %}
-        </div>
-        {% if article.refresh_error %}<div class="refresh-error">{{article.refresh_error}}</div>{% endif %}
-        <div class="actions">
-            <a class="original" href="{{item.url}}" target="_blank" rel="noopener noreferrer">Открыть оригинал ↗</a>
-            {% if article.paragraphs %}
-            <form method="post" action="/article">
-                <input type="hidden" name="csrf_token" value="{{csrf_token}}">
-                <input type="hidden" name="url" value="{{item.url}}">
-                <input type="hidden" name="back_url" value="{{back_url}}">
-                <button class="refresh" type="submit">Обновить текст</button>
-            </form>
+<body>
+<div class="app-layout">
+    <aside class="left-rail" aria-label="Главное меню">
+        <a class="rail-heading" href="/">
+            <span class="rail-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 10 8-6 8 6v9H4Z"/><path d="M9 19v-6h6v6"/></svg></span>
+            <span>Лента новостей</span>
+        </a>
+        <nav class="rail-nav">
+            <a class="rail-link {{'active' if article_mode == 'all' else ''}}" href="{{group_home}}">
+                <span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span>Лента новостей</span>
+            </a>
+            <a class="rail-link {{'active' if article_mode == 'found' else ''}}" href="{{group_found}}">
+                <span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/></svg></span><span>Совпадения</span>
+            </a>
+            <a class="rail-link" href="/collections"><span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2-2h3l2 2h4v10.75A1.75 1.75 0 0 1 18.75 20H5.25a1.75 1.75 0 0 1-1.75-1.75Z"/><path d="M3.5 10h17"/></svg></span><span>Подборки</span></a>
+            {% if current_user.role == 'admin' %}
+            <a class="rail-link" href="/notes"><span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span><span>Заметки</span></a>
+            <a class="rail-link" href="/admin/users"><span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2"/><path d="M3 20v-2a5 5 0 0 1 10 0v2M14 15a4 4 0 0 1 7 3v2"/></svg></span><span>Пользователи</span></a>
+            <a class="rail-link" href="/admin/system"><span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-7"/></svg></span><span>Статус системы</span></a>
             {% endif %}
-            {% if article.cached_at %}<span class="cache-note">Сохранено локально {{article.cached_at.replace('T', ' ')}}</span>{% endif %}
+        </nav>
+        <a class="rail-profile" href="/account">
+            <span class="profile-avatar">●</span><span class="profile-copy"><strong>{{current_user.username}}</strong><small>{{'Администратор' if current_user.role == 'admin' else 'Пользователь'}}</small></span><span class="profile-arrow">⌄</span>
+        </a>
+    </aside>
+    <main class="shell">
+        <header class="topbar">
+            <a class="brand" href="/">Монитор</a>
+            <nav class="site-sections" aria-label="Основные разделы">
+                <a class="site-section {{'active' if source_group == 'government' else ''}}" href="/">Госструктуры</a>
+                <a class="site-section {{'active' if source_group == 'agencies' else ''}}" href="/agencies">Информагентства</a>
+                <a class="site-section {{'active' if source_group == 'newspapers' else ''}}" href="/newspapers">Газеты</a>
+            </nav>
+            <div class="clocks">
+                <div class="clock-card" data-clock="Europe/Moscow"><span class="clock-city">Москва</span><time class="clock-time">--:--</time><time class="clock-date">--.--.----</time></div>
+                <div class="clock-card" data-clock="Asia/Tokyo"><span class="clock-city">Токио</span><time class="clock-time">--:--</time><time class="clock-date">--.--.----</time></div>
+            </div>
+            <div class="article-tools">
+                <form class="article-search" method="get" action="{{group_home}}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/></svg><input name="q" placeholder="Поиск" autocomplete="off"></form>
+                <a class="filter-link" href="{{group_found}}">☷ Фильтры</a>
+            </div>
+        </header>
+        <div class="article-viewport">
+            <article class="article-card">
+                <a class="back" id="article-back" href="{{back_url}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/><path d="M9 12h10"/></svg>Назад</a>
+                <div class="article-header">
+                    {% if source_emblem %}
+                    <img class="source-emblem" src="{{url_for('static', filename='source-logos/' ~ source_emblem)}}?v={{asset_version|urlencode}}" width="58" height="58" alt="Эмблема: {{item.source}}">
+                    {% else %}<span class="source-mark" aria-hidden="true">{{(item.source or '?')[:1]}}</span>{% endif %}
+                    <div class="source-copy"><strong>{{item.source}}</strong><time>{% if item.date %}{{item.publication_date_display or item.date}}{% if item.parser_added_time %} {{item.parser_added_time}}{% endif %}{% else %}{{item.parsed_date or ''}}{% endif %}</time></div>
+                    <span class="header-divider" aria-hidden="true"></span>
+                    <a class="original" href="{{item.url}}" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8"/><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>Открыть оригинал</a>
+                </div>
+                <h1>{{article.title or item.title}}</h1>
+                <div class="body">{% if article.paragraphs %}{% for paragraph in article.paragraphs %}<p>{{paragraph}}</p>{% endfor %}{% else %}<p class="notice">{{article.error}}</p>{% endif %}</div>
+                {% if article.refresh_error %}<div class="refresh-error">{{article.refresh_error}}</div>{% endif %}
+                {% if article.paragraphs or article.cached_at %}<footer class="article-footer">
+                    {% if article.paragraphs %}<form method="post" action="/article"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="url" value="{{item.url}}"><input type="hidden" name="back_url" value="{{back_url}}"><button class="refresh" type="submit">Обновить текст</button></form>{% endif %}
+                    {% if article.cached_at %}<span class="cache-note">Сохранено локально {{article.cached_at.replace('T', ' ')}}</span>{% endif %}
+                </footer>{% endif %}
+            </article>
         </div>
-    </article>
-</main>
+    </main>
+</div>
 <script>
     const articleBack = document.getElementById('article-back');
     articleBack.addEventListener('click', event => {
-        if(
-            event.button !== 0 || event.ctrlKey || event.metaKey ||
-            event.shiftKey || event.altKey || window.history.length < 2
-        ) return;
-        try{
-            if(!document.referrer || new URL(document.referrer).origin !== window.location.origin) return;
-        }catch(error){
-            return;
-        }
-        event.preventDefault();
-        window.history.back();
+        if(event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || window.history.length < 2) return;
+        try{if(!document.referrer || new URL(document.referrer).origin !== window.location.origin) return;}catch(error){return;}
+        event.preventDefault();window.history.back();
     });
+    function updateClocks(){
+        document.querySelectorAll('[data-clock]').forEach(clock => {
+            const now = new Date();
+            clock.querySelector('.clock-time').textContent = new Intl.DateTimeFormat('ru-RU',{timeZone:clock.dataset.clock,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now);
+            clock.querySelector('.clock-date').textContent = new Intl.DateTimeFormat('ru-RU',{timeZone:clock.dataset.clock,day:'2-digit',month:'2-digit',year:'numeric'}).format(now);
+        });
+    }
+    updateClocks();setInterval(updateClocks,1000);
 </script>
-</body></html>
+</body>
+</html>

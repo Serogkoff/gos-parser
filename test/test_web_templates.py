@@ -77,6 +77,29 @@ class WebTemplateTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)
 
+    def test_article_template_matches_editorial_feed_design(self):
+        template_path = Path(web_app.app.template_folder) / "article.html"
+        template = template_path.read_text(encoding="utf-8")
+
+        for marker in (
+            'class="app-layout"',
+            'class="left-rail"',
+            'class="topbar"',
+            'class="article-card"',
+            'class="source-emblem"',
+            'class="original"',
+            '>Открыть оригинал</a>',
+            'id="article-back"',
+            '>Назад</a>',
+            'class="article-viewport"',
+            'article-viewport::-webkit-scrollbar{display:none}',
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, template)
+
+        self.assertNotIn("Ключевые факты", template)
+        self.assertNotIn("<span>Настройки</span>", template)
+
 
 if __name__ == "__main__":
     unittest.main()
