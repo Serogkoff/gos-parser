@@ -122,6 +122,17 @@ class AuthenticationTests(unittest.TestCase):
         self.assertIn("Cookie", feed.headers["Vary"])
         self.assertEqual(account.headers["Cache-Control"], "no-store")
 
+    def test_versioned_source_logos_use_long_public_cache(self):
+        response = self.client.get("/static/source-logos/government.png")
+        try:
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.headers["Cache-Control"],
+                "public, max-age=31536000, immutable",
+            )
+        finally:
+            response.close()
+
     def test_public_mode_rejects_unknown_host_and_remote_setup(self):
         web_app.app.config["ALLOWED_HOSTS"] = {"news-monitor.ru"}
 

@@ -356,7 +356,13 @@ def add_security_headers(response):
         "script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline'",
     )
-    if request.endpoint != "static":
+    if request.endpoint == "static":
+        static_filename = str((request.view_args or {}).get("filename", ""))
+        if static_filename.startswith("source-logos/"):
+            response.headers["Cache-Control"] = (
+                "public, max-age=31536000, immutable"
+            )
+    else:
         fast_navigation_response = (
             request.method == "GET"
             and request.endpoint in FAST_NAVIGATION_ENDPOINTS
@@ -1758,6 +1764,7 @@ def render_news_page(
         source_group=source_group,
         source_emblems=SOURCE_EMBLEMS,
         defense_source=DEFENSE_SOURCE,
+        asset_version=PROJECT_VERSION,
         group_title=group_title,
         group_eyebrow=group_eyebrow,
         group_home=group_home,

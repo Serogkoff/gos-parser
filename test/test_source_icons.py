@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from utils.source_groups import GOVERNMENT_SOURCES
 from utils.source_icons import DEFENSE_SOURCE, SOURCE_EMBLEMS
@@ -18,11 +19,14 @@ class SourceIconTests(unittest.TestCase):
         self.assertIn(DEFENSE_SOURCE, SOURCE_EMBLEMS)
         self.assertEqual(DEFENSE_SOURCE, "Минобороны РФ")
 
-    def test_sprite_coordinates_stay_inside_the_grid(self):
-        for source, (column, row) in SOURCE_EMBLEMS.items():
+    def test_every_configured_emblem_file_exists(self):
+        logo_dir = Path(__file__).parents[1] / "static" / "source-logos"
+        for source, filename in SOURCE_EMBLEMS.items():
             with self.subTest(source=source):
-                self.assertIn(column, range(6))
-                self.assertIn(row, range(5))
+                self.assertTrue((logo_dir / filename).is_file())
+
+    def test_shared_emblems_reduce_the_set_to_27_files(self):
+        self.assertEqual(len(set(SOURCE_EMBLEMS.values())), 27)
 
 
 if __name__ == "__main__":

@@ -414,20 +414,9 @@
             color:#666661;background:#fafaf8;font-family:Georgia,"Times New Roman",serif;
             font-size:20px;font-weight:400
         }
-        .source-emblem{
-            display:block;background-image:url("/static/source-emblems.png");
-            background-repeat:no-repeat
-        }
+        .source-emblem{display:block;object-fit:contain;object-position:center}
         .source-emblem-main{
-            position:absolute;left:0;top:0;width:48px;height:44px;
-            background-size:330px 220px;
-            background-position:
-                calc(var(--emblem-x) * -55px - 3px)
-                calc(var(--emblem-y) * -44px)
-        }
-        .source-emblem-defense{
-            background-image:url("/static/source-emblem-defense.png");
-            background-position:center;background-size:contain
+            position:absolute;left:0;top:0;width:48px;height:48px
         }
         .news-card h3{
             grid-column:2;margin:0;max-width:none;color:#181816;
@@ -496,11 +485,7 @@
         }
         .source-row.active .check{color:#fff;background:var(--coral)}
         .source-emblem-compact{
-            position:relative;width:24px;height:24px;
-            background-size:180px 120px;
-            background-position:
-                calc(var(--emblem-x) * -30px - 3px)
-                calc(var(--emblem-y) * -24px)
+            position:relative;width:24px;height:24px
         }
         .source-row.active .source-emblem-compact:after{
             content:"✓";position:absolute;right:-3px;bottom:-2px;width:11px;height:11px;
@@ -690,9 +675,10 @@
                     <div class="meta">
                         {% set emblem = source_emblems.get(item.source) if source_group == 'government' else none %}
                         {% if emblem %}
-                        <span class="source-emblem source-emblem-main{{' source-emblem-defense' if item.source == defense_source else ''}}"
-                              style="--emblem-x:{{emblem[0]}};--emblem-y:{{emblem[1]}}"
-                              role="img" aria-label="Эмблема: {{item.source}}"></span>
+                        <img class="source-emblem source-emblem-main"
+                             src="{{url_for('static', filename='source-logos/' ~ emblem)}}?v={{asset_version|urlencode}}"
+                             width="48" height="48" decoding="async"
+                             alt="Эмблема: {{item.source}}">
                         {% else %}
                         <span class="source-mark" aria-hidden="true">{{(item.source or '?')[:1]}}</span>
                         {% endif %}
@@ -773,9 +759,10 @@
                         <button class="source-link" type="button" data-source-filter="{{src}}">
                             {% set emblem = source_emblems.get(src) if source_group == 'government' else none %}
                             {% if emblem %}
-                            <span class="source-emblem source-emblem-compact{{' source-emblem-defense' if src == defense_source else ''}}"
-                                  style="--emblem-x:{{emblem[0]}};--emblem-y:{{emblem[1]}}"
-                                  aria-hidden="true"></span>
+                            <img class="source-emblem source-emblem-compact"
+                                 src="{{url_for('static', filename='source-logos/' ~ emblem)}}?v={{asset_version|urlencode}}"
+                                 width="24" height="24" loading="lazy" decoding="async"
+                                 alt="">
                             {% else %}
                             <span class="check">{{'✓' if src in source_filters else (src or '?')[:1]}}</span>
                             {% endif %}
