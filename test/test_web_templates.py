@@ -47,6 +47,9 @@ class WebTemplateTests(unittest.TestCase):
             '@media(min-width:921px)',
             'grid-template-rows:124px minmax(0,1fr)',
             'overscroll-behavior:contain',
+            'scrollbar-width:none',
+            '.feed::-webkit-scrollbar,.sidebar::-webkit-scrollbar{display:none}',
+            '.rail-bottom{margin-top:auto;padding-bottom:24px',
             '<circle cx="10.5" cy="10.5" r="6.5"/>',
             'M3.5 7.5h6l2-2h3l2 2h4',
         ):

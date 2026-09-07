@@ -322,7 +322,7 @@
         .rail-icon svg,.rail-logo svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
         .rail-logo svg{width:15px;height:15px;stroke-width:2}
         .rail-link.active .rail-icon{color:var(--coral)}
-        .rail-bottom{margin-top:auto;display:grid;gap:8px}
+        .rail-bottom{margin-top:auto;padding-bottom:24px;display:grid;gap:8px}
         .rail-profile{
             margin-top:4px;padding:15px 8px 2px;display:grid;
             grid-template-columns:40px minmax(0,1fr) 18px;align-items:center;
@@ -524,6 +524,7 @@
         @media(min-width:921px){
             html,body{height:100%;overflow:hidden}
             .app-layout{height:100vh;min-height:0;overflow:hidden}
+            .left-rail{min-height:0}
             .shell{
                 height:100vh;min-height:0;padding-bottom:0;display:grid;
                 grid-template-rows:124px minmax(0,1fr);overflow:hidden
@@ -531,12 +532,14 @@
             .content-grid{height:100%;min-height:0;align-items:stretch;overflow:hidden}
             .feed{
                 height:calc(100% - 14px);min-height:0;overflow-y:auto;
-                overscroll-behavior:contain;scrollbar-gutter:stable
+                overscroll-behavior:contain;scrollbar-width:none;-ms-overflow-style:none
             }
             .sidebar{
                 height:calc(100% - 14px);min-height:0;align-content:start;
-                overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin
+                overflow-y:auto;overscroll-behavior:contain;
+                scrollbar-width:none;-ms-overflow-style:none
             }
+            .feed::-webkit-scrollbar,.sidebar::-webkit-scrollbar{display:none}
         }
 
         @media(max-width:1180px){
