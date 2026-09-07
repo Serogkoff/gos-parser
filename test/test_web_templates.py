@@ -48,6 +48,20 @@ class WebTemplateTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)
 
+    def test_system_template_keeps_storage_controls_explicit(self):
+        template_path = Path(web_app.app.template_folder) / "admin_system.html"
+        template = template_path.read_text(encoding="utf-8")
+
+        for marker in (
+            "контрольного порога",
+            "не больше {{backup_retention}} копий всего",
+            'name="action" value="purge_news_archive"',
+            "ОЧИСТИТЬ АРХИВ",
+            "Пользователи, избранное, подборки, заметки",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, template)
+
 
 if __name__ == "__main__":
     unittest.main()

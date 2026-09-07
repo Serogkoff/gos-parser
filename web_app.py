@@ -20,7 +20,12 @@ from flask import (
     session,
     url_for,
 )
-from config import PROJECT_VERSION
+from config import (
+    DATABASE_BACKUP_RETENTION,
+    DATABASE_SIZE_LIMIT_BYTES,
+    DATABASE_SIZE_LIMIT_GB,
+    PROJECT_VERSION,
+)
 from utils.auth import environment_value, load_secret_key
 from utils.article_reader import extract_article, yahoo_article_is_polluted
 from utils.diagnostics import alert_summary, source_alerts, system_alerts
@@ -114,6 +119,7 @@ from utils.storage import (
     source_incident_statistics,
     source_reliability_statistics,
     database_stats,
+    purge_news_archive,
     update_bookmark,
 )
 
@@ -790,26 +796,75 @@ def admin_system():
         if not csrf_is_valid():
             abort(400)
         action = str(request.form.get("action", "")).strip()
-        if action != "backup":
-            return redirect(url_for("admin_system", error="Неизвестное действие"))
-        try:
-            created = create_manual_backup(retention=10)
-        except Exception as backup_error:
+        if action == "backup":
+            try:
+                created = create_manual_backup(
+                    retention=DATABASE_BACKUP_RETENTION
+                )
+            except Exception as backup_error:
+                return redirect(url_for(
+                    "admin_system",
+                    error=(
+                        "Не удалось создать резервную копию: "
+                        f"{type(backup_error).__name__}: {backup_error}"
+                    ),
+                ))
             return redirect(url_for(
                 "admin_system",
-                error=(
-                    "Не удалось создать резервную копию: "
-                    f"{type(backup_error).__name__}: {backup_error}"
+                message=f"Создана резервная копия {created['name']}",
+            ))
+        if action == "purge_news_archive":
+            confirmation = str(request.form.get("confirmation", "")).strip()
+            if confirmation != "ОЧИСТИТЬ АРХИВ":
+                return redirect(url_for(
+                    "admin_system",
+                    error="Для очистки введите: ОЧИСТИТЬ АРХИВ",
+                ))
+            try:
+                result = purge_news_archive(
+                    backup_retention=DATABASE_BACKUP_RETENTION
+                )
+            except Exception as purge_error:
+                return redirect(url_for(
+                    "admin_system",
+                    error=(
+                        "Не удалось очистить архив: "
+                        f"{type(purge_error).__name__}: {purge_error}"
+                    ),
+                ))
+            removed_news = result["removed"].get("news_items", 0)
+            freed = _format_file_size(result.get("freed_bytes", 0))
+            backup_name = result["backup"]["name"]
+            if result.get("compaction_error"):
+                return redirect(url_for(
+                    "admin_system",
+                    error=(
+                        f"Архив очищен, удалено {removed_news} новостей и "
+                        f"создана копия {backup_name}, но файл SQLite не сжат: "
+                        f"{result['compaction_error']}"
+                    ),
+                ))
+            return redirect(url_for(
+                "admin_system",
+                message=(
+                    f"Архив очищен: удалено {removed_news} новостей, "
+                    f"освобождено {freed}. Копия: {backup_name}"
                 ),
             ))
-        return redirect(url_for(
-            "admin_system",
-            message=f"Создана резервная копия {created['name']}",
-        ))
+        return redirect(url_for("admin_system", error="Неизвестное действие"))
 
     database = database_stats()
     prepared_database = dict(database)
     prepared_database["size"] = _format_file_size(database.get("size_bytes", 0))
+    prepared_database["limit"] = _format_file_size(DATABASE_SIZE_LIMIT_BYTES)
+    prepared_database["limit_gb"] = DATABASE_SIZE_LIMIT_GB
+    prepared_database["usage_percent"] = min(
+        100,
+        round(database.get("size_bytes", 0) / DATABASE_SIZE_LIMIT_BYTES * 100, 1),
+    )
+    prepared_database["near_limit"] = (
+        database.get("size_bytes", 0) >= DATABASE_SIZE_LIMIT_BYTES * 0.8
+    )
     backups = list_database_backups()
     prepared_backups = []
     for item in backups:
@@ -818,7 +873,11 @@ def admin_system():
         prepared_backups.append(prepared)
     log = error_log_stats()
     log["size"] = _format_file_size(log.get("size_bytes", 0))
-    alerts = system_alerts(database, backups)
+    alerts = system_alerts(
+        database,
+        backups,
+        size_limit_bytes=DATABASE_SIZE_LIMIT_BYTES,
+    )
 
     return render_template(
         "admin_system.html",
@@ -829,6 +888,7 @@ def admin_system():
         alerts=alerts,
         alert_counts=alert_summary(alerts),
         version=PROJECT_VERSION,
+        backup_retention=DATABASE_BACKUP_RETENTION,
         current_user=administrator,
         csrf_token=csrf_token(),
         message=str(request.args.get("message", "")).strip(),

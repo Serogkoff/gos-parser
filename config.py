@@ -1,4 +1,4 @@
-PROJECT_VERSION = "2026.08.17.16.48"
+PROJECT_VERSION = "2026.08.17.16.49"
 
 KEYWORDS = [
     "Курил", "Сахалин", "Владивосток", "Хабаровск", "Камчатка", "Дальний Восток",
@@ -46,5 +46,8 @@ SOURCE_TIMEOUT_OVERRIDES = {
 # После серии пустых проверок Киодо увеличивает паузу до одного часа.
 KYODO_MAX_BACKOFF_SECONDS = 3600
 
-# SQLite: один автоматический снимок в сутки, храним последнюю неделю.
-DATABASE_BACKUP_RETENTION = 7
+# SQLite: автоматические и ручные снимки используют один общий лимит.
+DATABASE_BACKUP_RETENTION = 3
+# Администратор получает предупреждение, но очистка запускается только вручную.
+DATABASE_SIZE_LIMIT_GB = 30
+DATABASE_SIZE_LIMIT_BYTES = DATABASE_SIZE_LIMIT_GB * 1024 ** 3

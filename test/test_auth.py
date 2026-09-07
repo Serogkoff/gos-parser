@@ -436,8 +436,48 @@ class AuthenticationTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 302)
-        create_backup.assert_called_once_with(retention=10)
+        create_backup.assert_called_once_with(retention=3)
         self.assertIn("news-manual-test.db", response.headers["Location"])
+
+    def test_archive_cleanup_requires_confirmation_and_uses_safe_retention(self):
+        self._create_first_admin()
+        page = self.client.get("/admin/system")
+        token = self._csrf(page)
+
+        with patch.object(web_app, "purge_news_archive") as purge:
+            rejected = self.client.post(
+                "/admin/system",
+                data={
+                    "csrf_token": token,
+                    "action": "purge_news_archive",
+                    "confirmation": "очистить",
+                },
+            )
+
+        self.assertEqual(rejected.status_code, 302)
+        purge.assert_not_called()
+
+        with patch.object(
+            web_app,
+            "purge_news_archive",
+            return_value={
+                "removed": {"news_items": 125},
+                "freed_bytes": 1024 ** 3,
+                "backup": {"name": "news-manual-safe.db"},
+            },
+        ) as purge:
+            accepted = self.client.post(
+                "/admin/system",
+                data={
+                    "csrf_token": token,
+                    "action": "purge_news_archive",
+                    "confirmation": "ОЧИСТИТЬ АРХИВ",
+                },
+            )
+
+        self.assertEqual(accepted.status_code, 302)
+        purge.assert_called_once_with(backup_retention=3)
+        self.assertIn("news-manual-safe.db", accepted.headers["Location"])
 
     def test_admin_can_open_incident_history(self):
         self._create_first_admin()

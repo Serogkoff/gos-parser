@@ -2,11 +2,14 @@
 
 import os
 import re
+import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 class DatabaseMaintenance:
+    _BACKUP_FREE_SPACE_RESERVE = 1024 ** 3
+
     def __init__(
         self, initialize_database, connect, lock, database_file,
         backup_dir, json_migration_key, logger,
@@ -36,7 +39,7 @@ class DatabaseMaintenance:
                 "SELECT COUNT(*) FROM article_cache"
             ).fetchone()[0]
             integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
-            backups = self._list_automatic_backups()
+            backups = self._list_managed_backups()
             migration = connection.execute(
                 "SELECT value FROM metadata WHERE key = ?",
                 (self._json_migration_key,),
@@ -47,9 +50,7 @@ class DatabaseMaintenance:
                 "cached_articles": cached_articles,
                 "integrity": integrity,
                 "path": str(self._database_file()),
-                "size_bytes": (
-                    self._database_file().stat().st_size if self._database_file().exists() else 0
-                ),
+                "size_bytes": self._database_storage_size(),
                 "journal_mode": connection.execute(
                     "PRAGMA journal_mode"
                 ).fetchone()[0],
@@ -99,7 +100,7 @@ class DatabaseMaintenance:
                     )
         return destination
 
-    def ensure_daily_backup(self, retention=7, now=None):
+    def ensure_daily_backup(self, retention=3, now=None):
         """
         Создаёт не больше одной автоматической копии в день.
 
@@ -114,24 +115,38 @@ class DatabaseMaintenance:
         created = False
         with self._lock:
             if not destination.exists():
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                removed = self._remove_old_managed_backups(
+                    self._validated_retention(retention) - 1
+                )
+                self._ensure_backup_space(destination.parent)
                 self.backup_database(destination)
                 created = True
                 self._logger.info(f"Создана резервная копия SQLite: {destination.name}")
-            removed = self._remove_old_backups(retention)
+            else:
+                removed = []
+            removed.extend(self._remove_old_managed_backups(retention))
         return {
             "created": created,
             "path": str(destination),
             "removed": [str(path) for path in removed],
         }
 
-    def create_manual_backup(self, retention=10, now=None):
-        """Создаёт подписанную ручную копию и оставляет последние снимки."""
+    def create_manual_backup(self, retention=3, now=None):
+        """Создаёт ручную копию в пределах общего лимита снимков."""
         moment = now or datetime.now()
         destination = self._backup_dir() / (
             f"{self._database_file().stem}-manual-{moment:%Y-%m-%d_%H-%M-%S-%f}.db"
         )
-        self.backup_database(destination)
-        removed = self._remove_old_manual_backups(retention)
+        with self._lock:
+            self._initialize_database()
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            removed = self._remove_old_managed_backups(
+                self._validated_retention(retention) - 1
+            )
+            self._ensure_backup_space(destination.parent)
+            self.backup_database(destination)
+            removed.extend(self._remove_old_managed_backups(retention))
         self._logger.info(f"Создана ручная резервная копия SQLite: {destination.name}")
         return {
             "path": str(destination),
@@ -162,7 +177,7 @@ class DatabaseMaintenance:
             })
         return sorted(result, key=lambda item: item["modified_at"], reverse=True)
 
-    def prepare_database(self, retention=7):
+    def prepare_database(self, retention=3):
         """Проверяет рабочую базу и создаёт ежедневную резервную копию."""
         stats = self.database_stats()
         if stats["integrity"] != "ok":
@@ -173,6 +188,53 @@ class DatabaseMaintenance:
         stats = self.database_stats()
         stats["backup_created"] = backup["created"]
         return stats
+
+    def purge_news_archive(self, backup_retention=3, now=None):
+        """Создаёт проверенную копию, удаляет только новости и сжимает базу."""
+        self._initialize_database()
+        size_before = self._database_storage_size()
+        backup = self.create_manual_backup(
+            retention=backup_retention,
+            now=now,
+        )
+        tables = ("found_items", "news_items", "article_cache", "news_item_reads")
+        removed = {}
+        compaction_error = ""
+        with self._lock:
+            connection = self._connect()
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                for table in tables:
+                    removed[table] = connection.execute(
+                        f"SELECT COUNT(*) FROM {table}"
+                    ).fetchone()[0]
+                for table in tables:
+                    connection.execute(f"DELETE FROM {table}")
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+            try:
+                connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                connection.execute("VACUUM")
+                connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except sqlite3.Error as error:
+                compaction_error = str(error)
+                self._logger.warning(
+                    "Новостной архив удалён, но SQLite не удалось сжать: "
+                    f"{error}"
+                )
+            finally:
+                connection.close()
+        size_after = self._database_storage_size()
+        return {
+            "backup": backup,
+            "removed": removed,
+            "size_before": size_before,
+            "size_after": size_after,
+            "freed_bytes": max(0, size_before - size_after),
+            "compaction_error": compaction_error,
+        }
 
     def _automatic_backup_pattern(self):
         return re.compile(
@@ -189,11 +251,65 @@ class DatabaseMaintenance:
             if path.is_file() and pattern.fullmatch(path.name)
         )
 
+    def _list_managed_backups(self):
+        """Возвращает снимки этой базы в фактическом порядке создания."""
+        if not self._backup_dir().exists():
+            return []
+        automatic = self._automatic_backup_pattern()
+        manual = re.compile(
+            rf"^{re.escape(self._database_file().stem)}-manual-.*\.db$"
+        )
+        backups = [
+            path for path in self._backup_dir().iterdir()
+            if path.is_file()
+            and (automatic.fullmatch(path.name) or manual.fullmatch(path.name))
+        ]
+        return sorted(backups, key=lambda path: (path.stat().st_mtime_ns, path.name))
+
+    @staticmethod
+    def _validated_retention(retention):
+        try:
+            return max(1, int(retention))
+        except (TypeError, ValueError):
+            return 3
+
+    def _remove_old_managed_backups(self, retention):
+        try:
+            retention = max(0, int(retention))
+        except (TypeError, ValueError):
+            retention = 3
+        backups = self._list_managed_backups()
+        excess = max(0, len(backups) - retention)
+        removed = []
+        for path in backups[:excess]:
+            path.unlink()
+            removed.append(path)
+            self._logger.info(f"Удалена старая резервная копия SQLite: {path.name}")
+        return removed
+
+    def _database_storage_size(self):
+        database = self._database_file()
+        candidates = (
+            database,
+            Path(f"{database}-wal"),
+            Path(f"{database}-shm"),
+        )
+        return sum(path.stat().st_size for path in candidates if path.exists())
+
+    def _ensure_backup_space(self, destination_parent):
+        free = shutil.disk_usage(destination_parent).free
+        required = self._database_storage_size() + self._BACKUP_FREE_SPACE_RESERVE
+        if free < required:
+            raise OSError(
+                "недостаточно свободного места для проверенной резервной копии "
+                f"(нужно не менее {required} байт, свободно {free})"
+            )
+
     def _remove_old_backups(self, retention):
         try:
             retention = max(1, int(retention))
         except (TypeError, ValueError):
-            retention = 7
+            retention = 3
         backups = self._list_automatic_backups()
         removed = []
         for path in backups[:-retention]:
@@ -206,7 +322,7 @@ class DatabaseMaintenance:
         try:
             retention = max(1, int(retention))
         except (TypeError, ValueError):
-            retention = 10
+            retention = 3
         if not self._backup_dir().exists():
             return []
         backups = sorted(

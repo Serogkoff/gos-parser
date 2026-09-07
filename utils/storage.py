@@ -687,12 +687,12 @@ def backup_database(destination=None):
     return _DATABASE_MAINTENANCE.backup_database(destination)
 
 
-def ensure_daily_backup(retention=7, now=None):
+def ensure_daily_backup(retention=3, now=None):
     """Создаёт не больше одной автоматической копии в день."""
     return _DATABASE_MAINTENANCE.ensure_daily_backup(retention, now)
 
 
-def create_manual_backup(retention=10, now=None):
+def create_manual_backup(retention=3, now=None):
     """Создаёт подписанную ручную копию и оставляет последние снимки."""
     return _DATABASE_MAINTENANCE.create_manual_backup(retention, now)
 
@@ -702,9 +702,14 @@ def list_database_backups():
     return _DATABASE_MAINTENANCE.list_database_backups()
 
 
-def prepare_database(retention=7):
+def prepare_database(retention=3):
     """Проверяет рабочую базу и создаёт ежедневную резервную копию."""
     return _DATABASE_MAINTENANCE.prepare_database(retention)
+
+
+def purge_news_archive(backup_retention=3, now=None):
+    """Очищает архив новостей только после создания проверенной копии."""
+    return _DATABASE_MAINTENANCE.purge_news_archive(backup_retention, now)
 
 
 def _automatic_backup_pattern():

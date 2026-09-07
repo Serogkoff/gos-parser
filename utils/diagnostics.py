@@ -139,7 +139,7 @@ def source_alerts(sources, now=None):
     return _sorted(alerts)
 
 
-def system_alerts(database, backups, now=None):
+def system_alerts(database, backups, now=None, size_limit_bytes=None):
     """Проверяет целостность базы и актуальность резервной копии."""
     moment = now or datetime.now()
     alerts = []
@@ -160,6 +160,28 @@ def system_alerts(database, backups, now=None):
             "SQLite",
             "Миграция JSON не подтверждена",
             "Проверьте импорт старой базы перед удалением JSON-файлов.",
+        ))
+
+    try:
+        database_size = max(0, int(database.get("size_bytes", 0)))
+        size_limit = max(0, int(size_limit_bytes or 0))
+    except (TypeError, ValueError):
+        database_size = size_limit = 0
+    if size_limit and database_size >= size_limit:
+        alerts.append(_alert(
+            "critical",
+            "database-size-limit",
+            "SQLite",
+            "База достигла порога 30 ГБ",
+            "Автоматического удаления нет. Создайте копию и запустите очистку архива вручную.",
+        ))
+    elif size_limit and database_size >= size_limit * 0.8:
+        alerts.append(_alert(
+            "warning",
+            "database-size-warning",
+            "SQLite",
+            "База приближается к порогу 30 ГБ",
+            "Запланируйте ручную очистку новостного архива.",
         ))
 
     backup_dates = [

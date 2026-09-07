@@ -511,6 +511,72 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertTrue(Path(latest["path"]).exists())
         self.assertEqual(len(latest["removed"]), 1)
 
+    def test_daily_and_manual_backups_share_one_total_limit(self):
+        self._write_json(self.all_json, [])
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+
+        oldest = storage.ensure_daily_backup(
+            retention=3,
+            now=datetime(2026, 8, 11, 8, 0),
+        )
+        storage.ensure_daily_backup(
+            retention=3,
+            now=datetime(2026, 8, 12, 8, 0),
+        )
+        storage.create_manual_backup(
+            retention=3,
+            now=datetime(2026, 8, 12, 12, 0),
+        )
+        latest = storage.create_manual_backup(
+            retention=3,
+            now=datetime(2026, 8, 13, 12, 0),
+        )
+
+        backups = storage.list_database_backups()
+        self.assertEqual(len(backups), 3)
+        self.assertFalse(Path(oldest["path"]).exists())
+        self.assertTrue(Path(latest["path"]).exists())
+
+    def test_archive_cleanup_preserves_accounts_bookmarks_and_notes(self):
+        item = {
+            "source": "МЧС",
+            "title": "Материал перед очисткой",
+            "url": "https://mchs.gov.ru/news/archive-cleanup",
+            "date": "2026-08-17",
+        }
+        self._write_json(self.all_json, [item])
+        self._write_json(self.found_json, [item])
+        user = storage.create_user("archivist", "safe-password-2026")
+        folder = storage.create_bookmark_folder(user["id"], "Важное")
+        storage.save_bookmark(user["id"], item, folder["id"], "Сохранить")
+        storage.save_collection_note(
+            user["id"], folder["id"], "Справка", "Текст справки"
+        )
+        storage.save_personal_note(
+            user["id"], "Работа", "Личная заметка", "Не удалять"
+        )
+        storage.save_cached_article(
+            item["url"],
+            {"title": item["title"], "paragraphs": ["Полный текст"]},
+            item["source"],
+        )
+
+        result = storage.purge_news_archive(
+            backup_retention=3,
+            now=datetime(2026, 8, 17, 16, 49),
+        )
+
+        self.assertEqual(storage.load_all_news(), [])
+        self.assertEqual(storage.load_found_news(), [])
+        self.assertIsNone(storage.load_cached_article(item["url"]))
+        self.assertIsNotNone(storage.load_user(user["id"]))
+        self.assertEqual(len(storage.list_bookmarks(user["id"])), 1)
+        self.assertEqual(len(storage.list_collection_notes(user["id"], folder["id"])), 1)
+        self.assertEqual(len(storage.list_personal_notes(user["id"])), 1)
+        self.assertEqual(result["removed"]["news_items"], 1)
+        self.assertTrue(Path(result["backup"]["path"]).exists())
+
     def test_prepare_database_reports_operational_status(self):
         self._write_json(self.all_json, [])
         self._write_json(self.found_json, [])

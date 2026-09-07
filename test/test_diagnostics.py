@@ -112,6 +112,29 @@ class DiagnosticsTests(unittest.TestCase):
         )
         self.assertEqual(system_alerts(database, recent, now=NOW), [])
 
+    def test_system_warns_near_storage_limit_and_is_critical_at_limit(self):
+        database = {"integrity": "ok", "json_migrated": True}
+        recent = [{"modified_at": "2026-08-13T08:00:00"}]
+        limit = 30 * 1024 ** 3
+
+        warning = system_alerts(
+            {**database, "size_bytes": int(limit * 0.8)},
+            recent,
+            now=NOW,
+            size_limit_bytes=limit,
+        )
+        critical = system_alerts(
+            {**database, "size_bytes": limit},
+            recent,
+            now=NOW,
+            size_limit_bytes=limit,
+        )
+
+        self.assertEqual(warning[0]["code"], "database-size-warning")
+        self.assertEqual(warning[0]["level"], "warning")
+        self.assertEqual(critical[0]["code"], "database-size-limit")
+        self.assertEqual(critical[0]["level"], "critical")
+
 
 if __name__ == "__main__":
     unittest.main()
