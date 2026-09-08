@@ -723,7 +723,7 @@
                     {% endif %}
                     <button class="save" type="button" aria-label="Сохранить новость" data-save="{{item.url}}"><svg viewBox="0 0 20 24" aria-hidden="true"><path d="M3 2.5h14v19l-7-4-7 4Z"/></svg></button>
                     <div class="meta">
-                        {% set emblem = source_emblems.get(item.source) if source_group == 'government' else none %}
+                        {% set emblem = source_emblems.get(item.source) %}
                         {% if emblem %}
                         <img class="source-emblem source-emblem-main"
                              src="{{url_for('static', filename='source-logos/' ~ emblem)}}?v={{asset_version|urlencode}}"
@@ -807,7 +807,7 @@
                     <div class="source-row sortable-source {{'active' if src in source_filters else ''}}" data-source-row data-source-name="{{src}}">
                         <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
                         <button class="source-link" type="button" data-source-filter="{{src}}">
-                            {% set emblem = source_emblems.get(src) if source_group == 'government' else none %}
+                            {% set emblem = source_emblems.get(src) %}
                             {% if emblem %}
                             <img class="source-emblem source-emblem-compact"
                                  src="{{url_for('static', filename='source-logos/' ~ emblem)}}?v={{asset_version|urlencode}}"
@@ -824,7 +824,7 @@
                     {% if yahoo_sources %}
                     <div class="source-row yahoo-source-header {{'active' if yahoo_active else ''}}">
                         <button class="source-link yahoo-source-toggle" id="yahoo-source-toggle" type="button" aria-pressed="{{'true' if yahoo_all_active else ('mixed' if yahoo_active else 'false')}}" aria-expanded="{{'true' if yahoo_expanded else 'false'}}" aria-controls="yahoo-source-items" title="Выбрать или снять все разделы Yahoo! JAPAN">
-                            <span class="check">{{'✓' if yahoo_all_active else ('−' if yahoo_active else 'Y')}}</span>
+                            <img class="source-emblem source-emblem-compact" src="{{url_for('static', filename='source-logos/' ~ source_emblems.get(yahoo_sources[0][0]))}}?v={{asset_version|urlencode}}" width="24" height="24" loading="lazy" decoding="async" alt="">
                             <span>Yahoo! JAPAN</span>
                             <span class="unread-count" data-unread-source="__yahoo__">{{('+' ~ yahoo_unread_count) if yahoo_unread_count else ''}}</span>
                             <span class="yahoo-chevron" aria-hidden="true">⌄</span>
@@ -835,7 +835,7 @@
                     <div class="source-row sortable-source yahoo-source-row {{'active' if src in source_filters else ''}}" data-source-row data-source-name="{{src}}">
                         <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
                         <button class="source-link" type="button" data-source-filter="{{src}}">
-                            <span class="check">{{'✓' if src in source_filters else (label or src or '?')[:1]}}</span>
+                            <img class="source-emblem source-emblem-compact" src="{{url_for('static', filename='source-logos/' ~ source_emblems.get(src))}}?v={{asset_version|urlencode}}" width="24" height="24" loading="lazy" decoding="async" alt="">
                             <span>{{label}}</span>
                             <span class="unread-count" data-unread-source="{{src}}">{{('+' ~ unread_counts.get(src, 0)) if unread_counts.get(src, 0) else ''}}</span>
                         </button>

@@ -50,7 +50,10 @@ from utils.source_groups import (
     is_yahoo_source,
     source_group as get_source_group,
 )
-from utils.source_icons import DEFENSE_SOURCE, SOURCE_EMBLEMS
+from utils.source_icons import (
+    DEFENSE_SOURCE,
+    source_emblem as get_source_emblem,
+)
 from utils.storage import (
     authenticate_user,
     create_manual_backup,
@@ -1885,7 +1888,11 @@ def render_news_page(
         feed_title=feed_title,
         mode=mode,
         source_group=source_group,
-        source_emblems=SOURCE_EMBLEMS,
+        source_emblems={
+            source: emblem
+            for source, _count in sources
+            if (emblem := get_source_emblem(source))
+        },
         defense_source=DEFENSE_SOURCE,
         asset_version=PROJECT_VERSION,
         group_title=group_title,
@@ -2136,7 +2143,7 @@ def article_page():
         back_url=back_url,
         article_mode=article_mode,
         source_group=article_source_group,
-        source_emblem=SOURCE_EMBLEMS.get(item.get("source", "")),
+        source_emblem=get_source_emblem(item.get("source", "")),
         asset_version=PROJECT_VERSION,
         group_home=group_home,
         group_found=group_found,
