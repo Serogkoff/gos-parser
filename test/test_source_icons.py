@@ -5,6 +5,7 @@ from utils.source_groups import GOVERNMENT_SOURCES
 from utils.source_icons import (
     AGENCY_EMBLEMS,
     DEFENSE_SOURCE,
+    NEWSPAPER_EMBLEMS,
     SOURCE_EMBLEMS,
     source_emblem,
 )
@@ -59,6 +60,35 @@ class SourceIconTests(unittest.TestCase):
         for filename in filenames:
             with self.subTest(filename=filename):
                 self.assertTrue((logo_dir / filename).is_file())
+
+    def test_every_newspaper_source_has_an_emblem(self):
+        expected = {
+            "Независимая газета": "ng.png",
+            "Коммерсантъ": "kommersant.png",
+            "Известия": "izvestia.png",
+            "Российская газета": "rg.png",
+            "Ведомости": "vedomosti.png",
+            "Красная звезда": "redstar.png",
+            "Комсомольская правда": "kp.png",
+        }
+        self.assertEqual(NEWSPAPER_EMBLEMS, expected)
+        for source, filename in expected.items():
+            with self.subTest(source=source):
+                self.assertEqual(source_emblem(source), filename)
+
+    def test_every_newspaper_emblem_file_exists_and_has_standard_size(self):
+        logo_dir = Path(__file__).parents[1] / "static" / "source-logos"
+        for filename in NEWSPAPER_EMBLEMS.values():
+            with self.subTest(filename=filename):
+                image_path = logo_dir / filename
+                self.assertTrue(image_path.is_file())
+                with image_path.open("rb") as image_file:
+                    header = image_file.read(24)
+                self.assertEqual(header[:8], b"\x89PNG\r\n\x1a\n")
+                self.assertEqual(
+                    (int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big")),
+                    (180, 180),
+                )
 
 
 if __name__ == "__main__":

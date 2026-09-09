@@ -46,10 +46,24 @@ AGENCY_EMBLEMS = {
     "Киодо (共同通信)": "kyodo.png",
 }
 
+NEWSPAPER_EMBLEMS = {
+    "Независимая газета": "ng.png",
+    "Коммерсантъ": "kommersant.png",
+    "Известия": "izvestia.png",
+    "Российская газета": "rg.png",
+    "Ведомости": "vedomosti.png",
+    "Красная звезда": "redstar.png",
+    "Комсомольская правда": "kp.png",
+}
+
 
 def source_emblem(source):
     """Возвращает эмблему источника, включая все подразделы Yahoo."""
     source = str(source or "")
     if source.casefold().startswith("Yahoo! JAPAN".casefold()):
         return "yahoo.png"
-    return SOURCE_EMBLEMS.get(source) or AGENCY_EMBLEMS.get(source)
+    return (
+        SOURCE_EMBLEMS.get(source)
+        or AGENCY_EMBLEMS.get(source)
+        or NEWSPAPER_EMBLEMS.get(source)
+    )
