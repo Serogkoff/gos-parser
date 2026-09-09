@@ -130,6 +130,40 @@ class SQLiteStorageTests(unittest.TestCase):
             {"Коммерсантъ": 55},
         )
 
+    def test_sql_all_page_combines_every_source_group(self):
+        items = [
+            {
+                "source": "МЧС",
+                "title": "Материал ведомства",
+                "url": "https://mchs.gov.ru/news/all-government",
+            },
+            {
+                "source": "ТАСС",
+                "title": "Материал агентства",
+                "url": "https://tass.ru/politika/all-agency",
+            },
+            {
+                "source": "Коммерсантъ",
+                "title": "Материал газеты",
+                "url": "https://www.kommersant.ru/doc/all-newspaper",
+            },
+        ]
+        self._write_json(self.all_json, items)
+        self._write_json(self.found_json, [items[1]])
+
+        page, total = storage.list_news_page("all", limit=20)
+        found_page, found_total = storage.list_news_page(
+            "all", found_only=True, limit=20
+        )
+
+        self.assertEqual(total, 3)
+        self.assertEqual(
+            {item["source"] for item in page},
+            {"МЧС", "ТАСС", "Коммерсантъ"},
+        )
+        self.assertEqual(found_total, 1)
+        self.assertEqual(found_page[0]["source"], "ТАСС")
+
     def test_news_overview_cache_is_shared_until_database_changes(self):
         items = [
             {
@@ -159,6 +193,11 @@ class SQLiteStorageTests(unittest.TestCase):
         ) as query:
             self.assertEqual(storage.news_group_counts("government"), (1, 0))
             self.assertEqual(storage.news_group_counts("agencies"), (1, 1))
+            self.assertEqual(storage.news_group_counts("all"), (3, 1))
+            self.assertEqual(
+                storage.news_source_counts("all"),
+                {"МЧС": 1, "ТАСС": 1, "Коммерсантъ": 1},
+            )
             self.assertEqual(
                 storage.news_source_counts(" NEWSPAPERS "),
                 {"Коммерсантъ": 1},
@@ -176,6 +215,7 @@ class SQLiteStorageTests(unittest.TestCase):
                 )
 
             self.assertEqual(storage.news_group_counts("government"), (2, 0))
+            self.assertEqual(storage.news_group_counts("all"), (4, 1))
             self.assertEqual(query.call_count, 2)
 
     def test_news_overview_cache_does_not_leak_between_databases(self):
@@ -764,7 +804,7 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertIn("window.history.back()".encode(), response.data)
         self.assertIn('class="article-card"'.encode(), response.data)
         self.assertIn(
-            b'/static/source-logos/mchs.png?v=2026.08.17.16.55',
+            b'/static/source-logos/mchs.png?v=2026.08.17.16.56',
             response.data,
         )
         self.assertNotIn("Ключевые факты".encode("utf-8"), response.data)

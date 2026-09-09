@@ -20,9 +20,7 @@
             height:100vh;min-height:0;padding:28px 18px 44px;display:flex;flex-direction:column;
             border-right:1px solid var(--line);background:#fdfdfb
         }
-        .rail-heading{min-height:42px;padding:0 8px;display:flex;align-items:center;gap:11px;font-size:15px;font-weight:720}
-        .rail-logo{width:24px;height:24px;display:grid;place-items:center;border-radius:3px;color:#fff;background:var(--coral)}
-        .rail-logo svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+        .rail-brand{min-height:42px;padding:0 8px;display:inline-flex;align-items:center;align-self:flex-start;font-family:Georgia,"Times New Roman",serif;font-size:35px;line-height:1;letter-spacing:-.04em}
         .rail-nav{display:grid;gap:7px;margin-top:24px}
         .rail-link{position:relative;min-height:47px;padding:0 12px;display:flex;align-items:center;gap:12px;border-radius:3px;color:#292925;font-size:13px;font-weight:520}
         .rail-link:hover{background:#f7f5f1}.rail-link.active{color:var(--coral-dark);background:#fff7f5}
@@ -34,19 +32,19 @@
         .profile-avatar{width:38px;height:38px;display:grid;place-items:center;border-radius:50%;color:#555;background:#efeee9;font-size:18px}
         .profile-copy{min-width:0;display:grid;gap:3px}.profile-copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
         .profile-copy small{color:var(--muted);font-size:11px}.profile-arrow{color:var(--muted);font-size:15px}
-        .shell{height:100vh;min-width:0;padding:0 22px;display:grid;grid-template-rows:124px minmax(0,1fr);overflow:hidden}
-        .topbar{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:70px 54px;gap:0 24px;align-items:end;border-bottom:1px solid var(--line)}
-        .brand{grid-column:1;grid-row:1;align-self:center;font-family:Georgia,"Times New Roman",serif;font-size:47px;letter-spacing:-.035em}
-        .site-sections{grid-column:1;grid-row:2;height:54px;display:flex;align-items:stretch;gap:42px}
-        .site-section{position:relative;padding:0 0 16px;display:flex;align-items:center;color:#23231f;font-family:Georgia,"Times New Roman",serif;font-size:16px;white-space:nowrap}
+        .shell{height:100vh;min-width:0;padding:0 22px;display:grid;grid-template-rows:88px minmax(0,1fr);overflow:hidden}
+        .topbar{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:44px 44px;gap:0 24px;align-items:end;border-bottom:1px solid var(--line)}
+        .mobile-brand{display:none}
+        .site-sections{grid-column:1;grid-row:2;height:44px;display:flex;align-items:stretch;gap:32px}
+        .site-section{position:relative;padding:0 0 12px;display:flex;align-items:center;color:#23231f;font-family:Georgia,"Times New Roman",serif;font-size:16px;white-space:nowrap}
         .site-section:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--coral);transform:scaleX(0)}
         .site-section.active{color:var(--coral-dark)}.site-section.active:after{transform:scaleX(1)}
-        .clocks{grid-column:2;grid-row:1;align-self:start;padding-top:27px;display:flex}
+        .clocks{grid-column:2;grid-row:1;align-self:start;padding-top:10px;display:flex}
         .clock-card{min-width:132px;padding:0 24px;border-left:1px solid var(--line);text-align:center}
         .clock-card:first-child{border-left:0}.clock-city{font-size:14px}.clock-time{margin-left:7px;font-family:Georgia,"Times New Roman",serif;font-size:19px}
         .clock-date{display:block;margin-top:7px;color:var(--muted);font-size:12px}
-        .article-tools{grid-column:2;grid-row:2;align-self:stretch;padding:6px 0 10px;display:flex;justify-content:flex-end;gap:10px}
-        .article-search{width:220px;height:42px;padding:0 13px;display:flex;align-items:center;gap:11px;border:1px solid var(--line);border-radius:4px;background:#fff}
+        .article-tools{grid-column:2;grid-row:2;align-self:stretch;padding:2px 0 0;display:flex;justify-content:flex-end;gap:10px}
+        .article-search{width:190px;height:42px;padding:0 13px;display:flex;align-items:center;gap:11px;border:1px solid var(--line);border-radius:4px;background:#fff}
         .article-search svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
         .article-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;font-size:13px}
         .filter-link{height:42px;min-width:105px;padding:0 14px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);border-radius:4px;background:#fff;font-size:12px}
@@ -72,7 +70,7 @@
         @media(max-width:920px){
             html,body{height:auto;overflow:auto}.app-layout{height:auto;display:block;overflow:visible}.left-rail{display:none}
             .shell{height:auto;min-height:100vh;padding:0 14px;display:block;overflow:visible}.topbar{grid-template-columns:1fr;grid-template-rows:auto auto auto;padding-top:12px}
-            .brand{grid-row:1;font-size:40px}.clocks{grid-column:1;grid-row:1;justify-self:end;padding-top:9px}.clock-card{min-width:100px;padding:0 10px}.clock-date{display:none}
+            .mobile-brand{grid-column:1;grid-row:1;display:inline-flex;font-family:Georgia,"Times New Roman",serif;font-size:40px;letter-spacing:-.04em}.clocks{grid-column:1;grid-row:1;justify-self:end;padding-top:9px}.clock-card{min-width:100px;padding:0 10px}.clock-date{display:none}
             .site-sections{grid-column:1;grid-row:2;gap:26px;overflow-x:auto}.article-tools{grid-column:1;grid-row:3;justify-content:stretch}.article-search{flex:1;width:auto}
             .article-viewport{padding-top:14px;overflow:visible}.article-card{padding:14px 18px 38px}.article-header{align-items:flex-start;flex-wrap:wrap}.header-divider{display:none}
             h1{font-size:34px}.body{font-size:16px}.body p:first-child{font-size:17px}
@@ -83,10 +81,7 @@
 <body>
 <div class="app-layout">
     <aside class="left-rail" aria-label="Главное меню">
-        <a class="rail-heading" href="/">
-            <span class="rail-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 10 8-6 8 6v9H4Z"/><path d="M9 19v-6h6v6"/></svg></span>
-            <span>Лента новостей</span>
-        </a>
+        <a class="rail-brand" href="/all" aria-label="На главную">Монитор</a>
         <nav class="rail-nav">
             <a class="rail-link {{'active' if article_mode == 'all' else ''}}" href="{{group_home}}">
                 <span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span>Лента новостей</span>
@@ -107,11 +102,12 @@
     </aside>
     <main class="shell">
         <header class="topbar">
-            <a class="brand" href="/">Монитор</a>
+            <a class="mobile-brand" href="/all">Монитор</a>
             <nav class="site-sections" aria-label="Основные разделы">
-                <a class="site-section {{'active' if source_group == 'government' else ''}}" href="/">Госструктуры</a>
-                <a class="site-section {{'active' if source_group == 'agencies' else ''}}" href="/agencies">Информагентства</a>
-                <a class="site-section {{'active' if source_group == 'newspapers' else ''}}" href="/newspapers">Газеты</a>
+                <a class="site-section {{'active' if source_group == 'all' else ''}}" href="{{'/all/found' if article_mode == 'found' else '/all'}}">Все</a>
+                <a class="site-section {{'active' if source_group == 'government' else ''}}" href="{{'/found' if article_mode == 'found' else '/'}}">Госструктуры</a>
+                <a class="site-section {{'active' if source_group == 'agencies' else ''}}" href="{{'/agencies/found' if article_mode == 'found' else '/agencies'}}">Информагентства</a>
+                <a class="site-section {{'active' if source_group == 'newspapers' else ''}}" href="{{'/newspapers/found' if article_mode == 'found' else '/newspapers'}}">Газеты</a>
             </nav>
             <div class="clocks">
                 <div class="clock-card" data-clock="Europe/Moscow"><span class="clock-city">Москва</span><time class="clock-time">--:--</time><time class="clock-date">--.--.----</time></div>

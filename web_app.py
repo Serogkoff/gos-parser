@@ -41,12 +41,14 @@ from utils.logger import error_log_stats, get_logger, read_recent_errors
 from utils.proxy import kyodo_proxy_status
 from utils.security import AttemptLimiter
 from utils.source_groups import (
+    ALL_GROUP,
     AGENCIES_GROUP,
     AGENCY_SOURCES,
     GOVERNMENT_GROUP,
     GOVERNMENT_SOURCES,
     NEWSPAPERS_GROUP,
     NEWSPAPER_SOURCES,
+    SOURCE_GROUPS,
     is_yahoo_source,
     source_group as get_source_group,
 )
@@ -1636,7 +1638,7 @@ def render_news_page(
             sources,
             load_source_order(user["id"], source_group),
         )
-    if source_group == AGENCIES_GROUP:
+    if source_group in {ALL_GROUP, AGENCIES_GROUP}:
         yahoo_sources = [
             (
                 name,
@@ -1668,7 +1670,10 @@ def render_news_page(
     status_sources = [
         item
         for item in status.get("sources", [])
-        if get_source_group(item.get("source", "")) == source_group
+        if (
+            source_group == ALL_GROUP
+            or get_source_group(item.get("source", "")) == source_group
+        )
     ]
     total_sources = len(status_sources) or len(sources)
     ok_sources = sum(
@@ -1689,7 +1694,12 @@ def render_news_page(
         ),
     )
 
-    if source_group == AGENCIES_GROUP:
+    if source_group == ALL_GROUP:
+        group_title = "Все новости"
+        group_eyebrow = "Госструктуры · Информагентства · Газеты"
+        group_home = "/all"
+        group_found = "/all/found"
+    elif source_group == AGENCIES_GROUP:
         group_title = "Новости информагентств"
         group_eyebrow = (
             "РИА Новости · ТАСС · Интерфакс · Yahoo! JAPAN · "
@@ -1855,11 +1865,28 @@ def render_news_page(
             query_string = urlencode(parameters, doseq=True)
             keyword_urls[keyword] = group_found + f"?{query_string}"
 
-    unread_summary = news_unread_summary(
-        user["id"],
-        source_group,
-        [item.get("url", "") for item in page_news],
-    )
+    if source_group == ALL_GROUP:
+        unread_summary = {"total": 0, "by_source": {}, "visible_urls": []}
+        for item_group in SOURCE_GROUPS:
+            group_urls = [
+                item.get("url", "")
+                for item in page_news
+                if get_source_group(item.get("source", "")) == item_group
+            ]
+            group_summary = news_unread_summary(
+                user["id"], item_group, group_urls
+            )
+            unread_summary["total"] += group_summary["total"]
+            unread_summary["by_source"].update(group_summary["by_source"])
+            unread_summary["visible_urls"].extend(
+                group_summary["visible_urls"]
+            )
+    else:
+        unread_summary = news_unread_summary(
+            user["id"],
+            source_group,
+            [item.get("url", "") for item in page_news],
+        )
     unread_counts = unread_summary["by_source"]
     checkpoint("unread")
 
@@ -1954,6 +1981,21 @@ def index():
     return render_news_page(
         source_group=GOVERNMENT_GROUP,
     )
+
+
+@app.route("/all")
+def all_news_page():
+    return render_news_page(source_group=ALL_GROUP)
+
+
+@app.route("/all/found")
+def all_found_page():
+    return render_news_page(mode="found", source_group=ALL_GROUP)
+
+
+@app.route("/all/filter/<path:source>")
+def all_filter_source(source):
+    return render_news_page(source_filters=[source], source_group=ALL_GROUP)
 
 
 @app.route("/found")
@@ -2131,9 +2173,16 @@ def article_page():
     else:
         group_home = "/"
         group_found = "/found"
+    navigation_source_group = article_source_group
+    if back_url.startswith("/all"):
+        navigation_source_group = ALL_GROUP
+        group_home = "/all"
+        group_found = "/all/found"
     article_mode = (
         "found"
-        if back_url.startswith(("/found", "/agencies/found", "/newspapers/found"))
+        if back_url.startswith(
+            ("/all/found", "/found", "/agencies/found", "/newspapers/found")
+        )
         else "all"
     )
     return render_template(
@@ -2142,7 +2191,7 @@ def article_page():
         item=item,
         back_url=back_url,
         article_mode=article_mode,
-        source_group=article_source_group,
+        source_group=navigation_source_group,
         source_emblem=get_source_emblem(item.get("source", "")),
         asset_version=PROJECT_VERSION,
         group_home=group_home,
@@ -2216,12 +2265,25 @@ def news_index_api():
     """Подгружает компактный индекс личных непрочитанных новостей."""
     source_group = str(request.args.get("group", "")).strip().casefold()
     if source_group not in {
+        ALL_GROUP,
         GOVERNMENT_GROUP,
         AGENCIES_GROUP,
         NEWSPAPERS_GROUP,
     }:
         return jsonify(error="Неизвестный раздел источников"), 400
     user = current_user()
+    if source_group == ALL_GROUP:
+        items = []
+        seen_urls = set()
+        for item_group in SOURCE_GROUPS:
+            for item in list_unread_news_index(
+                user["id"], item_group, UNREAD_INDEX_LIMIT
+            ):
+                if item["url"] in seen_urls:
+                    continue
+                seen_urls.add(item["url"])
+                items.append(item)
+        return jsonify(items=items[:UNREAD_INDEX_LIMIT])
     return jsonify(items=list_unread_news_index(
         user["id"], source_group, UNREAD_INDEX_LIMIT,
     ))
@@ -2237,7 +2299,11 @@ def news_read_api():
     try:
         if payload.get("all") is True:
             source_group = str(payload.get("source_group", "")).strip().casefold()
-            mark_news_group_read(user["id"], source_group)
+            if source_group == ALL_GROUP:
+                for item_group in SOURCE_GROUPS:
+                    mark_news_group_read(user["id"], item_group)
+            else:
+                mark_news_group_read(user["id"], source_group)
         else:
             mark_news_read(user["id"], payload.get("url"))
     except ValueError as error:
@@ -2270,6 +2336,7 @@ def source_order_api():
     payload = request.get_json(silent=True) or {}
     source_group = str(payload.get("source_group", "")).strip().casefold()
     if source_group not in {
+        ALL_GROUP,
         GOVERNMENT_GROUP,
         AGENCIES_GROUP,
         NEWSPAPERS_GROUP,

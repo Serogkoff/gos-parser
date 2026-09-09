@@ -562,7 +562,7 @@ def _validated_user_id(value):
 
 def _validated_source_group(value):
     source_group = str(value or "").strip().casefold()
-    if source_group not in {"government", "agencies", "newspapers"}:
+    if source_group not in {"all", "government", "agencies", "newspapers"}:
         raise ValueError("Неизвестный раздел источников")
     return source_group
 

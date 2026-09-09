@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import web_app
 from utils import storage
-from utils.source_groups import GOVERNMENT_GROUP
+from utils.source_groups import ALL_GROUP, GOVERNMENT_GROUP
 
 
 class PersonalSourceOrderTests(unittest.TestCase):
@@ -92,6 +92,13 @@ class PersonalSourceOrderTests(unittest.TestCase):
         self.assertEqual(
             storage.load_source_order(self.second["id"], GOVERNMENT_GROUP),
             [],
+        )
+        storage.save_source_order(
+            self.first["id"], ALL_GROUP, ["МВД РФ", "МЧС"]
+        )
+        self.assertEqual(
+            storage.load_source_order(self.first["id"], ALL_GROUP),
+            ["МВД РФ", "МЧС"],
         )
 
     def test_api_saves_and_page_uses_personal_order(self):

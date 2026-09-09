@@ -6,6 +6,7 @@ import config
 import web_app
 from utils.news import sort_news_by_publication
 from utils.source_groups import (
+    ALL_GROUP,
     AGENCIES_GROUP,
     GOVERNMENT_GROUP,
     NEWSPAPERS_GROUP,
@@ -58,6 +59,7 @@ class SourceGroupTests(unittest.TestCase):
         agency_news = filter_news_by_group(items, AGENCIES_GROUP)
         self.assertEqual(len(agency_news), 1)
         self.assertEqual(agency_news[0]["section"], "Политика")
+        self.assertEqual(filter_news_by_group(items, ALL_GROUP), items)
 
     def test_update_intervals_are_independent(self):
         self.assertEqual(config.GOVERNMENT_UPDATE_INTERVAL, 300)
@@ -287,15 +289,40 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("<span>Yahoo! JAPAN</span>", html)
         self.assertIn("<span>時事通信</span>", html)
         self.assertIn(
-            '/static/source-logos/tass.png?v=2026.08.17.16.55',
+            '/static/source-logos/tass.png?v=2026.08.17.16.56',
             html,
         )
         self.assertIn(
-            '/static/source-logos/yahoo.png?v=2026.08.17.16.55',
+            '/static/source-logos/yahoo.png?v=2026.08.17.16.56',
             html,
         )
         self.assertIn("Политика", html)
         self.assertNotIn("Материал государственного ведомства", html)
+
+    def test_all_page_combines_every_source_group(self):
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get("/all")
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Все новости", html)
+        self.assertIn("Материал государственного ведомства", html)
+        self.assertIn("Материал информационного агентства", html)
+        self.assertIn("Материал свежего номера НГ", html)
+        self.assertIn('class="site-section active" href="/all"', html)
+        self.assertIn('id="yahoo-source-toggle"', html)
+
+    def test_all_matches_keeps_match_routes_in_section_navigation(self):
+        self.files["found_news.json"] = list(self.files["all_news.json"])
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get("/all/found")
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('class="site-section active" href="/all/found"', html)
+        self.assertIn('href="/found"', html)
+        self.assertIn('href="/agencies/found"', html)
+        self.assertIn('href="/newspapers/found"', html)
 
     def test_government_page_contains_only_government_sources(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
@@ -312,7 +339,7 @@ class SourceGroupPageTests(unittest.TestCase):
             html,
         )
         self.assertIn(
-            '/static/source-logos/mchs.png?v=2026.08.17.16.55',
+            '/static/source-logos/mchs.png?v=2026.08.17.16.56',
             html,
         )
         self.assertIn(
@@ -457,9 +484,14 @@ class SourceGroupPageTests(unittest.TestCase):
         header_start = html.index('<header class="topbar">')
         header_end = html.index("</header>", header_start)
         header = html[header_start:header_end]
+        self.assertIn("Все", header)
         self.assertIn("Госструктуры", header)
         self.assertIn("Информагентства", header)
         self.assertIn("Газеты", header)
+        self.assertNotIn(">Дата</summary>", header)
+        self.assertIn('class="calendar-icon"', header)
+        self.assertNotIn('class="brand"', header)
+        self.assertIn('class="rail-brand" id="brand-home"', html)
 
     def test_newspapers_page_contains_only_newspaper_sources(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
@@ -470,7 +502,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Свежие номера газет", html)
         self.assertIn("Материал свежего номера НГ", html)
         self.assertIn(
-            '/static/source-logos/ng.png?v=2026.08.17.16.55',
+            '/static/source-logos/ng.png?v=2026.08.17.16.56',
             html,
         )
         self.assertNotIn("Материал государственного ведомства", html)

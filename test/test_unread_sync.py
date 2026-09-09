@@ -217,6 +217,38 @@ class UnreadSyncTests(unittest.TestCase):
         self.assertEqual(self._unread(client, "government")[1], [])
         self.assertEqual(self._unread(client, "agencies")[1], [agency_url])
 
+    def test_all_group_combines_and_marks_every_source_group_read(self):
+        client, token = self._client_for(self.owner)
+        self.assertEqual(self._unread(client, "all")[1], [])
+
+        government_url = "https://mchs.gov.ru/news/all-government"
+        agency_url = "https://tass.ru/politika/all-agency"
+        newspaper_url = "https://www.kommersant.ru/doc/all-newspaper"
+        self._insert_news(
+            {"source": "МЧС", "title": "Ведомство", "url": government_url},
+            {"source": "ТАСС", "title": "Агентство", "url": agency_url},
+            {
+                "source": "Коммерсантъ",
+                "title": "Газета",
+                "url": newspaper_url,
+            },
+        )
+        self.assertCountEqual(
+            self._unread(client, "all")[1],
+            [government_url, agency_url, newspaper_url],
+        )
+
+        response = client.post(
+            "/api/news-read",
+            json={"all": True, "source_group": "all"},
+            headers={"X-CSRF-Token": token},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._unread(client, "all")[1], [])
+        self.assertEqual(self._unread(client, "government")[1], [])
+        self.assertEqual(self._unread(client, "agencies")[1], [])
+        self.assertEqual(self._unread(client, "newspapers")[1], [])
+
     def test_state_change_requires_csrf_token(self):
         client, _ = self._client_for(self.owner)
         response = client.post(

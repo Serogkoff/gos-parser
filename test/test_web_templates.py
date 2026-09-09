@@ -45,7 +45,7 @@ class WebTemplateTests(unittest.TestCase):
             'class="panel-action-icon order-arrows"',
             'aria-label="Прочитать все новости"',
             '@media(min-width:921px)',
-            'grid-template-rows:124px minmax(0,1fr)',
+            'grid-template-rows:88px minmax(0,1fr)',
             'overscroll-behavior:contain',
             'scrollbar-width:none',
             '.feed::-webkit-scrollbar,.sidebar::-webkit-scrollbar{display:none}',

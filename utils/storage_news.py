@@ -3,11 +3,13 @@
 from datetime import datetime
 
 from utils.source_groups import (
+    ALL_GROUP,
     AGENCIES_GROUP,
     AGENCY_SOURCES,
     GOVERNMENT_GROUP,
     NEWSPAPERS_GROUP,
     NEWSPAPER_SOURCES,
+    SOURCE_GROUPS,
     source_group as get_source_group,
 )
 
@@ -36,11 +38,15 @@ class NewsStorage:
         """Строит параметризованное SQL-условие для раздела ленты."""
         source_group = str(source_group or "").strip().casefold()
         if source_group not in {
+            ALL_GROUP,
             GOVERNMENT_GROUP,
             AGENCIES_GROUP,
             NEWSPAPERS_GROUP,
         }:
             raise ValueError("Неизвестный раздел источников")
+
+        if source_group == ALL_GROUP:
+            return "1 = 1", []
 
         agency_sources = tuple(sorted(AGENCY_SOURCES))
         newspaper_sources = tuple(sorted(NEWSPAPER_SOURCES))
@@ -98,11 +104,7 @@ class NewsStorage:
     def _query_news_overview(self):
         groups = {
             group: {"total": 0, "found": 0, "by_source": {}}
-            for group in (
-                GOVERNMENT_GROUP,
-                AGENCIES_GROUP,
-                NEWSPAPERS_GROUP,
-            )
+            for group in (ALL_GROUP, *SOURCE_GROUPS)
         }
         with self._connection_factory() as connection:
             rows = connection.execute(
@@ -123,6 +125,9 @@ class NewsStorage:
             groups[group]["total"] += news_count
             groups[group]["found"] += found_count
             groups[group]["by_source"][source] = news_count
+            groups[ALL_GROUP]["total"] += news_count
+            groups[ALL_GROUP]["found"] += found_count
+            groups[ALL_GROUP]["by_source"][source] = news_count
         return groups
 
     def list_news_page(

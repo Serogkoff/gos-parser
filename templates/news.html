@@ -42,8 +42,8 @@
             transform:translateY(-50%) scale(.2) rotate(-14deg);
             transform-origin:38% 50%
         }
-        .brand.easter-active .brand-text{opacity:0;transform:scale(.82)}
-        .brand.easter-active .brand-easter-logo{
+        .rail-brand.easter-active .brand-text{opacity:0;transform:scale(.82)}
+        .rail-brand.easter-active .brand-easter-logo{
             animation:brand-easter-pop 4.2s cubic-bezier(.2,.85,.24,1) both
         }
         @keyframes brand-easter-pop{
@@ -271,7 +271,7 @@
         }
         @media(prefers-reduced-motion:reduce){
             .brand-text{transition:none}
-            .brand.easter-active .brand-easter-logo{animation:none;opacity:1;transform:translateY(-50%)}
+            .rail-brand.easter-active .brand-easter-logo{animation:none;opacity:1;transform:translateY(-50%)}
         }
 
         /* Редакционная десктопная сетка по утверждённому референсу. */
@@ -295,13 +295,11 @@
             padding:28px 18px 20px;display:flex;flex-direction:column;
             border-right:1px solid var(--line);background:#fdfdfb
         }
-        .rail-heading{
-            min-height:42px;padding:0 8px;display:flex;align-items:center;
-            gap:11px;font-size:15px;font-weight:720
-        }
-        .rail-logo{
-            width:24px;height:24px;display:grid;place-items:center;border-radius:3px;
-            color:#fff;background:var(--coral);font-size:13px;font-weight:800
+        .rail-brand{
+            position:relative;z-index:6;min-height:42px;padding:0 8px;
+            display:inline-flex;align-items:center;align-self:flex-start;
+            font-family:Georgia,"Times New Roman",serif;font-size:35px;
+            line-height:1;font-weight:400;letter-spacing:-.04em
         }
         .rail-nav{display:grid;gap:7px;margin-top:24px}
         .rail-link{
@@ -319,8 +317,7 @@
             width:24px;height:24px;display:grid;place-items:center;
             color:#343430;font-size:19px;line-height:1
         }
-        .rail-icon svg,.rail-logo svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-        .rail-logo svg{width:15px;height:15px;stroke-width:2}
+        .rail-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
         .rail-link.active .rail-icon{color:var(--coral)}
         .rail-bottom{margin-top:auto;padding-bottom:24px;display:grid;gap:8px}
         .rail-profile{
@@ -341,32 +338,28 @@
             background:var(--paper)
         }
         .topbar{
-            min-height:124px;display:grid;
+            min-height:88px;display:grid;
             min-width:0;grid-template-columns:minmax(0,1fr) auto;
-            grid-template-rows:70px 54px;gap:0 24px;
+            grid-template-rows:44px 44px;gap:0 24px;
             align-items:end;border-bottom:1px solid var(--line)
         }
-        .brand{
-            grid-column:1;grid-row:1;align-self:center;min-height:0;
-            font-family:Georgia,"Times New Roman",serif;
-            font-size:47px;font-weight:400;letter-spacing:-.035em
-        }
-        .brand-easter-logo{left:-4px;width:190px}
+        .rail-brand .brand-easter-logo{left:-4px;width:190px}
+        .mobile-brand{display:none}
         .site-sections{
-            grid-column:1;grid-row:2;height:54px;justify-content:flex-start;
-            gap:42px;overflow:visible
+            grid-column:1;grid-row:2;height:44px;justify-content:flex-start;
+            gap:32px;overflow:visible
         }
         .site-section{
-            padding:0 0 16px;color:#23231f;
+            padding:0 0 12px;color:#23231f;
             font-family:Georgia,"Times New Roman",serif;
             font-size:16px;font-weight:400
         }
-        .site-section:nth-child(n+4){display:none}
+        .site-section:nth-child(n+5){display:none}
         .site-section:after{height:2px}
         .site-section.active{color:var(--coral-dark)}
         .topbar-tools{
             grid-column:2;grid-row:1;align-self:start;
-            justify-self:end;padding-top:27px;gap:0
+            justify-self:end;padding-top:10px;gap:0
         }
         .account-status{display:none}
         .clocks{gap:0}
@@ -388,16 +381,18 @@
         .clock-date{display:block;margin-top:7px;color:var(--muted);font-size:12px}
         .intro{display:none}
         .toolbar{
-            grid-column:2;grid-row:2;align-self:stretch;min-height:54px;
-            padding:6px 0 10px;display:flex;justify-content:flex-end;
+            grid-column:2;grid-row:2;align-self:stretch;min-height:44px;
+            padding:2px 0 0;display:flex;justify-content:flex-end;
             gap:10px;border:0
         }
         .search,.source-select,.tool-button{
             height:42px;border-color:var(--line);border-radius:4px;background:#fff
         }
-        .search{width:220px;max-width:220px;flex:0 0 220px;padding:0 13px}
+        .search{width:190px;max-width:190px;flex:0 0 190px;padding:0 12px}
         .search-icon{font-size:19px}
         .search input{font-size:13px}
+        .search-range summary{width:28px;height:32px;padding:0;display:grid;place-items:center}
+        .calendar-icon{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
         .tool-button{min-width:105px;max-width:140px;padding:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
         .source-summary{max-width:105px;padding:0 4px;overflow:hidden;font-size:10px;white-space:nowrap}
         .content-grid{
@@ -527,7 +522,7 @@
             .left-rail{min-height:0}
             .shell{
                 height:100vh;min-height:0;padding-bottom:0;display:grid;
-                grid-template-rows:124px minmax(0,1fr);overflow:hidden
+                grid-template-rows:88px minmax(0,1fr);overflow:hidden
             }
             .content-grid{height:100%;min-height:0;align-items:stretch;overflow:hidden}
             .feed{
@@ -556,7 +551,7 @@
             .app-layout{grid-template-columns:1fr}
             .left-rail{display:none}
             .topbar{grid-template-columns:1fr;grid-template-rows:auto auto auto auto;padding-top:12px}
-            .brand{grid-column:1;grid-row:1;font-size:40px}
+            .mobile-brand{grid-column:1;grid-row:1;display:inline-flex;font-family:Georgia,"Times New Roman",serif;font-size:40px;letter-spacing:-.04em}
             .topbar-tools{grid-column:1;grid-row:2;justify-self:start;padding:8px 0}
             .site-sections{grid-column:1;grid-row:3;gap:28px}
             .toolbar{grid-column:1;grid-row:4;justify-content:flex-start}
@@ -581,9 +576,9 @@
 <body>
 <div class="app-layout">
 <aside class="left-rail" aria-label="Главное меню">
-    <a class="rail-heading" href="/">
-        <span class="rail-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 10 8-6 8 6v9H4Z"/><path d="M9 19v-6h6v6"/></svg></span>
-        <span>Лента новостей</span>
+    <a class="rail-brand" id="brand-home" href="/all" aria-label="На главную">
+        <span class="brand-text">Монитор</span>
+        <img class="brand-easter-logo" src="{{url_for('static', filename='kyodo-easter-egg.webp')}}" alt="">
     </a>
     <nav class="rail-nav">
         <a class="rail-link {{'active' if mode == 'all' else ''}}" href="{{group_home_url}}">
@@ -618,22 +613,18 @@
 </aside>
 <main class="shell">
     <header class="topbar">
-        <a class="brand" id="brand-home" href="/" aria-label="На главную">
-            <span class="brand-text">Монитор</span>
-            <img
-                class="brand-easter-logo"
-                src="{{url_for('static', filename='kyodo-easter-egg.webp')}}"
-                alt=""
-            >
-        </a>
+        <a class="mobile-brand" href="/all" aria-label="На главную">Монитор</a>
         <nav class="site-sections" aria-label="Основные разделы">
-            <a class="site-section {{'active' if source_group == 'government' else ''}}" href="/">
+            <a class="site-section {{'active' if source_group == 'all' else ''}}" href="{{'/all/found' if mode == 'found' else '/all'}}">
+                Все
+            </a>
+            <a class="site-section {{'active' if source_group == 'government' else ''}}" href="{{'/found' if mode == 'found' else '/'}}">
                 Госструктуры
             </a>
-            <a class="site-section {{'active' if source_group == 'agencies' else ''}}" href="/agencies">
+            <a class="site-section {{'active' if source_group == 'agencies' else ''}}" href="{{'/agencies/found' if mode == 'found' else '/agencies'}}">
                 Информагентства
             </a>
-            <a class="site-section {{'active' if source_group == 'newspapers' else ''}}" href="/newspapers">
+            <a class="site-section {{'active' if source_group == 'newspapers' else ''}}" href="{{'/newspapers/found' if mode == 'found' else '/newspapers'}}">
                 Газеты
             </a>
             <a class="site-section" href="/collections">
@@ -679,7 +670,7 @@
                 <input id="news-search" name="q" value="{{search_query}}"
                        placeholder="Поиск" autocomplete="off">
                 <details class="search-range {{'active' if search_date_from or search_date_to else ''}}">
-                    <summary title="Диапазон поиска" aria-label="Выбрать диапазон поиска">Дата</summary>
+                    <summary title="Диапазон поиска" aria-label="Выбрать диапазон поиска"><svg class="calendar-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="15" rx="2"/><path d="M8 3.5v4M16 3.5v4M3.5 10h17"/></svg></summary>
                     <div class="search-range-panel">
                         <label>С даты<input type="date" name="date_from" value="{{search_date_from}}"></label>
                         <label>По дату<input type="date" name="date_to" value="{{search_date_to}}"></label>

@@ -1,9 +1,15 @@
 """Группы источников для расписания парсера и веб-интерфейса."""
 
 
+ALL_GROUP = "all"
 GOVERNMENT_GROUP = "government"
 AGENCIES_GROUP = "agencies"
 NEWSPAPERS_GROUP = "newspapers"
+SOURCE_GROUPS = (
+    GOVERNMENT_GROUP,
+    AGENCIES_GROUP,
+    NEWSPAPERS_GROUP,
+)
 YAHOO_SOURCE_PREFIX = "Yahoo! JAPAN"
 
 GOVERNMENT_SOURCES = frozenset({
@@ -87,6 +93,8 @@ def is_yahoo_source(source):
 
 def filter_news_by_group(items, group):
     """Оставляет в ленте только источники выбранного раздела."""
+    if str(group or "").strip().casefold() == ALL_GROUP:
+        return list(items)
     return [
         item
         for item in items
