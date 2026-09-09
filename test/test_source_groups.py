@@ -289,11 +289,11 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("<span>Yahoo! JAPAN</span>", html)
         self.assertIn("<span>時事通信</span>", html)
         self.assertIn(
-            '/static/source-logos/tass.png?v=2026.08.17.16.57',
+            '/static/source-logos/tass.png?v=2026.08.17.16.58',
             html,
         )
         self.assertIn(
-            '/static/source-logos/yahoo.png?v=2026.08.17.16.57',
+            '/static/source-logos/yahoo.png?v=2026.08.17.16.58',
             html,
         )
         self.assertIn("Политика", html)
@@ -339,7 +339,7 @@ class SourceGroupPageTests(unittest.TestCase):
             html,
         )
         self.assertIn(
-            '/static/source-logos/mchs.png?v=2026.08.17.16.57',
+            '/static/source-logos/mchs.png?v=2026.08.17.16.58',
             html,
         )
         self.assertIn(
@@ -502,7 +502,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Свежие номера газет", html)
         self.assertIn("Материал свежего номера НГ", html)
         self.assertIn(
-            '/static/source-logos/ng.png?v=2026.08.17.16.57',
+            '/static/source-logos/ng.png?v=2026.08.17.16.58',
             html,
         )
         self.assertNotIn("Материал государственного ведомства", html)

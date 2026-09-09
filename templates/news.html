@@ -338,7 +338,7 @@
             background:var(--paper)
         }
         .topbar{
-            min-height:88px;display:grid;
+            position:relative;min-height:88px;display:grid;
             min-width:0;grid-template-columns:minmax(0,1fr) 250px;
             grid-template-rows:44px 44px;gap:0 18px;
             align-items:end;border-bottom:1px solid var(--line)
@@ -346,7 +346,7 @@
         .rail-brand .brand-easter-logo{left:-4px;width:190px}
         .mobile-brand{display:none}
         .site-sections{
-            grid-column:1;grid-row:1;height:44px;justify-content:flex-start;
+            grid-column:1;grid-row:2;height:44px;justify-content:flex-start;
             gap:32px;overflow:visible
         }
         .site-section{
@@ -381,8 +381,8 @@
         .clock-date{display:block;margin-top:7px;color:var(--muted);font-size:12px}
         .intro{display:none}
         .toolbar{
-            grid-column:2;grid-row:2;align-self:stretch;min-height:44px;
-            width:100%;padding:2px 0 0;display:flex;justify-content:flex-end;
+            position:absolute;z-index:10;top:102px;right:0;min-height:42px;
+            width:250px;padding:0;display:flex;justify-content:flex-end;
             gap:10px;border:0
         }
         .search,.source-select,.tool-button{
@@ -467,7 +467,7 @@
             min-width:34px;height:34px;border:0;border-radius:50%;background:transparent
         }
         .page-current{color:#fff;background:var(--coral)}
-        .sidebar{min-width:0;margin-top:14px;gap:14px}
+        .sidebar{min-width:0;margin-top:56px;gap:14px}
         .panel{overflow:visible;border:0;background:transparent}
         .panel-title{
             min-height:52px;padding:0 8px;border:0;background:var(--paper)
@@ -530,7 +530,7 @@
                 overscroll-behavior:contain;scrollbar-width:none;-ms-overflow-style:none
             }
             .sidebar{
-                height:calc(100% - 14px);min-height:0;align-content:start;
+                height:calc(100% - 56px);min-height:0;align-content:start;
                 overflow-y:auto;overscroll-behavior:contain;
                 scrollbar-width:none;-ms-overflow-style:none
             }
@@ -554,11 +554,11 @@
             .mobile-brand{grid-column:1;grid-row:1;display:inline-flex;font-family:Georgia,"Times New Roman",serif;font-size:40px;letter-spacing:-.04em}
             .topbar-tools{grid-column:1;grid-row:2;justify-self:start;padding:8px 0}
             .site-sections{grid-column:1;grid-row:3;gap:28px}
-            .toolbar{grid-column:1;grid-row:4;width:auto;justify-content:flex-start}
+            .toolbar{position:static;grid-column:1;grid-row:4;width:auto;justify-content:flex-start}
             .search{width:auto;max-width:none;flex:1}
             .tool-button{max-width:140px}
             .content-grid{grid-template-columns:1fr}
-            .sidebar{grid-template-columns:1fr;grid-row:auto}
+            .sidebar{grid-template-columns:1fr;grid-row:auto;margin-top:14px}
         }
         @media(max-width:680px){
             .shell{width:100%;padding:0 14px 36px}

@@ -339,14 +339,20 @@ class MinoboronyParserTests(unittest.TestCase):
                 }]
             return default
 
-        with mock.patch.object(web_app, "load_json", side_effect=load_json), mock.patch.object(
-            web_app,
-            "extract_article",
-            return_value={
-                "title": TITLE,
-                "paragraphs": [],
-                "error": "Текста нет",
-            },
+        with (
+            mock.patch.object(web_app, "find_news_by_url", return_value=None),
+            mock.patch.object(web_app, "load_json", side_effect=load_json),
+            mock.patch.object(web_app, "load_cached_article", return_value=None),
+            mock.patch.object(web_app, "save_cached_article", return_value=None),
+            mock.patch.object(
+                web_app,
+                "extract_article",
+                return_value={
+                    "title": TITLE,
+                    "paragraphs": [],
+                    "error": "Текста нет",
+                },
+            ),
         ):
             response = web_app.app.test_client().get(
                 "/article?url=" + ARTICLE_URL
