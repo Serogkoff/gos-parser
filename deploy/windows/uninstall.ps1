@@ -1,6 +1,10 @@
 $ErrorActionPreference = "Stop"
 
-foreach ($taskName in @("GosParser-Worker", "GosParser-Web")) {
+foreach ($taskName in @(
+    "GosParser-Worker",
+    "GosParser-Web",
+    "GosParser-Watchdog"
+)) {
     $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
     if ($task) {
         Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue

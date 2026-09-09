@@ -123,7 +123,38 @@ class WindowsDeployScriptTests(unittest.TestCase):
         )
 
         self.assertIn("Unregister-ScheduledTask", uninstaller)
+        self.assertIn('"GosParser-Watchdog"', uninstaller)
         self.assertNotIn("Remove-Item", uninstaller)
+
+    def test_watchdog_checks_local_before_external_and_limits_restarts(self):
+        watchdog = (WINDOWS_DEPLOY_DIR / "watchdog.ps1").read_text(
+            encoding="utf-8"
+        )
+
+        local_position = watchdog.index("$localOk = Test-HealthEndpoint")
+        external_position = watchdog.index("$externalOk = Test-HealthEndpoint")
+        self.assertLess(local_position, external_position)
+        self.assertIn('Stop-ScheduledTask -TaskName "GosParser-Web"', watchdog)
+        self.assertIn('Restart-Service -Name "Tailscale" -Force', watchdog)
+        self.assertIn("ExternalFailureThreshold = 2", watchdog)
+        self.assertIn("CooldownMinutes = 15", watchdog)
+        self.assertIn('"watchdog.log"', watchdog)
+        self.assertIn('"watchdog-state.json"', watchdog)
+        self.assertIn("$maintenanceAge -lt 30", watchdog)
+        self.assertNotIn("tailscale funnel", watchdog.lower())
+
+    def test_watchdog_installer_uses_elevated_system_task_every_five_minutes(self):
+        installer = (WINDOWS_DEPLOY_DIR / "install_watchdog.ps1").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('TaskName "GosParser-Watchdog"', installer)
+        self.assertIn('-UserId "SYSTEM"', installer)
+        self.assertIn("-LogonType ServiceAccount", installer)
+        self.assertIn("-RunLevel Highest", installer)
+        self.assertIn("New-TimeSpan -Minutes 5", installer)
+        self.assertIn("New-ScheduledTaskTrigger -AtStartup", installer)
+        self.assertIn("-ExecutionPolicy Bypass", installer)
 
     def test_updater_tests_remote_commit_before_stopping_tasks(self):
         updater = (WINDOWS_DEPLOY_DIR / "update.ps1").read_text(
@@ -137,6 +168,8 @@ class WindowsDeployScriptTests(unittest.TestCase):
         self.assertIn("create_manual_backup", updater)
         self.assertIn('$taskNames = @("GosParser-Worker", "GosParser-Web")', updater)
         self.assertIn("foreach ($taskName in $taskNames)", updater)
+        self.assertIn('"watchdog-maintenance.lock"', updater)
+        self.assertIn('-TaskName "GosParser-Watchdog"', updater)
         self.assertNotIn(
             '-TaskName "GosParser-Worker", "GosParser-Web"', updater,
         )

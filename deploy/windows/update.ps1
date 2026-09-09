@@ -11,6 +11,8 @@ if (-not $PythonExe) {
 }
 $PythonExe = (Resolve-Path $PythonExe).Path
 $taskNames = @("GosParser-Worker", "GosParser-Web")
+$runtimeLogDir = Join-Path $ProjectDir "runtime_logs"
+$watchdogMaintenanceFile = Join-Path $runtimeLogDir "watchdog-maintenance.lock"
 
 Push-Location $ProjectDir
 try {
@@ -70,6 +72,17 @@ try {
 
     $tasksStopped = $false
     try {
+        New-Item `
+            -ItemType Directory `
+            -Path $runtimeLogDir `
+            -Force | Out-Null
+        New-Item `
+            -ItemType File `
+            -Path $watchdogMaintenanceFile `
+            -Force | Out-Null
+        Stop-ScheduledTask `
+            -TaskName "GosParser-Watchdog" `
+            -ErrorAction SilentlyContinue
         foreach ($taskName in $taskNames) {
             Stop-ScheduledTask `
                 -TaskName $taskName `
@@ -88,6 +101,10 @@ try {
             throw "Не удалось применить проверенное обновление."
         }
     } finally {
+        Remove-Item `
+            -LiteralPath $watchdogMaintenanceFile `
+            -Force `
+            -ErrorAction SilentlyContinue
         if ($tasksStopped) {
             foreach ($taskName in $taskNames) {
                 Start-ScheduledTask -TaskName $taskName

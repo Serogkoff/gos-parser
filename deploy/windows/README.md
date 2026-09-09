@@ -1,6 +1,6 @@
 # Постоянный запуск на Windows 10/11
 
-Пакет создаёт две фоновые задачи Планировщика Windows:
+Основная установка создаёт две фоновые задачи Планировщика Windows:
 
 - `GosParser-Worker` — запускает `main.py`;
 - `GosParser-Web` — запускает локальный сайт `web_app.py`.
@@ -43,6 +43,34 @@ Get-Content .\runtime_logs\web.log -Tail 40 -Encoding UTF8
 
 ```text
 http://127.0.0.1:5000
+```
+
+## Автовосстановление Tailscale Funnel
+
+Если сайт опубликован через Tailscale Funnel, установите отдельный watchdog.
+Откройте PowerShell **от имени администратора** в корне проекта:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+    -File ".\deploy\windows\install_watchdog.ps1"
+```
+
+Будет создана задача `GosParser-Watchdog`, которая работает от `SYSTEM` и
+запускается при старте Windows, а затем каждые пять минут. Сначала она
+проверяет локальный `/healthz`. Если локальный сайт не отвечает, перезапускает
+только `GosParser-Web`. Если локальный сайт работает, но внешний `/healthz` не
+ответил два раза подряд, перезапускает службу Tailscale. Между повторными
+рестартами действует пауза 15 минут.
+
+Watchdog не меняет конфигурацию Funnel: публикация должна быть настроена
+заранее. События записываются в `runtime_logs\watchdog.log`, состояние — в
+`runtime_logs\watchdog-state.json`.
+
+Watchdog не может работать, пока компьютер спит. Для серверного компьютера
+отключите сон при питании от сети:
+
+```powershell
+powercfg.exe /change standby-timeout-ac 0
 ```
 
 В обычном режиме веб-задача использует production WSGI-сервер Waitress и
@@ -105,7 +133,7 @@ SQLite, применяет обновление и снова запускает
 ## Остановка и удаление автозапуска
 
 ```powershell
-Stop-ScheduledTask -TaskName "GosParser-Worker", "GosParser-Web"
+Stop-ScheduledTask -TaskName "GosParser-Worker", "GosParser-Web", "GosParser-Watchdog"
 .\deploy\windows\uninstall.ps1
 ```
 
