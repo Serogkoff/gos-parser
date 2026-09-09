@@ -32,6 +32,7 @@
         .profile-avatar{width:38px;height:38px;display:grid;place-items:center;border-radius:50%;color:#555;background:#efeee9;font-size:18px}
         .profile-copy{min-width:0;display:grid;gap:3px}.profile-copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
         .profile-copy small{color:var(--muted);font-size:11px}.profile-arrow{color:var(--muted);font-size:15px}
+        .rail-logout-form{margin:8px 8px 0}.rail-logout{width:100%;min-height:34px;padding:0 10px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);border-radius:3px;color:var(--muted);background:#fff;font-size:11px;cursor:pointer}.rail-logout:hover{color:var(--coral-dark);border-color:#efb6b0;background:#fff7f5}.rail-logout svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
         .shell{height:100vh;min-width:0;padding:0 22px;display:grid;grid-template-rows:88px minmax(0,1fr);overflow:hidden}
         .topbar{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:44px 44px;gap:0 24px;align-items:end;border-bottom:1px solid var(--line)}
         .mobile-brand{display:none}
@@ -99,6 +100,7 @@
         <a class="rail-profile" href="/account">
             <span class="profile-avatar">●</span><span class="profile-copy"><strong>{{current_user.username}}</strong><small>{{'Администратор' if current_user.role == 'admin' else 'Пользователь'}}</small></span><span class="profile-arrow">⌄</span>
         </a>
+        <form class="rail-logout-form" method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><button class="rail-logout" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H10M14 8l4 4-4 4M18 12H9"/></svg>Выйти</button></form>
     </aside>
     <main class="shell">
         <header class="topbar">

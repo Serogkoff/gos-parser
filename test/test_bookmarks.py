@@ -395,9 +395,13 @@ class PersonalBookmarksTests(unittest.TestCase):
         collections = client.get("/collections").get_data(as_text=True)
 
         self.assertNotIn('class="toolbar-link" href="/collections"', page)
-        self.assertIn("height:calc(100vh - 36px)", collections)
-        self.assertIn("overflow-y:auto", collections)
+        self.assertIn('class="app-layout"', collections)
+        self.assertIn('class="left-rail"', collections)
+        self.assertIn('class="rail-link active" href="/collections"', collections)
+        self.assertIn("grid-template-columns:minmax(0,1fr) 250px", collections)
+        self.assertIn(".feed::-webkit-scrollbar,.panel::-webkit-scrollbar{display:none}", collections)
         self.assertIn("overscroll-behavior:contain", collections)
+        self.assertIn('class="rail-logout"', collections)
 
     def test_collection_can_be_sorted_and_exported_to_word(self):
         folder = storage.create_bookmark_folder(self.first["id"], "Доклад шефу")

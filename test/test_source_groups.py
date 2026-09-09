@@ -289,11 +289,11 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("<span>Yahoo! JAPAN</span>", html)
         self.assertIn("<span>時事通信</span>", html)
         self.assertIn(
-            '/static/source-logos/tass.png?v=2026.08.17.16.59',
+            '/static/source-logos/tass.png?v=2026.08.17.16.60',
             html,
         )
         self.assertIn(
-            '/static/source-logos/yahoo.png?v=2026.08.17.16.59',
+            '/static/source-logos/yahoo.png?v=2026.08.17.16.60',
             html,
         )
         self.assertIn("Политика", html)
@@ -339,7 +339,7 @@ class SourceGroupPageTests(unittest.TestCase):
             html,
         )
         self.assertIn(
-            '/static/source-logos/mchs.png?v=2026.08.17.16.59',
+            '/static/source-logos/mchs.png?v=2026.08.17.16.60',
             html,
         )
         self.assertIn(
@@ -502,7 +502,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Свежие номера газет", html)
         self.assertIn("Материал свежего номера НГ", html)
         self.assertIn(
-            '/static/source-logos/ng.png?v=2026.08.17.16.59',
+            '/static/source-logos/ng.png?v=2026.08.17.16.60',
             html,
         )
         self.assertNotIn("Материал государственного ведомства", html)
@@ -570,6 +570,33 @@ class SourceGroupPageTests(unittest.TestCase):
 
         html = response.get_data(as_text=True)
         self.assertIn("Архивный материал для поиска", html)
+        self.assertIn('value="2026-08-01"', html)
+        self.assertIn('value="2026-08-31"', html)
+
+    def test_date_range_filters_news_without_search_text(self):
+        self.files["all_news.json"] = [
+            {
+                "source": "Коммерсантъ",
+                "title": "Материал внутри диапазона",
+                "url": "https://www.kommersant.ru/doc/date-inside",
+                "date": "2026-08-11",
+            },
+            {
+                "source": "Коммерсантъ",
+                "title": "Материал вне диапазона",
+                "url": "https://www.kommersant.ru/doc/date-outside",
+                "date": "2026-09-09",
+            },
+        ]
+        with patch.object(web_app, "load_json", side_effect=self._load_json):
+            response = web_app.app.test_client().get(
+                "/newspapers?date_from=2026-08-01&date_to=2026-08-31"
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Материал внутри диапазона", html)
+        self.assertNotIn("Материал вне диапазона", html)
         self.assertIn('value="2026-08-01"', html)
         self.assertIn('value="2026-08-31"', html)
 

@@ -1777,10 +1777,7 @@ def render_news_page(
 
     search_date_from = valid_search_date("date_from")
     search_date_to = valid_search_date("date_to")
-    if not search_query:
-        search_date_from = ""
-        search_date_to = ""
-    elif not search_date_from and not search_date_to:
+    if search_query and not search_date_from and not search_date_to:
         today = date.today().isoformat()
         search_date_from = today
         search_date_to = today
