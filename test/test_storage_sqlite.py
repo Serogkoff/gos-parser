@@ -804,7 +804,7 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertIn("window.history.back()".encode(), response.data)
         self.assertIn('class="article-card"'.encode(), response.data)
         self.assertIn(
-            b'/static/source-logos/mchs.png?v=2026.08.17.16.56',
+            b'/static/source-logos/mchs.png?v=2026.08.17.16.57',
             response.data,
         )
         self.assertNotIn("Ключевые факты".encode("utf-8"), response.data)
