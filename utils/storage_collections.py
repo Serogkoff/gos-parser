@@ -130,7 +130,7 @@ class CollectionStorage:
         )
 
     def rename_bookmark_folder(self, user_id, folder_id, name):
-        """Переименовывает только принадлежащую пользователю папку."""
+        """Переименовывает принадлежащую пользователю подборку."""
         user_id = self._validate_user_id(user_id)
         folder_id = self._validated_folder_id(folder_id)
         name = self._validated_folder_name(name)
@@ -139,7 +139,7 @@ class CollectionStorage:
             with self._lock, self._connection_factory() as connection:
                 cursor = connection.execute(
                     """UPDATE bookmark_folders SET name = ?
-                       WHERE id = ? AND user_id = ? AND system_key = ''""",
+                       WHERE id = ? AND user_id = ?""",
                     (name, folder_id, user_id),
                 )
                 if cursor.rowcount != 1:
@@ -159,7 +159,7 @@ class CollectionStorage:
         with self._lock, self._connection_factory() as connection:
             cursor = connection.execute(
                 """DELETE FROM bookmark_folders
-                   WHERE id = ? AND user_id = ? AND system_key = ''""",
+                   WHERE id = ? AND user_id = ?""",
                 (folder_id, user_id),
             )
             if cursor.rowcount != 1:
@@ -215,12 +215,6 @@ class CollectionStorage:
         now = datetime.now().isoformat(timespec="seconds")
         try:
             with self._lock, self._connection_factory() as connection:
-                system_row = connection.execute(
-                    "SELECT system_key, name FROM bookmark_folders WHERE id = ?",
-                    (folder_id,),
-                ).fetchone()
-                if system_row["system_key"]:
-                    name = system_row["name"]
                 connection.execute(
                     """UPDATE bookmark_folders
                        SET name = ?, description = ?, visibility = ?, updated_at = ?

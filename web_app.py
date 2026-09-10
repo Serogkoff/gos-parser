@@ -1417,14 +1417,14 @@ def bookmarks_page():
     """Показывает рабочие подборки, общий доступ, ссылки и заметки."""
     user = current_user()
     user_id = user["id"]
-    favorite_folder = ensure_favorites_folder(user_id)
+    folders = list_bookmark_folders(user_id)
+    default_folder = str(folders[0]["id"]) if folders else "unfiled"
     selected_folder = str(
-        request.args.get("folder", favorite_folder["id"])
-    ).strip() or str(favorite_folder["id"])
+        request.args.get("folder", default_folder)
+    ).strip() or default_folder
     sort_mode = str(request.args.get("sort", "newest")).strip().casefold()
     if sort_mode not in COLLECTION_SORTS:
         sort_mode = "newest"
-    folders = list_bookmark_folders(user_id)
     folder_by_id = {str(folder["id"]): folder for folder in folders}
     shared_folders = list_shared_collections(user_id)
     shared_by_id = {str(folder["id"]): folder for folder in shared_folders}
@@ -1469,7 +1469,11 @@ def bookmarks_page():
             elif action == "delete_folder":
                 delete_bookmark_folder(user_id, request.form.get("folder_id"))
                 message = "Подборка удалена, её новости перенесены в «Без подборки»"
-                selected_folder = str(favorite_folder["id"])
+                remaining_folders = list_bookmark_folders(user_id)
+                selected_folder = (
+                    str(remaining_folders[0]["id"])
+                    if remaining_folders else "unfiled"
+                )
             elif action == "add_external":
                 save_external_bookmark(
                     user_id, request.form.get("folder_id"), request.form.get("url"),

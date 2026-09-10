@@ -112,6 +112,49 @@ class PersonalBookmarksTests(unittest.TestCase):
             second_client.get("/bookmarks").get_data(as_text=True),
         )
 
+    def test_favorites_collection_can_be_renamed_and_deleted_from_toolbar(self):
+        client = web_app.app.test_client()
+        token = self._login(client, self.first["id"])
+        client.post(
+            "/api/bookmarks",
+            json={"url": self.item["url"]},
+            headers={"X-CSRF-Token": token},
+        )
+        favorite = next(
+            folder for folder in storage.list_bookmark_folders(self.first["id"])
+            if folder["system_key"] == "favorites"
+        )
+
+        page = client.get(
+            f"/collections?folder={favorite['id']}"
+        ).get_data(as_text=True)
+        self.assertIn('data-rename-open', page)
+        self.assertIn('aria-label="Удалить подборку"', page)
+        self.assertIn('class="icon-button add-action"', page)
+
+        renamed = storage.update_collection(
+            self.first["id"], favorite["id"], "Главное", "", "private", [],
+        )
+        self.assertEqual(renamed["name"], "Главное")
+        response = client.post(
+            f"/collections?folder={favorite['id']}",
+            data={
+                "csrf_token": token,
+                "action": "delete_folder",
+                "folder_id": favorite["id"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("folder=unfiled", response.headers["Location"])
+        self.assertFalse(any(
+            folder["system_key"] == "favorites"
+            for folder in storage.list_bookmark_folders(self.first["id"])
+        ))
+        recreated = storage.ensure_favorites_folder(self.first["id"])
+        self.assertEqual(recreated["system_key"], "favorites")
+        self.assertNotEqual(recreated["id"], favorite["id"])
+
     def test_bookmark_mutation_requires_csrf_token(self):
         client = web_app.app.test_client()
         self._login(client, self.first["id"])
@@ -385,8 +428,8 @@ class PersonalBookmarksTests(unittest.TestCase):
             [second["id"], third["id"], first["id"]],
         )
         page = client.get("/collections").get_data(as_text=True)
-        self.assertIn("folder-order-toggle", page)
-        self.assertIn("data-folder-row", page)
+        self.assertIn('class="collection-tree-list"', page)
+        self.assertIn("материалов", page)
         self.assertNotIn("Поднять подборку", page)
 
     def test_collection_tree_is_in_left_navigation_and_right_panel_is_removed(self):
@@ -403,6 +446,9 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertIn('class="collection-tree"', collections)
         self.assertIn("Создать подборку", collections)
         self.assertIn('id="folder-list"', collections)
+        self.assertIn('class="tree-copy"', collections)
+        self.assertIn('class="toolbar-row"', collections)
+        self.assertNotIn("Мои подборки", collections)
         self.assertNotIn('class="panel"', collections)
         self.assertNotIn('class="site-sections"', collections)
         self.assertIn("overscroll-behavior:contain", collections)

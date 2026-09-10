@@ -123,8 +123,12 @@ class WebTemplateTests(unittest.TestCase):
             'class="clocks"',
             'class="collections-viewport"',
             'class="collection-tree"',
+            'class="tree-copy"',
             'data-create-collection-open',
             'data-composer-open',
+            'class="icon-button danger"',
+            'class="icon-button add-action"',
+            'class="toolbar-row"',
             "confirm('Вы уверены, что хотите удалить подборку?')",
             'class="rail-logout"',
             '>Выйти</button>',
@@ -133,6 +137,7 @@ class WebTemplateTests(unittest.TestCase):
                 self.assertIn(marker, template)
 
         self.assertNotIn('class="site-sections"', template)
+        self.assertNotIn("Мои подборки", template)
         self.assertNotIn('name="comment"', template)
         self.assertNotIn('class="panel"', template)
 
