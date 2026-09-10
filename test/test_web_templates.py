@@ -141,7 +141,7 @@ class WebTemplateTests(unittest.TestCase):
         self.assertNotIn('name="comment"', template)
         self.assertNotIn('class="panel"', template)
         self.assertIn(".collections-title{margin:0;padding:0 0 22px 2px", template)
-        self.assertIn("font-size:16px", template)
+        self.assertIn(".collections-title{font-size:20px}", template)
         self.assertIn(".collection-tree-list{overflow:visible}", template)
         self.assertIn(".left-rail::-webkit-scrollbar{display:none}", template)
         self.assertIn('class="search-icon"', template)
