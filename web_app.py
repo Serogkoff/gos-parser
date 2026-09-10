@@ -1554,7 +1554,7 @@ def bookmarks_page():
         if not _matches_collection_search(
             item,
             search_query,
-            ("title", "source", "body", "comment", "publication_date", "url"),
+            ("title", "source", "body", "publication_date", "url"),
         ):
             continue
         prepared = _prepare_collection_note(item)

@@ -300,10 +300,12 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertNotIn(note["updated_at"], page)
         self.assertNotIn("Добавить ссылку", page)
         self.assertNotIn("Добавить заметку", page)
-        self.assertIn("+ Добавить статью", page)
-        self.assertIn("Новая статья", page)
+        self.assertIn('data-composer-open', page)
+        self.assertIn("Добавить статью", page)
         self.assertIn("Сохранить в подборку", page)
-        self.assertIn("data-composer-form method=\"post\" hidden", page)
+        self.assertIn('data-article-composer hidden', page)
+        self.assertNotIn('name="comment"', page)
+        self.assertNotIn("Проверить данные Минэнерго", page)
         self.assertIn("<span class=\"badge\">Статья</span>", page)
         title_position = page.index(note["title"])
         source_position = page.index("material-footer", title_position)
@@ -312,7 +314,7 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertLess(source_position, body_position)
 
         found = client.get(
-            f"/collections?folder={folder['id']}&q=Минэнерго"
+            f"/collections?folder={folder['id']}&q=поставках"
         ).get_data(as_text=True)
         missing = client.get(
             f"/collections?folder={folder['id']}&q=авиаперевозки"
@@ -387,7 +389,7 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertIn("data-folder-row", page)
         self.assertNotIn("Поднять подборку", page)
 
-    def test_collection_sidebar_scrolls_independently_and_toolbar_has_no_button(self):
+    def test_collection_tree_is_in_left_navigation_and_right_panel_is_removed(self):
         client = web_app.app.test_client()
         self._login(client, self.first["id"])
 
@@ -398,8 +400,11 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertIn('class="app-layout"', collections)
         self.assertIn('class="left-rail"', collections)
         self.assertIn('class="rail-link active" href="/collections"', collections)
-        self.assertIn("grid-template-columns:minmax(0,1fr) 250px", collections)
-        self.assertIn(".feed::-webkit-scrollbar,.panel::-webkit-scrollbar{display:none}", collections)
+        self.assertIn('class="collection-tree"', collections)
+        self.assertIn("Создать подборку", collections)
+        self.assertIn('id="folder-list"', collections)
+        self.assertNotIn('class="panel"', collections)
+        self.assertNotIn('class="site-sections"', collections)
         self.assertIn("overscroll-behavior:contain", collections)
         self.assertIn('class="rail-logout"', collections)
 

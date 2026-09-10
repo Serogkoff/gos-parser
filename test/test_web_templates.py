@@ -118,17 +118,23 @@ class WebTemplateTests(unittest.TestCase):
             'class="app-layout"',
             'class="left-rail"',
             'class="rail-link active" href="/collections"',
-            'class="topbar"',
-            'class="site-sections"',
+            'class="collections-topbar"',
+            'class="collections-title">Подборки',
             'class="clocks"',
             'class="collections-viewport"',
-            'grid-template-columns:minmax(0,1fr) 250px',
-            '.feed::-webkit-scrollbar,.panel::-webkit-scrollbar{display:none}',
+            'class="collection-tree"',
+            'data-create-collection-open',
+            'data-composer-open',
+            "confirm('Вы уверены, что хотите удалить подборку?')",
             'class="rail-logout"',
             '>Выйти</button>',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)
+
+        self.assertNotIn('class="site-sections"', template)
+        self.assertNotIn('name="comment"', template)
+        self.assertNotIn('class="panel"', template)
 
 
 if __name__ == "__main__":
