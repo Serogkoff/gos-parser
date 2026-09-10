@@ -19,6 +19,7 @@ class NewsStorage:
         self, initialize_database, connection_factory, lock,
         normalize_url, decode_item, attach_display_fields,
         database_change_signature, news_overview_signature=None,
+        unread_signature=None,
     ):
         self._initialize_database = initialize_database
         self._connection_factory = connection_factory
@@ -29,6 +30,9 @@ class NewsStorage:
         self._database_change_signature = database_change_signature
         self._news_overview_signature = (
             news_overview_signature or database_change_signature
+        )
+        self._unread_signature = (
+            unread_signature or self._news_overview_signature
         )
         self._overview_cache = None
         self._unread_counts_cache = {}
@@ -86,15 +90,15 @@ class NewsStorage:
         self.news_group_condition(source_group)
         self._initialize_database()
         signature = self._news_overview_signature()
+        # Держим блокировку до заполнения кеша. Иначе несколько одновременных
+        # переходов после обновления базы запускают один и тот же GROUP BY.
         with self._lock:
             cached = self._overview_cache
             if cached and cached["signature"] == signature:
                 return cached["groups"][source_group]
-
-        groups = self._query_news_overview()
-        final_signature = self._news_overview_signature()
-        if final_signature == signature:
-            with self._lock:
+            groups = self._query_news_overview()
+            final_signature = self._news_overview_signature()
+            if final_signature == signature:
                 self._overview_cache = {
                     "signature": signature,
                     "groups": groups,
@@ -381,6 +385,23 @@ class NewsStorage:
             for row in rows
         ]
 
+    def _query_unread_counts(self, context):
+        unread_select = self._unread_news_select(context["condition"])
+        with self._connection_factory() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT unread.source, COUNT(*) AS unread_count
+                FROM ({unread_select}) AS unread
+                GROUP BY unread.source
+                """,
+                self._unread_news_parameters(context),
+            ).fetchall()
+        return {
+            (row["source"] or "Неизвестный источник"):
+                int(row["unread_count"])
+            for row in rows
+        }
+
     def news_unread_summary(self, user_id, source_group, visible_urls=None):
         """Считает непрочитанное и возвращает только видимые отметки."""
         empty = {"total": 0, "by_source": {}, "visible_urls": []}
@@ -398,8 +419,9 @@ class NewsStorage:
             seen_normalized.add(normalized)
             visible_candidates.append((original, normalized))
 
-        unread_select = self._unread_news_select(context["condition"])
-        signature = self._database_change_signature()
+        # WAL меняется от закладок, входов и отметок чтения. Для этого кеша
+        # важна только ревизия новостей; личные изменения сбрасываются явно.
+        signature = self._unread_signature()
         cache_key = (
             context["user_id"],
             str(source_group or "").strip().casefold(),
@@ -410,22 +432,19 @@ class NewsStorage:
             if cached and cached["signature"] == signature:
                 by_source = dict(cached["by_source"])
             else:
-                by_source = None
+                by_source = self._query_unread_counts(context)
+                final_signature = self._unread_signature()
+                if final_signature == signature:
+                    self._unread_counts_cache[cache_key] = {
+                        "signature": signature,
+                        "by_source": dict(by_source),
+                    }
+                    if len(self._unread_counts_cache) > 64:
+                        self._unread_counts_cache = {
+                            cache_key: self._unread_counts_cache[cache_key]
+                        }
+
         with self._connection_factory() as connection:
-            if by_source is None:
-                rows = connection.execute(
-                    f"""
-                    SELECT unread.source, COUNT(*) AS unread_count
-                    FROM ({unread_select}) AS unread
-                    GROUP BY unread.source
-                    """,
-                    self._unread_news_parameters(context),
-                ).fetchall()
-                by_source = {
-                    (row["source"] or "Неизвестный источник"):
-                        int(row["unread_count"])
-                    for row in rows
-                }
             visible_unread = set()
             if visible_candidates:
                 placeholders = ", ".join("?" for _ in visible_candidates)
@@ -449,17 +468,6 @@ class NewsStorage:
                 ).fetchall()
                 visible_unread = {row["url"] for row in visible_rows}
 
-        final_signature = self._database_change_signature()
-        if by_source is not None and final_signature == signature:
-            with self._lock:
-                self._unread_counts_cache[cache_key] = {
-                    "signature": signature,
-                    "by_source": dict(by_source),
-                }
-                if len(self._unread_counts_cache) > 64:
-                    self._unread_counts_cache = {
-                        cache_key: self._unread_counts_cache[cache_key]
-                    }
         return {
             "total": sum(by_source.values()),
             "by_source": by_source,
@@ -498,6 +506,7 @@ class NewsStorage:
                        read_at = excluded.read_at""",
                 (user_id, normalized, read_at),
             )
+        self._invalidate_unread_cache(user_id)
         return normalized
 
     def migrate_legacy_unread(self, user_id, unread_urls):
@@ -555,6 +564,7 @@ class NewsStorage:
                         for row in existing
                     ],
                 )
+        self._invalidate_unread_cache(user_id)
         return True
 
     def mark_news_group_read(self, user_id, source_group):
@@ -588,4 +598,21 @@ class NewsStorage:
                     )""",
                 [user_id, *parameters],
             )
+        self._invalidate_unread_cache(user_id)
         return True
+
+    def _invalidate_unread_cache(self, user_id=None):
+        """Сбрасывает только личные агрегаты затронутого пользователя."""
+        with self._lock:
+            if user_id is None:
+                self._unread_counts_cache.clear()
+                return
+            try:
+                normalized_user_id = int(user_id)
+            except (TypeError, ValueError):
+                return
+            self._unread_counts_cache = {
+                key: value
+                for key, value in self._unread_counts_cache.items()
+                if key[0] != normalized_user_id
+            }

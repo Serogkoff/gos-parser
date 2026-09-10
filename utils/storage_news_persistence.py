@@ -223,8 +223,12 @@ class NewsPersistenceStorage:
         merged_all = self.sort_items(merge_news(old_all, all_news))
         merged_found = self.sort_items(merge_news(old_found, found_news))
 
-        with self._connection_factory() as connection:
-            self.replace_collections(connection, merged_all, merged_found)
+        # Большинство циклов не приносит изменений. Не переписываем в таком
+        # случае всю SQLite-базу и WAL: это освобождает веб-ленту от лишнего
+        # дискового I/O и не сбрасывает агрегатные кеши каждые несколько минут.
+        if merged_all != old_all or merged_found != old_found:
+            with self._connection_factory() as connection:
+                self.replace_collections(connection, merged_all, merged_found)
 
         print(f"✅ Новых: {len(new_all)} | Всего: {len(merged_all)}")
         print(

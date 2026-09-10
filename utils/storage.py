@@ -282,6 +282,7 @@ _NEWS_STORAGE = NewsStorage(
         _attach_news_display_fields(item, parsed_date, first_seen_at),
     database_change_signature=lambda: _database_change_signature(),
     news_overview_signature=lambda: _news_overview_signature(),
+    unread_signature=lambda: _news_overview_signature(),
 )
 
 

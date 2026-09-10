@@ -218,6 +218,41 @@ class SQLiteStorageTests(unittest.TestCase):
             self.assertEqual(storage.news_group_counts("all"), (4, 1))
             self.assertEqual(query.call_count, 2)
 
+    def test_unread_count_cache_survives_unrelated_wal_changes(self):
+        self._write_json(self.all_json, [])
+        self._write_json(self.found_json, [])
+        user = storage.create_user("cache-user", "strong-password")
+        self.assertEqual(
+            storage.news_unread_summary(user["id"], "government")["total"],
+            0,
+        )
+        with storage._connection() as connection:
+            storage._insert_news_items(
+                connection,
+                [{
+                    "source": "МЧС",
+                    "title": "Новая публикация",
+                    "url": "https://mchs.gov.ru/news/unread-cache",
+                }],
+            )
+
+        with patch.object(
+            storage._NEWS_STORAGE,
+            "_query_unread_counts",
+            wraps=storage._NEWS_STORAGE._query_unread_counts,
+        ) as query:
+            first = storage.news_unread_summary(user["id"], "government")
+            with storage._connection() as connection:
+                connection.execute(
+                    "INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)",
+                    ("unrelated_web_write", "1"),
+                )
+            second = storage.news_unread_summary(user["id"], "government")
+
+        self.assertEqual(first["total"], 1)
+        self.assertEqual(second["total"], 1)
+        self.assertEqual(query.call_count, 1)
+
     def test_news_overview_cache_does_not_leak_between_databases(self):
         first_database = self.database
         second_database = first_database.with_name("second-news.db")
@@ -443,6 +478,29 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual(len(saved), 1)
         self.assertEqual(saved[0]["date"], "2026-08-03")
         self.assertIn("официальный", saved[0]["summary"].casefold())
+
+    def test_unchanged_parser_cycle_does_not_rewrite_database(self):
+        item = {
+            "source": "МЧС",
+            "title": "Уже сохранённая публикация",
+            "url": "https://mchs.gov.ru/news/unchanged-cycle",
+            "date": "2026-08-17",
+        }
+        self._write_json(self.all_json, [item])
+        self._write_json(self.found_json, [])
+        existing_urls = storage.load_existing_urls()
+        with storage._connection() as connection:
+            before = connection.execute(
+                "SELECT value FROM metadata WHERE key = 'news_revision'"
+            ).fetchone()["value"]
+
+        storage.save_results([item], [], existing_urls)
+
+        with storage._connection() as connection:
+            after = connection.execute(
+                "SELECT value FROM metadata WHERE key = 'news_revision'"
+            ).fetchone()["value"]
+        self.assertEqual(after, before)
 
     def test_load_hides_invalid_items_already_stored_in_sqlite(self):
         self._write_json(self.all_json, [])
@@ -804,7 +862,7 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertIn("window.history.back()".encode(), response.data)
         self.assertIn('class="article-card"'.encode(), response.data)
         self.assertIn(
-            b'/static/source-logos/mchs.png?v=2026.08.17.16.60',
+            b'/static/source-logos/mchs.png?v=2026.08.17.16.61',
             response.data,
         )
         self.assertNotIn("Ключевые факты".encode("utf-8"), response.data)

@@ -347,6 +347,10 @@ def create_schema(connection):
         """CREATE INDEX IF NOT EXISTS idx_news_first_seen
            ON news_items(first_seen_at DESC)"""
     )
+    connection.execute(
+        """CREATE INDEX IF NOT EXISTS idx_news_source_first_seen
+           ON news_items(source, first_seen_at DESC, normalized_url)"""
+    )
 
     date_migration = connection.execute(
         "SELECT 1 FROM metadata WHERE key = ?",

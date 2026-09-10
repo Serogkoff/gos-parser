@@ -1,3 +1,4 @@
+import gzip
 import json
 import re
 import secrets
@@ -139,6 +140,8 @@ FAST_NAVIGATION_ENDPOINTS = {
     "index",
     "found_page",
     "filter_source",
+    "all_news_page",
+    "all_found_page",
     "agencies_page",
     "agencies_found_page",
     "agencies_filter_source",
@@ -157,6 +160,15 @@ def _enabled_setting(name):
 def _server_host():
     """Возвращает интерфейс веб-сервера; по умолчанию доступ только локальный."""
     return environment_value("MONITOR_HOST", "127.0.0.1").strip() or "127.0.0.1"
+
+
+def _server_threads():
+    """Оставляет запас потоков для навигации и health-check Funnel."""
+    try:
+        configured = int(environment_value("MONITOR_THREADS", "12"))
+    except (TypeError, ValueError):
+        configured = 12
+    return min(32, max(4, configured))
 
 
 def _allowed_hosts():
@@ -397,6 +409,26 @@ def add_security_headers(response):
         response.headers.setdefault(
             "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
         )
+    accepts_gzip = "gzip" in request.headers.get("Accept-Encoding", "").casefold()
+    response_mimetype = response.mimetype or ""
+    compressible = (
+        response.status_code == 200
+        and not response.direct_passthrough
+        and "Content-Encoding" not in response.headers
+        and (
+            response_mimetype.startswith("text/")
+            or response_mimetype in {"application/json", "application/javascript"}
+        )
+    )
+    if accepts_gzip and compressible:
+        payload = response.get_data()
+        if len(payload) >= 1024:
+            compressed = gzip.compress(payload, compresslevel=5)
+            if len(compressed) < len(payload):
+                response.set_data(compressed)
+                response.headers["Content-Encoding"] = "gzip"
+                response.headers["Content-Length"] = str(len(compressed))
+                response.vary.add("Accept-Encoding")
     return response
 
 
@@ -2404,7 +2436,7 @@ if __name__ == "__main__":
         options = {
             "host": host,
             "port": port,
-            "threads": 4,
+            "threads": _server_threads(),
             "ident": "NewsMonitor",
             "expose_tracebacks": False,
             "clear_untrusted_proxy_headers": True,
