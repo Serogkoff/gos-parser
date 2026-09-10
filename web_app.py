@@ -1903,7 +1903,8 @@ def render_news_page(
                 if get_source_group(item.get("source", "")) == item_group
             ]
             group_summary = news_unread_summary(
-                user["id"], item_group, group_urls
+                user["id"], item_group, group_urls,
+                found_only=mode == "found",
             )
             unread_summary["total"] += group_summary["total"]
             unread_summary["by_source"].update(group_summary["by_source"])
@@ -1915,6 +1916,7 @@ def render_news_page(
             user["id"],
             source_group,
             [item.get("url", "") for item in page_news],
+            found_only=mode == "found",
         )
     unread_counts = unread_summary["by_source"]
     checkpoint("unread")

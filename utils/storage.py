@@ -342,8 +342,10 @@ def _unread_news_context(user_id, source_group):
     return _NEWS_STORAGE._unread_news_context(user_id, source_group)
 
 
-def _unread_news_select(condition):
-    return _NEWS_STORAGE._unread_news_select(condition)
+def _unread_news_select(condition, *, found_only=False):
+    return _NEWS_STORAGE._unread_news_select(
+        condition, found_only=found_only,
+    )
 
 
 def _unread_news_parameters(context):
@@ -355,10 +357,12 @@ def list_unread_news_index(user_id, source_group, limit=2000):
     return _NEWS_STORAGE.list_unread_news_index(user_id, source_group, limit)
 
 
-def news_unread_summary(user_id, source_group, visible_urls=None):
+def news_unread_summary(
+    user_id, source_group, visible_urls=None, *, found_only=False,
+):
     """Одним SQL-запросом считает новые новости и состояние видимых карточек."""
     return _NEWS_STORAGE.news_unread_summary(
-        user_id, source_group, visible_urls
+        user_id, source_group, visible_urls, found_only=found_only,
     )
 
 

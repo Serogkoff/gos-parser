@@ -289,11 +289,11 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("<span>Yahoo! JAPAN</span>", html)
         self.assertIn("<span>時事通信</span>", html)
         self.assertIn(
-            '/static/source-logos/tass.png?v=2026.08.17.16.61',
+            '/static/source-logos/tass.png?v=2026.08.17.16.62',
             html,
         )
         self.assertIn(
-            '/static/source-logos/yahoo.png?v=2026.08.17.16.61',
+            '/static/source-logos/yahoo.png?v=2026.08.17.16.62',
             html,
         )
         self.assertIn("Политика", html)
@@ -339,7 +339,7 @@ class SourceGroupPageTests(unittest.TestCase):
             html,
         )
         self.assertIn(
-            '/static/source-logos/mchs.png?v=2026.08.17.16.61',
+            '/static/source-logos/mchs.png?v=2026.08.17.16.62',
             html,
         )
         self.assertIn(
@@ -410,6 +410,27 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertNotIn("<b>", source_list)
         self.assertIn('data-unread-source="__all__"', source_list)
         self.assertIn('data-unread-source="МЧС"', source_list)
+
+    def test_found_page_uses_red_match_badges_and_match_only_counters(self):
+        self.files["found_news.json"] = [self.files["all_news.json"][0]]
+        summary = {
+            "total": 1,
+            "by_source": {"МЧС": 1},
+            "visible_urls": ["https://mchs.gov.ru/news/1"],
+        }
+        with patch.object(
+            web_app, "news_unread_summary", return_value=summary,
+        ) as unread_summary:
+            response = web_app.app.test_client().get("/found")
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('<body class="mode-found">', html)
+        self.assertIn('.mode-found .unread-count{color:var(--coral-dark)}', html)
+        self.assertIn('data-unread-source="МЧС">+1</span>', html)
+        self.assertIn('data-mark-read="https://mchs.gov.ru/news/1">Новая</button>', html)
+        self.assertNotIn("Совпадение с ключевыми словами", html)
+        self.assertTrue(unread_summary.call_args.kwargs["found_only"])
 
     def test_new_badge_can_mark_article_read_without_opening_it(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
@@ -502,7 +523,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Свежие номера газет", html)
         self.assertIn("Материал свежего номера НГ", html)
         self.assertIn(
-            '/static/source-logos/ng.png?v=2026.08.17.16.61',
+            '/static/source-logos/ng.png?v=2026.08.17.16.62',
             html,
         )
         self.assertNotIn("Материал государственного ведомства", html)

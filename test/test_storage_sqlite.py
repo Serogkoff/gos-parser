@@ -253,6 +253,56 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual(second["total"], 1)
         self.assertEqual(query.call_count, 1)
 
+    def test_found_unread_summary_counts_only_matching_news(self):
+        self._write_json(self.all_json, [])
+        self._write_json(self.found_json, [])
+        user = storage.create_user("found-counter", "strong-password")
+        self.assertEqual(
+            storage.news_unread_summary(user["id"], "government")["total"],
+            0,
+        )
+        matching_mchs = {
+            "source": "МЧС",
+            "title": "Первое новое совпадение",
+            "url": "https://mchs.gov.ru/news/found-unread-first",
+            "keywords": ["Курилы"],
+        }
+        matching_minfin = {
+            "source": "Минфин",
+            "title": "Второе новое совпадение",
+            "url": "https://minfin.gov.ru/news/found-unread-second",
+            "keywords": ["Япония"],
+        }
+        ordinary_mchs = {
+            "source": "МЧС",
+            "title": "Обычная новая публикация",
+            "url": "https://mchs.gov.ru/news/not-found-unread",
+        }
+        with storage._connection() as connection:
+            storage._insert_news_items(
+                connection,
+                [matching_mchs, matching_minfin, ordinary_mchs],
+            )
+            storage._insert_found_items(
+                connection,
+                [matching_mchs, matching_minfin],
+            )
+
+        all_summary = storage.news_unread_summary(
+            user["id"], "government",
+        )
+        found_summary = storage.news_unread_summary(
+            user["id"], "government",
+            [matching_mchs["url"], ordinary_mchs["url"]],
+            found_only=True,
+        )
+
+        self.assertEqual(all_summary["total"], 3)
+        self.assertEqual(all_summary["by_source"], {"МЧС": 2, "Минфин": 1})
+        self.assertEqual(found_summary["total"], 2)
+        self.assertEqual(found_summary["by_source"], {"МЧС": 1, "Минфин": 1})
+        self.assertEqual(found_summary["visible_urls"], [matching_mchs["url"]])
+
     def test_news_overview_cache_does_not_leak_between_databases(self):
         first_database = self.database
         second_database = first_database.with_name("second-news.db")
@@ -386,9 +436,14 @@ class SQLiteStorageTests(unittest.TestCase):
 
     def test_unread_query_uses_single_join_without_union(self):
         query = storage._unread_news_select("n.source = ?")
+        found_query = storage._unread_news_select(
+            "n.source = ?", found_only=True,
+        )
 
         self.assertNotIn("UNION", query.upper())
         self.assertEqual(query.upper().count("FROM NEWS_ITEMS"), 1)
+        self.assertIn("JOIN FOUND_ITEMS", found_query.upper())
+        self.assertNotIn("JSON_EACH", found_query.upper())
 
     def test_feed_route_does_not_load_complete_news_collections(self):
         items = [
@@ -862,7 +917,7 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertIn("window.history.back()".encode(), response.data)
         self.assertIn('class="article-card"'.encode(), response.data)
         self.assertIn(
-            b'/static/source-logos/mchs.png?v=2026.08.17.16.61',
+            b'/static/source-logos/mchs.png?v=2026.08.17.16.62',
             response.data,
         )
         self.assertNotIn("Ключевые факты".encode("utf-8"), response.data)

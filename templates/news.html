@@ -520,6 +520,13 @@
             min-width:0;padding:0;border-radius:0;
             color:var(--green);background:transparent;font-size:10px
         }
+        .mode-found .unread-count{color:var(--coral-dark)}
+        .mode-found .unread-label{
+            color:var(--coral-dark);border-color:#f0bbb6;background:#fff0ed
+        }
+        .mode-found .unread-label:hover{
+            color:#fff;border-color:var(--coral);background:var(--coral)
+        }
         .coverage{padding-top:12px;border:1px solid var(--line);background:#fff}
         .coverage>h2{font-size:17px}
         .keyword-dialog{border-radius:4px;background:#fff}
@@ -583,7 +590,7 @@
         }
     </style>
 </head>
-<body>
+<body class="mode-{{mode}}">
 <div class="app-layout">
 <aside class="left-rail" aria-label="Главное меню">
     <a class="rail-brand" id="brand-home" href="/all" aria-label="На главную">
@@ -723,9 +730,6 @@
                 <article class="news-card {{'match' if item.keywords else ''}}"
                          data-id="{{item.url}}" data-source="{{item.source}}"
                          data-search="{{(item.title + ' ' + item.source + ' ' + (item.keywords|join(' ')))|lower}}">
-                    {% if item.keywords %}
-                    <div class="match-label">✣ Совпадение с ключевыми словами</div>
-                    {% endif %}
                     <button class="save" type="button" aria-label="Сохранить новость" data-save="{{item.url}}"><svg viewBox="0 0 20 24" aria-hidden="true"><path d="M3 2.5h14v19l-7-4-7 4Z"/></svg></button>
                     <div class="meta">
                         {% set emblem = source_emblems.get(item.source) %}

@@ -330,13 +330,18 @@ class NewsStorage:
         }
 
     @staticmethod
-    def _unread_news_select(condition):
+    def _unread_news_select(condition, *, found_only=False):
+        found_join = (
+            "JOIN found_items AS f ON f.news_key = n.news_key"
+            if found_only else ""
+        )
         return f"""
             SELECT n.normalized_url AS url,
                    n.source AS source,
                    n.first_seen_at AS first_seen_at,
                    n.news_key AS news_key
             FROM news_items AS n
+            {found_join}
             LEFT JOIN news_item_reads AS r
               ON r.user_id = ? AND r.normalized_url = n.normalized_url
             WHERE {condition}
@@ -385,8 +390,10 @@ class NewsStorage:
             for row in rows
         ]
 
-    def _query_unread_counts(self, context):
-        unread_select = self._unread_news_select(context["condition"])
+    def _query_unread_counts(self, context, *, found_only=False):
+        unread_select = self._unread_news_select(
+            context["condition"], found_only=found_only,
+        )
         with self._connection_factory() as connection:
             rows = connection.execute(
                 f"""
@@ -402,7 +409,9 @@ class NewsStorage:
             for row in rows
         }
 
-    def news_unread_summary(self, user_id, source_group, visible_urls=None):
+    def news_unread_summary(
+        self, user_id, source_group, visible_urls=None, *, found_only=False,
+    ):
         """Считает непрочитанное и возвращает только видимые отметки."""
         empty = {"total": 0, "by_source": {}, "visible_urls": []}
         context = self._unread_news_context(user_id, source_group)
@@ -426,13 +435,16 @@ class NewsStorage:
             context["user_id"],
             str(source_group or "").strip().casefold(),
             context["read_all_before"],
+            bool(found_only),
         )
         with self._lock:
             cached = self._unread_counts_cache.get(cache_key)
             if cached and cached["signature"] == signature:
                 by_source = dict(cached["by_source"])
             else:
-                by_source = self._query_unread_counts(context)
+                by_source = self._query_unread_counts(
+                    context, found_only=found_only,
+                )
                 final_signature = self._unread_signature()
                 if final_signature == signature:
                     self._unread_counts_cache[cache_key] = {
@@ -448,10 +460,15 @@ class NewsStorage:
             visible_unread = set()
             if visible_candidates:
                 placeholders = ", ".join("?" for _ in visible_candidates)
+                found_join = (
+                    "JOIN found_items AS f ON f.news_key = n.news_key"
+                    if found_only else ""
+                )
                 visible_rows = connection.execute(
                     f"""
                     SELECT DISTINCT n.normalized_url AS url
                     FROM news_items AS n
+                    {found_join}
                     LEFT JOIN news_item_reads AS r
                       ON r.user_id = ? AND r.normalized_url = n.normalized_url
                     WHERE n.normalized_url IN ({placeholders})
