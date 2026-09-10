@@ -140,10 +140,14 @@ class WebTemplateTests(unittest.TestCase):
         self.assertNotIn("Мои подборки", template)
         self.assertNotIn('name="comment"', template)
         self.assertNotIn('class="panel"', template)
-        self.assertIn(".collections-title{margin:0;padding:0 0 25px 2px", template)
-        self.assertIn("font-size:28px", template)
+        self.assertIn(".collections-title{margin:0;padding:0 0 22px 2px", template)
+        self.assertIn("font-size:16px", template)
         self.assertIn(".collection-tree-list{overflow:visible}", template)
         self.assertIn(".left-rail::-webkit-scrollbar{display:none}", template)
+        self.assertIn('class="search-icon"', template)
+        self.assertIn('placeholder="Поиск"', template)
+        self.assertNotIn("Рабочая подборка со статьями", template)
+        self.assertNotIn("<label>Сортировка", template)
 
 
 if __name__ == "__main__":
