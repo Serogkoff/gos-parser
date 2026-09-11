@@ -846,12 +846,16 @@
                     </div>
                     {% endfor %}
                     {% if yahoo_sources %}
-                    <div class="source-row yahoo-source-header {{'active' if yahoo_active else ''}}">
+                    <div class="source-row yahoo-source-header {{'active' if yahoo_active else ''}} {{'source-muted' if yahoo_all_muted else ''}}">
                         <button class="source-link yahoo-source-toggle" id="yahoo-source-toggle" type="button" aria-pressed="{{'true' if yahoo_all_active else ('mixed' if yahoo_active else 'false')}}" aria-expanded="{{'true' if yahoo_expanded else 'false'}}" aria-controls="yahoo-source-items" title="Выбрать или снять все разделы Yahoo! JAPAN">
                             <img class="source-emblem source-emblem-compact" src="{{url_for('static', filename='source-logos/' ~ source_emblems.get(yahoo_sources[0][0]))}}?v={{asset_version|urlencode}}" width="24" height="24" loading="lazy" decoding="async" alt="">
                             <span>Yahoo! JAPAN</span>
                             <span class="unread-count" data-unread-source="__yahoo__">{{('+' ~ yahoo_unread_count) if yahoo_unread_count else ''}}</span>
                             <span class="yahoo-chevron" aria-hidden="true">⌄</span>
+                        </button>
+                        <button class="source-mute-toggle" type="button" data-source-mute-yahoo aria-pressed="{{'true' if yahoo_all_muted else 'false'}}" aria-label="{{'Показывать все источники Yahoo! JAPAN' if yahoo_all_muted else 'Скрыть все источники Yahoo! JAPAN'}}" title="{{'Показывать все источники Yahoo! JAPAN' if yahoo_all_muted else 'Скрыть все источники Yahoo! JAPAN'}}">
+                            <svg class="mute-eye-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+                            <svg class="mute-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c6 0 9.5 6 9.5 6a15.5 15.5 0 0 1-2.2 2.8M6.1 6.2C3.7 8 2.5 12 2.5 12s3.5 6 9.5 6c1 0 1.9-.2 2.7-.4M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
                         </button>
                     </div>
                     <span id="yahoo-source-items"></span>
@@ -1205,6 +1209,7 @@
     const yahooSourceToggle = document.getElementById('yahoo-source-toggle');
     if(yahooSourceToggle){
         yahooSourceToggle.addEventListener('click', () => {
+            if(yahooSourceToggle.closest('.yahoo-source-header').classList.contains('source-muted')) return;
             const yahooSources = [...sourceList.querySelectorAll('.yahoo-source-row [data-source-filter]')]
                 .filter(button => !button.closest('[data-source-row]').classList.contains('source-muted'))
                 .map(button => button.dataset.sourceFilter);
@@ -1276,22 +1281,54 @@
     let draggedSourceRow = null;
     let sourceOrderChanged = false;
     let sourceMutesChanged = false;
+    const yahooMuteToggle = document.querySelector('[data-source-mute-yahoo]');
+    function setSourceMuted(row, button, muted){
+        const source = button.dataset.sourceMute;
+        muted ? mutedSources.add(source) : mutedSources.delete(source);
+        row.classList.toggle('source-muted', muted);
+        row.querySelector('[data-source-filter]').setAttribute('aria-disabled', String(muted));
+        button.setAttribute('aria-pressed', String(muted));
+        const label = muted ? 'Показывать источник' : 'Скрыть источник';
+        button.setAttribute('aria-label', label);
+        button.setAttribute('title', label);
+    }
+    function refreshYahooMuteState(){
+        if(!yahooMuteToggle) return;
+        const names = [...sourceList.querySelectorAll('.yahoo-source-row [data-source-mute]')]
+            .map(button => button.dataset.sourceMute);
+        const allMuted = names.length > 0 && names.every(source => mutedSources.has(source));
+        const someMuted = names.some(source => mutedSources.has(source));
+        yahooMuteToggle.closest('.yahoo-source-header').classList.toggle('source-muted', allMuted);
+        yahooMuteToggle.setAttribute('aria-pressed', allMuted ? 'true' : (someMuted ? 'mixed' : 'false'));
+        const label = allMuted
+            ? 'Показывать все источники Yahoo! JAPAN'
+            : 'Скрыть все источники Yahoo! JAPAN';
+        yahooMuteToggle.setAttribute('aria-label', label);
+        yahooMuteToggle.setAttribute('title', label);
+    }
     document.querySelectorAll('[data-source-mute]').forEach(button => {
         button.addEventListener('click', event => {
             event.stopPropagation();
-            const source = button.dataset.sourceMute;
             const row = button.closest('[data-source-row]');
-            const muted = !mutedSources.has(source);
-            muted ? mutedSources.add(source) : mutedSources.delete(source);
-            row.classList.toggle('source-muted', muted);
-            row.querySelector('[data-source-filter]').setAttribute('aria-disabled', String(muted));
-            button.setAttribute('aria-pressed', String(muted));
-            const label = muted ? 'Показывать источник' : 'Скрыть источник';
-            button.setAttribute('aria-label', label);
-            button.setAttribute('title', label);
+            setSourceMuted(row, button, !mutedSources.has(button.dataset.sourceMute));
+            refreshYahooMuteState();
             sourceMutesChanged = true;
         });
     });
+    if(yahooMuteToggle){
+        yahooMuteToggle.addEventListener('click', event => {
+            event.stopPropagation();
+            const buttons = [...sourceList.querySelectorAll('.yahoo-source-row [data-source-mute]')];
+            const allMuted = buttons.length > 0 && buttons.every(
+                button => mutedSources.has(button.dataset.sourceMute)
+            );
+            buttons.forEach(button => setSourceMuted(
+                button.closest('[data-source-row]'), button, !allMuted
+            ));
+            refreshYahooMuteState();
+            sourceMutesChanged = true;
+        });
+    }
     function setSourceOrderEditing(editing){
         sourceList.classList.toggle('order-editing', editing);
         if(editing && yahooSourceToggle){

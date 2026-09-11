@@ -1704,6 +1704,9 @@ def render_news_page(
         sidebar_sources = sources
     checkpoint("overview")
     yahoo_source_names = [source[0] for source in yahoo_sources]
+    yahoo_all_muted = bool(yahoo_source_names) and all(
+        source in muted_sources for source in yahoo_source_names
+    )
     selected_yahoo_sources = [
         source for source in source_filters if is_yahoo_source(source)
     ]
@@ -1945,6 +1948,7 @@ def render_news_page(
         yahoo_sources=yahoo_sources,
         yahoo_active=yahoo_active,
         yahoo_all_active=yahoo_all_active,
+        yahoo_all_muted=yahoo_all_muted,
         yahoo_expanded=yahoo_expanded,
         keyword_filter=keyword_filter,
         keyword_urls=keyword_urls,

@@ -289,11 +289,11 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("<span>Yahoo! JAPAN</span>", html)
         self.assertIn("<span>時事通信</span>", html)
         self.assertIn(
-            '/static/source-logos/tass.png?v=2026.08.17.16.69',
+            '/static/source-logos/tass.png?v=2026.08.17.16.70',
             html,
         )
         self.assertIn(
-            '/static/source-logos/yahoo.png?v=2026.08.17.16.69',
+            '/static/source-logos/yahoo.png?v=2026.08.17.16.70',
             html,
         )
         self.assertIn("Политика", html)
@@ -339,7 +339,7 @@ class SourceGroupPageTests(unittest.TestCase):
             html,
         )
         self.assertIn(
-            '/static/source-logos/mchs.png?v=2026.08.17.16.69',
+            '/static/source-logos/mchs.png?v=2026.08.17.16.70',
             html,
         )
         self.assertIn(
@@ -496,6 +496,10 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn('aria-pressed="false"', html)
         self.assertIn("yahooSources.every(source => selectedSources.has(source))", html)
         self.assertIn("allSelected ? selectedSources.delete(source) : selectedSources.add(source)", html)
+        self.assertIn("data-source-mute-yahoo", html)
+        self.assertIn("Скрыть все источники Yahoo! JAPAN", html)
+        self.assertIn("refreshYahooMuteState()", html)
+        self.assertIn("buttons.forEach(button => setSourceMuted(", html)
 
     def test_main_sections_are_rendered_inside_header(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
@@ -523,7 +527,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Свежие номера газет", html)
         self.assertIn("Материал свежего номера НГ", html)
         self.assertIn(
-            '/static/source-logos/ng.png?v=2026.08.17.16.69',
+            '/static/source-logos/ng.png?v=2026.08.17.16.70',
             html,
         )
         self.assertNotIn("Материал государственного ведомства", html)
