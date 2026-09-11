@@ -222,6 +222,14 @@ def create_schema(connection):
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS user_found_muted_sources (
+            user_id INTEGER NOT NULL,
+            source TEXT NOT NULL COLLATE NOCASE,
+            muted_at TEXT NOT NULL,
+            PRIMARY KEY(user_id, source),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS user_news_read_state (
             user_id INTEGER NOT NULL,
             source_group TEXT NOT NULL,

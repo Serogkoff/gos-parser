@@ -502,7 +502,7 @@
         .panel-title-actions button:hover,.panel-title-actions button[aria-pressed="true"]{color:var(--coral-dark);background:#fff3ed}
         .panel-action-icon{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
         .source-order-toggle .order-done{display:none}
-        .source-order-toggle[aria-pressed="true"] .order-arrows{display:none}
+        .source-order-toggle[aria-pressed="true"] .order-settings{display:none}
         .source-order-toggle[aria-pressed="true"] .order-done{display:block}
         .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
         .source-list{
@@ -804,7 +804,7 @@
                     <h2>Источники</h2>
                     <div class="panel-title-actions">
                         <button class="source-order-toggle" id="source-order-toggle" type="button" aria-pressed="false" aria-label="Изменить порядок источников" title="Изменить порядок источников">
-                            <svg class="panel-action-icon order-arrows" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4v16M5 7l3-3 3 3M16 20V4M13 17l3 3 3-3"/></svg>
+                            <svg class="panel-action-icon order-settings" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5 5L4 17v3h3l5.7-5.7a4 4 0 0 0 5-5l-2.5 2.5-3-3Z"/></svg>
                             <svg class="panel-action-icon order-done" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
                             <span class="visually-hidden">Изменить порядок источников</span>
                         </button>
@@ -929,6 +929,7 @@
     const selectedKeyword = {{keyword_filter|tojson}};
     const selectedSources = new Set({{source_filters|tojson}});
     const currentSourceGroup = {{source_group|tojson}};
+    const currentMode = {{mode|tojson}};
     let saved = new Set({{saved_urls|tojson}});
     const legacySavedStorageKey = 'monitor-saved';
     const legacyUnreadStorageKey = 'monitor-unread-v1';
@@ -1025,7 +1026,8 @@
         if(migrated){
             try{
                 const response = await fetch(
-                    '/api/news-index?group=' + encodeURIComponent(currentSourceGroup),
+                    '/api/news-index?group=' + encodeURIComponent(currentSourceGroup)
+                    + '&mode=' + encodeURIComponent(currentMode),
                     {credentials:'same-origin'}
                 );
                 if(response.ok){
@@ -1270,7 +1272,7 @@
                 'Content-Type':'application/json',
                 'X-CSRF-Token': {{csrf_token|tojson}}
             },
-            body:JSON.stringify({sources:[...mutedSources]})
+            body:JSON.stringify({mode:currentMode,sources:[...mutedSources]})
         });
         if(!response.ok){
             const data = await response.json().catch(() => ({}));

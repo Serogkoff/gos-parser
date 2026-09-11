@@ -55,6 +55,16 @@ class SourceControlStorageTests(unittest.TestCase):
             ["МЧС", "Правительство РФ"],
         )
 
+        storage.save_muted_sources(self.owner["id"], ["Минфин"], "found")
+        self.assertEqual(
+            storage.load_muted_sources(self.owner["id"], "found"),
+            ["Минфин"],
+        )
+        self.assertEqual(
+            storage.load_muted_sources(self.owner["id"]),
+            ["МЧС", "Правительство РФ"],
+        )
+
     def test_source_pause_is_persisted(self):
         storage.set_source_enabled(" МЧС ", False)
 

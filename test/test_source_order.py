@@ -194,7 +194,23 @@ class PersonalSourceOrderTests(unittest.TestCase):
 
         with patch.object(web_app, "load_json", side_effect=self._app_data):
             found_html = client.get("/found").get_data(as_text=True)
-        self.assertNotIn("Материал МЧС", found_html)
+        self.assertIn("Материал МЧС", found_html)
+
+        found_response = client.post(
+            "/api/source-mutes",
+            json={"mode": "found", "sources": ["МЧС"]},
+            headers={"X-CSRF-Token": token},
+        )
+        with patch.object(web_app, "load_json", side_effect=self._app_data):
+            found_muted_html = client.get("/found").get_data(as_text=True)
+            feed_html = client.get("/").get_data(as_text=True)
+        self.assertEqual(found_response.status_code, 200)
+        self.assertNotIn("Материал МЧС", found_muted_html)
+        self.assertNotIn("Материал МЧС", feed_html)
+        self.assertEqual(
+            storage.load_muted_sources(self.first["id"], "found"),
+            ["МЧС"],
+        )
 
         second_client = web_app.app.test_client()
         self._login(second_client, self.second["id"])
@@ -202,6 +218,9 @@ class PersonalSourceOrderTests(unittest.TestCase):
             second_html = second_client.get("/").get_data(as_text=True)
         self.assertIn("Материал МЧС", second_html)
         self.assertEqual(storage.load_muted_sources(self.second["id"]), [])
+        self.assertEqual(
+            storage.load_muted_sources(self.second["id"], "found"), []
+        )
 
     def test_source_mutes_api_requires_csrf(self):
         client = web_app.app.test_client()

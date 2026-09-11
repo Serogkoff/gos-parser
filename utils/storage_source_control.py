@@ -119,15 +119,25 @@ class SourceControlStorage:
             )
         return order
 
-    def load_muted_sources(self, user_id):
-        """Возвращает источники, скрытые одним пользователем во всех лентах."""
+    @staticmethod
+    def _muted_sources_table(mode):
+        mode = str(mode or "all").strip().casefold()
+        if mode == "all":
+            return "user_muted_sources"
+        if mode == "found":
+            return "user_found_muted_sources"
+        raise ValueError("Неизвестный режим ленты")
+
+    def load_muted_sources(self, user_id, mode="all"):
+        """Возвращает личные мьюты обычной ленты или совпадений."""
         user_id = self._validate_user_id(user_id)
+        table = self._muted_sources_table(mode)
         self._initialize_database()
         with self._connection_factory() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT source
-                FROM user_muted_sources
+                FROM {table}
                 WHERE user_id = ?
                 ORDER BY source COLLATE NOCASE
                 """,
@@ -135,9 +145,10 @@ class SourceControlStorage:
             ).fetchall()
         return [row["source"] for row in rows]
 
-    def save_muted_sources(self, user_id, sources):
-        """Заменяет личный список скрытых источников одной транзакцией."""
+    def save_muted_sources(self, user_id, sources, mode="all"):
+        """Сохраняет независимые личные мьюты для выбранного режима ленты."""
         user_id = self._validate_user_id(user_id)
+        table = self._muted_sources_table(mode)
         if not isinstance(sources, list) or len(sources) > 500:
             raise ValueError("Некорректный список скрытых источников")
         muted = []
@@ -153,12 +164,12 @@ class SourceControlStorage:
         self._initialize_database()
         with self._lock, self._connection_factory() as connection:
             connection.execute(
-                "DELETE FROM user_muted_sources WHERE user_id = ?",
+                f"DELETE FROM {table} WHERE user_id = ?",
                 (user_id,),
             )
             connection.executemany(
-                """
-                INSERT INTO user_muted_sources(user_id, source, muted_at)
+                f"""
+                INSERT INTO {table}(user_id, source, muted_at)
                 VALUES (?, ?, ?)
                 """,
                 ((user_id, source, moment) for source in muted),

@@ -232,14 +232,14 @@ def save_source_order(user_id, source_group, sources):
     )
 
 
-def load_muted_sources(user_id):
-    """Возвращает личный список источников, скрытых из ленты."""
-    return _SOURCE_CONTROL_STORAGE.load_muted_sources(user_id)
+def load_muted_sources(user_id, mode="all"):
+    """Возвращает личные мьюты обычной ленты или совпадений."""
+    return _SOURCE_CONTROL_STORAGE.load_muted_sources(user_id, mode)
 
 
-def save_muted_sources(user_id, sources):
-    """Сохраняет личный список источников, скрытых из ленты."""
-    return _SOURCE_CONTROL_STORAGE.save_muted_sources(user_id, sources)
+def save_muted_sources(user_id, sources, mode="all"):
+    """Сохраняет личные мьюты обычной ленты или совпадений."""
+    return _SOURCE_CONTROL_STORAGE.save_muted_sources(user_id, sources, mode)
 
 
 def source_is_enabled(source):

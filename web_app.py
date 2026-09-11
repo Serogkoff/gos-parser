@@ -1661,7 +1661,7 @@ def render_news_page(
     counts = news_source_counts(source_group)
     sources = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     muted_sources = set(
-        load_muted_sources(user["id"])
+        load_muted_sources(user["id"], mode)
         if user["id"] else []
     )
     requested_sources = (
@@ -2322,8 +2322,11 @@ def news_index_api():
     }:
         return jsonify(error="Неизвестный раздел источников"), 400
     user = current_user()
+    mode = str(request.args.get("mode", "all")).strip().casefold()
+    if mode not in {"all", "found"}:
+        return jsonify(error="Неизвестный режим ленты"), 400
     muted_sources = set(
-        load_muted_sources(user["id"])
+        load_muted_sources(user["id"], mode)
         if user["id"] else []
     )
     if source_group == ALL_GROUP:
@@ -2418,7 +2421,7 @@ def source_order_api():
 
 @app.post("/api/source-mutes")
 def source_mutes_api():
-    """Сохраняет личные источники, скрытые из ленты и совпадений."""
+    """Сохраняет независимые личные мьюты ленты или совпадений."""
     user = current_user()
     if not csrf_is_valid():
         return jsonify(error="Сессия устарела. Обновите страницу."), 400
@@ -2426,6 +2429,9 @@ def source_mutes_api():
     requested = payload.get("sources")
     if not isinstance(requested, list):
         return jsonify(error="Некорректный список скрытых источников"), 400
+    mode = str(payload.get("mode", "all")).strip().casefold()
+    if mode not in {"all", "found"}:
+        return jsonify(error="Неизвестный режим ленты"), 400
 
     available = news_source_counts(ALL_GROUP)
     canonical = {source.casefold(): source for source in available}
@@ -2438,7 +2444,7 @@ def source_mutes_api():
             seen.add(key)
             muted.append(source)
     try:
-        saved = save_muted_sources(user["id"], muted)
+        saved = save_muted_sources(user["id"], muted, mode)
     except ValueError as error:
         return jsonify(error=str(error)), 400
     return jsonify(sources=saved)
