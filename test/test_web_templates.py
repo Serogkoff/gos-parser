@@ -71,6 +71,24 @@ class WebTemplateTests(unittest.TestCase):
         ]
         self.assertNotIn('<span>Настройки</span>', rail)
 
+    def test_auth_template_uses_blurred_static_product_preview(self):
+        template_path = Path(web_app.app.template_folder) / "auth.html"
+        template = template_path.read_text(encoding="utf-8")
+
+        for marker in (
+            'class="preview" aria-hidden="true"',
+            "filter:blur(9px)",
+            'class="card" aria-labelledby="auth-title"',
+            'name="remember" value="1"',
+            "Включён Caps Lock",
+            "Доступ только для зарегистрированных пользователей",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, template)
+
+        self.assertNotIn("load_all_news", template)
+        self.assertNotIn("Забыли пароль", template)
+
     def test_system_template_keeps_storage_controls_explicit(self):
         template_path = Path(web_app.app.template_folder) / "admin_system.html"
         template = template_path.read_text(encoding="utf-8")

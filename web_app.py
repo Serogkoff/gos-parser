@@ -479,6 +479,7 @@ def login():
     error = ""
     retry_after = 0
     username = str(request.form.get("username", "")).strip()
+    remember = request.form.get("remember") == "1"
     next_url = safe_next_url(request.values.get("next", "/"))
     if request.method == "POST":
         if not csrf_is_valid():
@@ -514,7 +515,7 @@ def login():
                     _client_address(),
                 )
                 session.clear()
-                session.permanent = True
+                session.permanent = remember
                 session["user_id"] = user["id"]
                 csrf_token()
                 return redirect(next_url)
@@ -523,6 +524,8 @@ def login():
         mode="login",
         error=error,
         username=username,
+        remember=remember,
+        retry_after=retry_after,
         csrf_token=csrf_token(),
         next_url=next_url,
     )

@@ -234,6 +234,50 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(good_login.status_code, 302)
         self.assertTrue(good_login.headers["Location"].endswith("/newspapers"))
 
+    def test_login_remember_choice_controls_cookie_lifetime(self):
+        storage.create_user("reader", "reader-secret-2026", role="user")
+
+        login_page = self.client.get("/login")
+        session_login = self.client.post(
+            "/login",
+            data={
+                "csrf_token": self._csrf(login_page),
+                "username": "reader",
+                "password": "reader-secret-2026",
+            },
+        )
+        session_cookie = session_login.headers.getlist("Set-Cookie")[-1]
+        self.assertNotIn("Expires=", session_cookie)
+
+        self.client = web_app.app.test_client()
+        login_page = self.client.get("/login")
+        remembered_login = self.client.post(
+            "/login",
+            data={
+                "csrf_token": self._csrf(login_page),
+                "username": "reader",
+                "password": "reader-secret-2026",
+                "remember": "1",
+            },
+        )
+        remembered_cookie = remembered_login.headers.getlist("Set-Cookie")[-1]
+        self.assertIn("Expires=", remembered_cookie)
+
+    def test_login_page_uses_safe_blurred_preview_and_accessible_controls(self):
+        storage.create_user("reader", "reader-secret-2026", role="user")
+
+        page = self.client.get("/login")
+        html = page.get_data(as_text=True)
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('class="preview" aria-hidden="true"', html)
+        self.assertIn("filter:blur(9px)", html)
+        self.assertIn('name="remember" value="1"', html)
+        self.assertIn("Включён Caps Lock", html)
+        self.assertIn("Доступ только для зарегистрированных пользователей", html)
+        self.assertNotIn("Забыли пароль", html)
+        self.assertNotIn("Регистрация", html)
+
     def test_regular_user_cannot_change_admin_settings(self):
         storage.create_user("owner", "super-secret-2026", role="admin")
         storage.create_user("reader", "reader-secret-2026", role="user")

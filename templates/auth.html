@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -6,47 +5,99 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{'Первый запуск' if mode == 'setup' else 'Вход'}} — Монитор</title>
     <style>
-        :root{--paper:#f5f1e8;--surface:#fffcf6;--ink:#171815;--muted:#777267;--line:#d8d1c5;--coral:#e44f45}
-        *{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:24px;color:var(--ink);background:radial-gradient(circle at 0 0,#fff,transparent 42rem),var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}
-        .card{width:min(440px,100%);padding:38px;border:1px solid var(--line);border-radius:9px;background:var(--surface);box-shadow:0 25px 70px rgba(46,38,27,.08)}
-        .eyebrow{margin:0 0 9px;color:var(--coral);font-size:11px;font-weight:750;letter-spacing:.12em;text-transform:uppercase}
-        h1{margin:0;font-size:38px;line-height:1;letter-spacing:-.045em}p{margin:15px 0 25px;color:var(--muted);font-size:14px;line-height:1.55}
-        label{display:block;margin-top:15px;color:#514c45;font-size:13px;font-weight:650}input{width:100%;height:48px;margin-top:7px;padding:0 13px;border:1px solid #c9c1b5;border-radius:6px;color:var(--ink);background:#fff;font:inherit}input:focus{outline:3px solid rgba(228,79,69,.18);border-color:var(--coral)}
-        button{width:100%;height:49px;margin-top:23px;border:0;border-radius:6px;color:#fff;background:var(--coral);font:700 15px inherit;cursor:pointer}button:hover{background:#c93c35}
-        .error{margin:18px 0 0;padding:12px;color:#a72d27;border-left:3px solid var(--coral);background:#fff1ed;font-size:13px}
-        .hint{margin:13px 0 0;font-size:11px}.brand{margin-bottom:30px;font-size:19px;font-weight:800;letter-spacing:-.035em}.password-wrap{position:relative;display:block}.password-wrap input{padding-right:48px}.password-toggle{position:absolute;right:5px;top:12px;width:38px;height:38px;min-height:0;margin:0;padding:0;border:0;color:var(--muted);background:transparent}.password-toggle:hover{color:var(--coral);background:transparent}.password-toggle::before{content:"";display:block;width:21px;height:21px;margin:auto;background:currentColor;mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 5c5.5 0 9.5 5.1 9.7 5.3a2.7 2.7 0 0 1 0 3.4C21.5 13.9 17.5 19 12 19S2.5 13.9 2.3 13.7a2.7 2.7 0 0 1 0-3.4C2.5 10.1 6.5 5 12 5Zm0 2c-4.4 0-7.8 4.2-8.1 4.6a.7.7 0 0 0 0 .8C4.2 12.8 7.6 17 12 17s7.8-4.2 8.1-4.6a.7.7 0 0 0 0-.8C19.8 11.2 16.4 7 12 7Zm0 1.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z'/%3E%3C/svg%3E");-webkit-mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 5c5.5 0 9.5 5.1 9.7 5.3a2.7 2.7 0 0 1 0 3.4C21.5 13.9 17.5 19 12 19S2.5 13.9 2.3 13.7a2.7 2.7 0 0 1 0-3.4C2.5 10.1 6.5 5 12 5Zm0 2c-4.4 0-7.8 4.2-8.1 4.6a.7.7 0 0 0 0 .8C4.2 12.8 7.6 17 12 17s7.8-4.2 8.1-4.6a.7.7 0 0 0 0-.8C19.8 11.2 16.4 7 12 7Zm0 1.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z'/%3E%3C/svg%3E")}
+        :root{--paper:#f6f4ef;--surface:#fffefa;--ink:#171815;--muted:#77736b;--line:#d9d5cd;--coral:#ef3f35;--coral-dark:#d8332b}
+        *{box-sizing:border-box}
+        html,body{min-height:100%;margin:0}
+        body{min-height:100vh;overflow:hidden;color:var(--ink);background:var(--paper);font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif}
+        button,input{font:inherit}
+        .preview{position:fixed;inset:-18px;display:grid;grid-template-columns:300px minmax(0,1fr);overflow:hidden;background:#fff;filter:blur(9px);transform:scale(1.025);pointer-events:none;user-select:none}
+        .preview::after{content:"";position:absolute;inset:0;background:rgba(248,246,241,.62)}
+        .preview-rail{padding:42px 28px;border-right:1px solid #ddd;background:#fdfdfb}
+        .preview-brand{margin-bottom:58px;font:46px/1 Georgia,"Times New Roman",serif;letter-spacing:-.045em}
+        .preview-link{display:flex;align-items:center;gap:18px;height:78px;padding:0 16px;border-radius:8px;font-size:17px;font-weight:650}
+        .preview-link.active{color:var(--coral);background:#fff1ef}
+        .preview-icon{width:23px;height:23px;border:2px solid currentColor;border-radius:5px}
+        .preview-main{min-width:0;padding:36px 34px}
+        .preview-top{display:flex;align-items:center;justify-content:space-between;height:78px;border-bottom:1px solid #ddd}
+        .preview-tabs{display:flex;gap:48px;font:23px Georgia,"Times New Roman",serif}
+        .preview-clocks{display:flex;gap:28px;font:20px Georgia,"Times New Roman",serif}
+        .preview-layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:28px;padding-top:22px}
+        .preview-card{display:grid;grid-template-columns:220px minmax(0,1fr);gap:28px;min-height:174px;padding:28px;border-bottom:1px solid #ddd;background:#fff}
+        .preview-source{display:flex;align-items:flex-start;gap:15px;font-weight:700}.preview-logo{width:58px;height:58px;border-radius:50%;background:#376f97}
+        .preview-copy h2{margin:0 0 14px;font:700 25px/1.18 Georgia,"Times New Roman",serif}.preview-copy p{margin:0;color:#777;font:17px/1.45 Georgia,"Times New Roman",serif}
+        .preview-tools{display:flex;gap:14px;margin-bottom:22px}.preview-tool{height:56px;flex:1;border:1px solid #d8d5ce;border-radius:7px;background:#fff}
+        .preview-sources{border:1px solid #ddd;background:#fff}.preview-sources h2{margin:0;padding:22px;font:28px Georgia,"Times New Roman",serif}.preview-source-row{height:72px;padding:24px;border-top:1px solid #ddd;color:#555}
+        .veil{position:fixed;inset:0;z-index:1;background:rgba(248,246,241,.18)}
+        .auth-shell{position:relative;z-index:2;display:grid;min-height:100vh;place-items:center;padding:24px}
+        .card{width:min(480px,100%);padding:34px 42px 36px;border:1px solid rgba(188,181,170,.75);border-radius:18px;background:rgba(255,254,250,.97);box-shadow:0 24px 75px rgba(45,39,31,.16)}
+        .brand{margin:0 0 22px;text-align:center;font:32px/1 Georgia,"Times New Roman",serif;letter-spacing:-.035em}
+        h1{margin:0;text-align:center;font:46px/1 Georgia,"Times New Roman",serif;letter-spacing:-.035em}
+        .intro{margin:13px 0 25px;text-align:center;color:var(--muted);font-size:14px;line-height:1.5}
+        label.field-label{display:block;margin-top:17px;color:#393732;font-size:13px;font-weight:700}
+        input[type="text"],input[type="password"]{width:100%;height:51px;margin-top:7px;padding:0 14px;border:1px solid #c9c4bb;border-radius:7px;color:var(--ink);background:#fff}
+        input[type="text"]:focus,input[type="password"]:focus{outline:3px solid rgba(239,63,53,.16);border-color:var(--coral)}
+        .password-wrap{position:relative;display:block}.password-wrap input{padding-right:50px}
+        .password-toggle{position:absolute;right:6px;top:13px;width:38px;height:38px;margin:0;padding:0;border:0;color:var(--muted);background:transparent;cursor:pointer}
+        .password-toggle:hover,.password-toggle:focus-visible{color:var(--coral);outline:none}
+        .password-toggle::before{content:"";display:block;width:21px;height:21px;margin:auto;background:currentColor;mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 5c5.5 0 9.5 5.1 9.7 5.3a2.7 2.7 0 0 1 0 3.4C21.5 13.9 17.5 19 12 19S2.5 13.9 2.3 13.7a2.7 2.7 0 0 1 0-3.4C2.5 10.1 6.5 5 12 5Zm0 2c-4.4 0-7.8 4.2-8.1 4.6a.7.7 0 0 0 0 .8C4.2 12.8 7.6 17 12 17s7.8-4.2 8.1-4.6a.7.7 0 0 0 0-.8C19.8 11.2 16.4 7 12 7Zm0 1.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z'/%3E%3C/svg%3E");-webkit-mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 5c5.5 0 9.5 5.1 9.7 5.3a2.7 2.7 0 0 1 0 3.4C21.5 13.9 17.5 19 12 19S2.5 13.9 2.3 13.7a2.7 2.7 0 0 1 0-3.4C2.5 10.1 6.5 5 12 5Zm0 2c-4.4 0-7.8 4.2-8.1 4.6a.7.7 0 0 0 0 .8C4.2 12.8 7.6 17 12 17s7.8-4.2 8.1-4.6a.7.7 0 0 0 0-.8C19.8 11.2 16.4 7 12 7Zm0 1.8a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z'/%3E%3C/svg%3E")}
+        .caps-lock{margin:8px 0 0;color:#a13a32;font-size:12px}.caps-lock[hidden]{display:none}
+        .remember{display:flex;align-items:center;gap:10px;margin-top:18px;color:#4f4c46;font-size:13px;cursor:pointer}.remember input{width:18px;height:18px;margin:0;accent-color:var(--coral)}
+        .submit{width:100%;height:52px;margin-top:22px;border:0;border-radius:7px;color:#fff;background:var(--coral);font-weight:750;cursor:pointer}.submit:hover{background:var(--coral-dark)}.submit:disabled{cursor:wait;opacity:.7}
+        .error{margin:17px 0 0;padding:11px 13px;color:#9d2c26;border-left:3px solid var(--coral);background:#fff0ed;font-size:13px;line-height:1.4}
+        .retry{font-weight:700}.hint{margin:15px 0 0;text-align:center;color:var(--muted);font-size:11px;line-height:1.45}
+        @media(max-width:640px){.preview{grid-template-columns:1fr}.preview-rail,.preview-sidebar{display:none}.preview-main{padding:20px}.preview-tabs{gap:20px}.preview-layout{grid-template-columns:1fr}.auth-shell{padding:14px}.card{padding:30px 24px;border-radius:14px}.brand{font-size:28px}h1{font-size:40px}}
     </style>
 </head>
-<body><main class="card">
+<body>
+<div class="preview" aria-hidden="true">
+    <aside class="preview-rail">
+        <div class="preview-brand">Монитор</div>
+        <div class="preview-link"><span class="preview-icon"></span>Лента новостей</div>
+        <div class="preview-link active"><span class="preview-icon"></span>Совпадения</div>
+        <div class="preview-link"><span class="preview-icon"></span>Подборки</div>
+        <div class="preview-link"><span class="preview-icon"></span>Заметки</div>
+        <div class="preview-link"><span class="preview-icon"></span>Пользователи</div>
+        <div class="preview-link"><span class="preview-icon"></span>Статус системы</div>
+    </aside>
+    <section class="preview-main">
+        <header class="preview-top"><nav class="preview-tabs"><span>Все</span><span>Госструктуры</span><span>Информагентства</span><span>Газеты</span></nav><div class="preview-clocks"><span>Москва&nbsp; 12:34</span><span>Токио&nbsp; 18:34</span></div></header>
+        <div class="preview-layout">
+            <div>
+                <article class="preview-card"><div class="preview-source"><span class="preview-logo"></span><span>Источник<br>Категория</span></div><div class="preview-copy"><h2>Главные события дня и новые материалы</h2><p>Краткое описание публикации и основные сведения из новостного сообщения.</p></div></article>
+                <article class="preview-card"><div class="preview-source"><span class="preview-logo"></span><span>Источник<br>Категория</span></div><div class="preview-copy"><h2>Новости российских и зарубежных источников</h2><p>Система собирает материалы и показывает совпадения по ключевым словам.</p></div></article>
+                <article class="preview-card"><div class="preview-source"><span class="preview-logo"></span><span>Источник<br>Категория</span></div><div class="preview-copy"><h2>Новая публикация в ленте мониторинга</h2><p>Сохранённые статьи доступны в персональных подборках пользователя.</p></div></article>
+            </div>
+            <aside class="preview-sidebar"><div class="preview-tools"><div class="preview-tool"></div><div class="preview-tool"></div></div><div class="preview-sources"><h2>Источники</h2><div class="preview-source-row">Все источники</div><div class="preview-source-row">Информагентство</div><div class="preview-source-row">Газета</div><div class="preview-source-row">Государственный источник</div></div></aside>
+        </div>
+    </section>
+</div>
+<div class="veil"></div>
+<main class="auth-shell"><section class="card" aria-labelledby="auth-title">
     <div class="brand">Монитор</div>
-    <p class="eyebrow">{{'Настройка владельца' if mode == 'setup' else 'Личный кабинет'}}</p>
-    <h1>{{'Первый запуск' if mode == 'setup' else 'Вход'}}</h1>
-    <p>
-        {% if mode == 'setup' %}
-        Создай первую учётную запись. Она получит роль администратора и полный доступ к настройкам.
-        {% else %}
-        Войди в свою учётную запись, чтобы открыть мониторинг и личные данные.
-        {% endif %}
-    </p>
-    <form method="post">
+    <h1 id="auth-title">{{'Первый запуск' if mode == 'setup' else 'Вход'}}</h1>
+    <p class="intro">{% if mode == 'setup' %}Создайте первую учётную запись администратора{% else %}Введите данные своей учётной записи{% endif %}</p>
+    <form method="post" id="auth-form">
         <input type="hidden" name="csrf_token" value="{{csrf_token}}">
         <input type="hidden" name="next" value="{{next_url}}">
-        <label>Логин
-            <input name="username" value="{{username}}" minlength="3" maxlength="50" autocomplete="username" required autofocus>
+        <label class="field-label">Логин
+            <input type="text" name="username" value="{{username}}" minlength="3" maxlength="50" autocomplete="username" required autofocus>
         </label>
-        <label>Пароль
+        <label class="field-label">Пароль
             <input type="password" name="password" minlength="10" maxlength="256" autocomplete="{{'new-password' if mode == 'setup' else 'current-password'}}" required>
         </label>
         {% if mode == 'setup' %}
-        <label>Повтори пароль
+        <label class="field-label">Повторите пароль
             <input type="password" name="password_confirm" minlength="10" maxlength="256" autocomplete="new-password" required>
         </label>
+        {% else %}
+        <label class="remember"><input type="checkbox" name="remember" value="1" {% if remember %}checked{% endif %}>Оставаться в системе</label>
         {% endif %}
-        <button type="submit">{{'Создать администратора' if mode == 'setup' else 'Войти'}}</button>
+        <button class="submit" type="submit" data-default-text="{{'Создать администратора' if mode == 'setup' else 'Войти'}}" {% if retry_after %}disabled{% endif %}>{{'Создать администратора' if mode == 'setup' else 'Войти'}}</button>
     </form>
-    {% if error %}<div class="error">{{error}}</div>{% endif %}
-    {% if mode == 'setup' %}<p class="hint">Пароль хранится в SQLite только в виде защищённого хеша.</p>{% endif %}
-</main><script>
+    {% if error %}<div class="error" role="alert">{{error}}{% if retry_after %} <span class="retry" data-retry="{{retry_after}}"></span>{% endif %}</div>{% endif %}
+    <p class="hint">{% if mode == 'setup' %}Пароль сохраняется только в виде защищённого хеша{% else %}Доступ только для зарегистрированных пользователей{% endif %}</p>
+</section></main>
+<script>
 document.querySelectorAll('input[type="password"]').forEach(input => {
     const wrapper = document.createElement('span');
     wrapper.className = 'password-wrap';
@@ -64,5 +115,42 @@ document.querySelectorAll('input[type="password"]').forEach(input => {
         toggle.title = show ? 'Скрыть пароль' : 'Показать пароль';
     });
     wrapper.appendChild(toggle);
+
+    const caps = document.createElement('p');
+    caps.className = 'caps-lock';
+    caps.textContent = 'Включён Caps Lock';
+    caps.hidden = true;
+    wrapper.after(caps);
+    const updateCapsLock = event => {
+        caps.hidden = !(event.getModifierState && event.getModifierState('CapsLock'));
+    };
+    input.addEventListener('keydown', updateCapsLock);
+    input.addEventListener('keyup', updateCapsLock);
+    input.addEventListener('blur', () => { caps.hidden = true; });
 });
-</script></body></html>
+
+const form = document.getElementById('auth-form');
+const submit = form.querySelector('.submit');
+form.addEventListener('submit', () => {
+    submit.disabled = true;
+    submit.textContent = '{{"Создаём…" if mode == "setup" else "Входим…"}}';
+});
+
+const retry = document.querySelector('[data-retry]');
+if(retry){
+    let seconds = Number(retry.dataset.retry) || 0;
+    const renderRetry = () => {
+        retry.textContent = seconds > 0 ? `Повторите через ${seconds} сек.` : '';
+        if(seconds <= 0){
+            submit.disabled = false;
+            submit.textContent = submit.dataset.defaultText;
+            return;
+        }
+        seconds -= 1;
+        window.setTimeout(renderRetry, 1000);
+    };
+    renderRetry();
+}
+</script>
+</body>
+</html>

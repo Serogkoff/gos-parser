@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+import config
 import web_app
 from utils import keywords
 from utils import storage
@@ -917,7 +918,7 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertIn("window.history.back()".encode(), response.data)
         self.assertIn('class="article-card"'.encode(), response.data)
         self.assertIn(
-            b'/static/source-logos/mchs.png?v=2026.08.17.16.71',
+            f'/static/source-logos/mchs.png?v={config.PROJECT_VERSION}'.encode(),
             response.data,
         )
         self.assertNotIn("Ключевые факты".encode("utf-8"), response.data)
