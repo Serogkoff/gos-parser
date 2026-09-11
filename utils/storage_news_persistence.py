@@ -6,7 +6,15 @@ from datetime import datetime
 from pathlib import Path
 
 from utils.dates import parse_date
-from utils.news import deduplicate_news, merge_news, normalize_url
+from utils.news import (
+    TITLE_DEDUP_SOURCES,
+    deduplicate_news,
+    merge_news,
+    normalize_url,
+)
+
+
+CANDIDATE_IDENTITY_SOURCES = TITLE_DEDUP_SOURCES | {"минобороны рф"}
 
 
 class NewsPersistenceStorage:
@@ -222,19 +230,21 @@ class NewsPersistenceStorage:
             if not item.get("parsed_date"):
                 item["parsed_date"] = parsed_at
 
-        old_all = self._load_all_news()
-        old_found = self._load_found_news()
-
-        # Передаём все свежие записи, а не только новые: уже сохранённые
-        # материалы смогут получить исправленную дату, ссылку или анонс.
-        merged_all = self.sort_items(merge_news(old_all, all_news))
-        merged_found = self.sort_items(merge_news(old_found, found_news))
-
-        # Большинство циклов не приносит изменений. Не переписываем в таком
-        # случае всю SQLite-базу и WAL: это освобождает веб-ленту от лишнего
-        # дискового I/O и не сбрасывает агрегатные кеши каждые несколько минут.
-        if merged_all != old_all or merged_found != old_found:
-            with self._connection_factory() as connection:
+        # Фоновые группы запускаются каждые 3–10 минут. Загружать и сортировать
+        # всю многолетнюю базу для каждой такой группы не требуется: достаточно
+        # сравнить карточки текущего цикла и особые источники с дедупликацией по
+        # заголовку. Транзакция при этом изменяет только отличающиеся строки.
+        with self._connection_factory() as connection:
+            candidates = [*all_news, *found_news]
+            old_all = self.load_candidate_items(
+                connection, "news_items", candidates,
+            )
+            old_found = self.load_candidate_items(
+                connection, "found_items", candidates,
+            )
+            merged_all = merge_news(old_all, all_news)
+            merged_found = merge_news(old_found, found_news)
+            if merged_all != old_all or merged_found != old_found:
                 self.sync_collections(
                     connection,
                     old_all,
@@ -242,13 +252,65 @@ class NewsPersistenceStorage:
                     old_found,
                     merged_found,
                 )
+            totals = connection.execute(
+                """SELECT
+                       (SELECT COUNT(*) FROM news_items) AS news_count,
+                       (SELECT COUNT(*) FROM found_items) AS found_count"""
+            ).fetchone()
 
-        print(f"✅ Новых: {len(new_all)} | Всего: {len(merged_all)}")
+        print(f"✅ Новых: {len(new_all)} | Всего: {int(totals['news_count'])}")
         print(
             f"🔴 Новых совпадений: {len(new_found)} | "
-            f"Всего: {len(merged_found)}"
+            f"Всего: {int(totals['found_count'])}"
         )
         return new_found
+
+    def load_candidate_items(self, connection, table, incoming):
+        """Читает небольшой набор строк, способных совпасть с новым циклом."""
+        if table not in {"news_items", "found_items"}:
+            raise ValueError("неизвестная таблица новостей")
+        incoming = deduplicate_news(incoming)
+        if not incoming:
+            return []
+
+        direct_keys = sorted({self.news_key(item) for item in incoming})
+        identity_sources = {
+            str(item.get("source", "")).strip().casefold()
+            for item in incoming
+            if str(item.get("source", "")).strip().casefold()
+            in CANDIDATE_IDENTITY_SOURCES
+        }
+        payload_column = "n.payload_json" if table == "news_items" else "f.payload_json"
+        join = "" if table == "news_items" else "JOIN found_items AS f ON f.news_key = n.news_key"
+        found = {}
+
+        for start in range(0, len(direct_keys), 500):
+            chunk = direct_keys[start:start + 500]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = connection.execute(
+                f"""SELECT n.news_key, {payload_column} AS payload_json
+                    FROM news_items AS n {join}
+                    WHERE n.news_key IN ({placeholders})""",
+                chunk,
+            ).fetchall()
+            found.update({row["news_key"]: row["payload_json"] for row in rows})
+
+        if identity_sources:
+            sources = sorted(identity_sources)
+            placeholders = ", ".join("?" for _ in sources)
+            rows = connection.execute(
+                f"""SELECT n.news_key, {payload_column} AS payload_json
+                    FROM news_items AS n {join}
+                    WHERE CASEFOLD(n.source) IN ({placeholders})""",
+                sources,
+            ).fetchall()
+            found.update({row["news_key"]: row["payload_json"] for row in rows})
+
+        return [
+            item
+            for item in (self.decode_item(payload) for payload in found.values())
+            if item is not None
+        ]
 
     def replace_found_news(self, items):
         """Полностью пересобирает совпадения после изменения слов."""

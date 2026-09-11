@@ -110,6 +110,75 @@ class NewsPersistenceStorageTests(unittest.TestCase):
         self.assertEqual(upsert.call_args.args[1][0]["url"], first["url"])
         self.assertEqual(len(storage.load_all_news()), 2)
 
+    def test_parser_cycle_does_not_load_the_complete_news_collections(self):
+        first = self._item(1)
+        storage.save_results([first], [], set())
+
+        with (
+            patch.object(
+                storage._NEWS_PERSISTENCE,
+                "_load_all_news",
+                side_effect=AssertionError("complete news load is forbidden"),
+            ),
+            patch.object(
+                storage._NEWS_PERSISTENCE,
+                "_load_found_news",
+                side_effect=AssertionError("complete matches load is forbidden"),
+            ),
+        ):
+            storage.save_results(
+                [{**first, "summary": "Уточнённый анонс"}],
+                [],
+                storage.load_existing_urls(),
+            )
+
+        self.assertEqual(storage.load_all_news()[0]["summary"], "Уточнённый анонс")
+
+    def test_limited_cycle_keeps_title_based_deduplication(self):
+        original = {
+            "source": "МЧС",
+            "title": "Спасатели провели учения",
+            "url": "https://mchs.gov.ru/news/old-address",
+            "date": "2026-09-01",
+        }
+        storage.save_results([original], [], set())
+        corrected = {
+            **original,
+            "url": "https://mchs.gov.ru/news/correct-address",
+            "summary": "Адрес публикации исправлен.",
+        }
+
+        storage.save_results(
+            [corrected], [], storage.load_existing_urls(),
+        )
+
+        saved = storage.load_all_news()
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0]["url"], corrected["url"])
+        self.assertEqual(saved[0]["summary"], corrected["summary"])
+
+    def test_limited_cycle_keeps_ministry_of_defense_uuid_deduplication(self):
+        article_id = "11111111-1111-1111-1111-111111111111"
+        original = self._item(
+            1,
+            source="Минобороны РФ",
+            url=f"https://z.mil.ru/news/{article_id}",
+        )
+        storage.save_results([original], [], set())
+        corrected = {
+            **original,
+            "url": f"https://mil.ru/news/{article_id}",
+            "summary": "Основной домен восстановлен.",
+        }
+
+        storage.save_results(
+            [corrected], [], storage.load_existing_urls(),
+        )
+
+        saved = storage.load_all_news()
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0]["url"], corrected["url"])
+
     def test_replacement_discards_orphaned_found_item(self):
         available = self._item(1)
         orphaned = self._item(2, keywords=["тест"])

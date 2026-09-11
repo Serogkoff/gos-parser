@@ -111,21 +111,30 @@ class NewsStorage:
             for group in (ALL_GROUP, *SOURCE_GROUPS)
         }
         with self._connection_factory() as connection:
-            rows = connection.execute(
+            news_rows = connection.execute(
                 """
-                SELECT n.source,
-                       COUNT(*) AS news_count,
-                       COUNT(f.news_key) AS found_count
-                FROM news_items AS n
-                LEFT JOIN found_items AS f ON f.news_key = n.news_key
+                SELECT source, COUNT(*) AS news_count
+                FROM news_items
+                GROUP BY source
+                """
+            ).fetchall()
+            found_rows = connection.execute(
+                """
+                SELECT n.source, COUNT(*) AS found_count
+                FROM found_items AS f
+                JOIN news_items AS n ON n.news_key = f.news_key
                 GROUP BY n.source
                 """
             ).fetchall()
-        for row in rows:
+        found_by_source = {
+            row["source"]: int(row["found_count"])
+            for row in found_rows
+        }
+        for row in news_rows:
             source = row["source"] or "Неизвестный источник"
             group = get_source_group(source)
             news_count = int(row["news_count"])
-            found_count = int(row["found_count"])
+            found_count = found_by_source.get(row["source"], 0)
             groups[group]["total"] += news_count
             groups[group]["found"] += found_count
             groups[group]["by_source"][source] = news_count
