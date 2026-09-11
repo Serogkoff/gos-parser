@@ -119,6 +119,52 @@ class SourceControlStorage:
             )
         return order
 
+    def load_muted_sources(self, user_id):
+        """Возвращает источники, скрытые одним пользователем во всех лентах."""
+        user_id = self._validate_user_id(user_id)
+        self._initialize_database()
+        with self._connection_factory() as connection:
+            rows = connection.execute(
+                """
+                SELECT source
+                FROM user_muted_sources
+                WHERE user_id = ?
+                ORDER BY source COLLATE NOCASE
+                """,
+                (user_id,),
+            ).fetchall()
+        return [row["source"] for row in rows]
+
+    def save_muted_sources(self, user_id, sources):
+        """Заменяет личный список скрытых источников одной транзакцией."""
+        user_id = self._validate_user_id(user_id)
+        if not isinstance(sources, list) or len(sources) > 500:
+            raise ValueError("Некорректный список скрытых источников")
+        muted = []
+        seen = set()
+        for value in sources:
+            source = " ".join(str(value or "").split())
+            key = source.casefold()
+            if not source or len(source) > 300 or key in seen:
+                continue
+            seen.add(key)
+            muted.append(source)
+        moment = datetime.now().isoformat(timespec="seconds")
+        self._initialize_database()
+        with self._lock, self._connection_factory() as connection:
+            connection.execute(
+                "DELETE FROM user_muted_sources WHERE user_id = ?",
+                (user_id,),
+            )
+            connection.executemany(
+                """
+                INSERT INTO user_muted_sources(user_id, source, muted_at)
+                VALUES (?, ?, ?)
+                """,
+                ((user_id, source, moment) for source in muted),
+            )
+        return muted
+
     def source_is_enabled(self, source):
         """По умолчанию источник включён; администратор может поставить его на паузу."""
         source = _validated_source_name(source)

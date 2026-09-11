@@ -136,6 +136,7 @@ class NewsStorage:
 
     def list_news_page(
         self, source_group, *, found_only=False, sources=None,
+        excluded_sources=None,
         search_query="", keyword="", date_from="", date_to="",
         limit=20, offset=0,
     ):
@@ -157,6 +158,15 @@ class NewsStorage:
             placeholders = ", ".join("?" for _ in selected_sources)
             conditions.append(f"n.source IN ({placeholders})")
             parameters.extend(selected_sources)
+        hidden_sources = []
+        for source in excluded_sources or []:
+            source = str(source or "").strip()
+            if source and source not in hidden_sources:
+                hidden_sources.append(source)
+        if hidden_sources:
+            placeholders = ", ".join("?" for _ in hidden_sources)
+            conditions.append(f"n.source NOT IN ({placeholders})")
+            parameters.extend(hidden_sources)
 
         search_query = " ".join(str(search_query or "").split())
         if search_query:
@@ -203,7 +213,8 @@ class NewsStorage:
         where_clause = " AND ".join(conditions)
         cached_total = None
         if (
-            not selected_sources and not search_query and not keyword
+            not selected_sources and not hidden_sources
+            and not search_query and not keyword
             and not date_from and not date_to
         ):
             overview = self._news_group_overview(source_group)

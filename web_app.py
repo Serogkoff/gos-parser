@@ -92,6 +92,7 @@ from utils.storage import (
     list_news_page,
     list_shared_collections,
     load_collection,
+    load_muted_sources,
     load_source_order,
     load_source_settings,
     load_all_news,
@@ -109,6 +110,7 @@ from utils.storage import (
     save_dictionary_card,
     save_personal_note,
     save_external_bookmark,
+    save_muted_sources,
     save_source_order,
     set_source_enabled,
     set_collection_note_read,
@@ -1658,6 +1660,10 @@ def render_news_page(
     total, found_count = news_group_counts(source_group)
     counts = news_source_counts(source_group)
     sources = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    muted_sources = set(
+        load_muted_sources(user["id"])
+        if user["id"] else []
+    )
     requested_sources = (
         list(source_filters)
         if source_filters is not None
@@ -1667,7 +1673,11 @@ def render_news_page(
     source_filters = []
     for source in requested_sources:
         source = str(source or "").strip()
-        if source in available_names and source not in source_filters:
+        if (
+            source in available_names
+            and source not in muted_sources
+            and source not in source_filters
+        ):
             source_filters.append(source)
     if user["id"]:
         sources = apply_source_order(
@@ -1827,8 +1837,7 @@ def render_news_page(
     except (TypeError, ValueError):
         page = 1
     page_offset = (page - 1) * NEWS_PER_PAGE
-    page_news, page_total = list_news_page(
-        source_group,
+    news_page_options = dict(
         found_only=mode == "found",
         sources=source_filters,
         search_query=search_query,
@@ -1838,21 +1847,17 @@ def render_news_page(
         limit=NEWS_PER_PAGE,
         offset=page_offset,
     )
+    if muted_sources:
+        news_page_options["excluded_sources"] = muted_sources
+    page_news, page_total = list_news_page(source_group, **news_page_options)
     checkpoint("news")
     page_count = max(1, (page_total + NEWS_PER_PAGE - 1) // NEWS_PER_PAGE)
     if page > page_count:
         page = page_count
         page_offset = (page - 1) * NEWS_PER_PAGE
+        news_page_options["offset"] = page_offset
         page_news, page_total = list_news_page(
-            source_group,
-            found_only=mode == "found",
-            sources=source_filters,
-            search_query=search_query,
-            keyword=keyword_filter,
-            date_from=search_date_from,
-            date_to=search_date_to,
-            limit=NEWS_PER_PAGE,
-            offset=page_offset,
+            source_group, **news_page_options
         )
     page_start = page_offset + 1 if page_news else 0
     page_end = page_offset + len(page_news)
@@ -1922,7 +1927,12 @@ def render_news_page(
             [item.get("url", "") for item in page_news],
             found_only=mode == "found",
         )
-    unread_counts = unread_summary["by_source"]
+    unread_counts = {
+        source: count
+        for source, count in unread_summary["by_source"].items()
+        if source not in muted_sources
+    }
+    unread_summary["total"] = sum(unread_counts.values())
     checkpoint("unread")
 
     response = render_template(
@@ -1941,6 +1951,7 @@ def render_news_page(
         unread_urls=unread_summary["visible_urls"],
         unread_counts=unread_counts,
         unread_total=unread_summary["total"],
+        muted_sources=sorted(muted_sources, key=str.casefold),
         yahoo_unread_count=sum(
             count
             for source, count in unread_counts.items()
@@ -2307,6 +2318,10 @@ def news_index_api():
     }:
         return jsonify(error="Неизвестный раздел источников"), 400
     user = current_user()
+    muted_sources = set(
+        load_muted_sources(user["id"])
+        if user["id"] else []
+    )
     if source_group == ALL_GROUP:
         items = []
         seen_urls = set()
@@ -2316,12 +2331,18 @@ def news_index_api():
             ):
                 if item["url"] in seen_urls:
                     continue
+                if item["source"] in muted_sources:
+                    continue
                 seen_urls.add(item["url"])
                 items.append(item)
         return jsonify(items=items[:UNREAD_INDEX_LIMIT])
-    return jsonify(items=list_unread_news_index(
-        user["id"], source_group, UNREAD_INDEX_LIMIT,
-    ))
+    return jsonify(items=[
+        item
+        for item in list_unread_news_index(
+            user["id"], source_group, UNREAD_INDEX_LIMIT,
+        )
+        if item["source"] not in muted_sources
+    ])
 
 
 @app.post("/api/news-read")
@@ -2386,6 +2407,34 @@ def source_order_api():
     final_order = [name for name, _ in apply_source_order(available, requested)]
     try:
         saved = save_source_order(user["id"], source_group, final_order)
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+    return jsonify(sources=saved)
+
+
+@app.post("/api/source-mutes")
+def source_mutes_api():
+    """Сохраняет личные источники, скрытые из ленты и совпадений."""
+    user = current_user()
+    if not csrf_is_valid():
+        return jsonify(error="Сессия устарела. Обновите страницу."), 400
+    payload = request.get_json(silent=True) or {}
+    requested = payload.get("sources")
+    if not isinstance(requested, list):
+        return jsonify(error="Некорректный список скрытых источников"), 400
+
+    available = news_source_counts(ALL_GROUP)
+    canonical = {source.casefold(): source for source in available}
+    muted = []
+    seen = set()
+    for value in requested:
+        key = " ".join(str(value or "").split()).casefold()
+        source = canonical.get(key)
+        if source and key not in seen:
+            seen.add(key)
+            muted.append(source)
+    try:
+        saved = save_muted_sources(user["id"], muted)
     except ValueError as error:
         return jsonify(error=str(error)), 400
     return jsonify(sources=saved)

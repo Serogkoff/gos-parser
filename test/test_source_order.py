@@ -31,6 +31,7 @@ class PersonalSourceOrderTests(unittest.TestCase):
                 "title": "Материал МЧС",
                 "url": "https://mchs.gov.ru/news/1",
                 "date": "2026-08-12",
+                "keywords": ["Япония"],
             },
             {
                 "source": "Правительство РФ",
@@ -45,7 +46,7 @@ class PersonalSourceOrderTests(unittest.TestCase):
                 "date": "2026-08-12",
             },
         ]
-        storage.save_results(self.news, [], set())
+        storage.save_results(self.news, [self.news[0]], set())
 
     def tearDown(self):
         web_app.app.config["AUTH_DISABLED"] = self.previous_auth_disabled
@@ -161,6 +162,57 @@ class PersonalSourceOrderTests(unittest.TestCase):
             storage.load_source_order(self.first["id"], GOVERNMENT_GROUP),
             [],
         )
+
+    def test_muted_source_is_personal_dimmed_and_absent_from_feed(self):
+        client = web_app.app.test_client()
+        token = self._login(client, self.first["id"])
+        response = client.post(
+            "/api/source-mutes",
+            json={"sources": ["МЧС"]},
+            headers={"X-CSRF-Token": token},
+        )
+        with patch.object(web_app, "load_json", side_effect=self._app_data):
+            page = client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(storage.load_muted_sources(self.first["id"]), ["МЧС"])
+        html = page.get_data(as_text=True)
+        source_row = html[
+            html.index('data-source-name="МЧС"') - 100:
+            html.index('data-source-name="МЧС"') + 1800
+        ]
+        self.assertIn("source-muted", source_row)
+        self.assertIn('data-source-mute="МЧС"', source_row)
+        self.assertIn('aria-pressed="true"', source_row)
+        self.assertNotIn("Материал МЧС", html)
+        self.assertIn(".source-mute-toggle{", html)
+        self.assertIn("display:none", html)
+        self.assertIn(
+            ".source-list.order-editing .source-mute-toggle{display:grid}",
+            html,
+        )
+
+        with patch.object(web_app, "load_json", side_effect=self._app_data):
+            found_html = client.get("/found").get_data(as_text=True)
+        self.assertNotIn("Материал МЧС", found_html)
+
+        second_client = web_app.app.test_client()
+        self._login(second_client, self.second["id"])
+        with patch.object(web_app, "load_json", side_effect=self._app_data):
+            second_html = second_client.get("/").get_data(as_text=True)
+        self.assertIn("Материал МЧС", second_html)
+        self.assertEqual(storage.load_muted_sources(self.second["id"]), [])
+
+    def test_source_mutes_api_requires_csrf(self):
+        client = web_app.app.test_client()
+        self._login(client, self.first["id"])
+        response = client.post(
+            "/api/source-mutes",
+            json={"sources": ["МЧС"]},
+            headers={"X-CSRF-Token": "wrong"},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(storage.load_muted_sources(self.first["id"]), [])
 
 
 if __name__ == "__main__":

@@ -218,6 +218,17 @@
         .source-list.order-editing .sortable-source:hover{background:#fff4ea}
         .source-list.order-editing .source-drag-handle{display:block}
         .source-list.order-editing .source-link{padding-left:4px;pointer-events:none}
+        .source-mute-toggle{
+            display:none;flex:0 0 32px;width:32px;height:32px;margin-right:6px;
+            place-items:center;border:0;border-radius:50%;color:#716b63;background:transparent
+        }
+        .source-list.order-editing .source-mute-toggle{display:grid}
+        .source-mute-toggle:hover{color:var(--coral-dark);background:#fff0e9}
+        .source-mute-toggle svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+        .source-mute-toggle .mute-eye-off{display:none}
+        .source-mute-toggle[aria-pressed="true"] .mute-eye-on{display:none}
+        .source-mute-toggle[aria-pressed="true"] .mute-eye-off{display:block}
+        .source-row.source-muted .source-link{opacity:.34}
         .sortable-source.source-dragging{opacity:.38}
         .sortable-source.source-drag-over{box-shadow:inset 0 2px 0 var(--coral)}
         .unread-count{min-width:28px;color:var(--green);text-align:right;font-size:11px;font-weight:700}
@@ -813,9 +824,9 @@
                         </button>
                     </div>
                     {% for src, count in sidebar_sources %}
-                    <div class="source-row sortable-source {{'active' if src in source_filters else ''}}" data-source-row data-source-name="{{src}}">
+                    <div class="source-row sortable-source {{'active' if src in source_filters else ''}} {{'source-muted' if src in muted_sources else ''}}" data-source-row data-source-name="{{src}}">
                         <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
-                        <button class="source-link" type="button" data-source-filter="{{src}}">
+                        <button class="source-link" type="button" data-source-filter="{{src}}" aria-disabled="{{'true' if src in muted_sources else 'false'}}">
                             {% set emblem = source_emblems.get(src) %}
                             {% if emblem %}
                             <img class="source-emblem source-emblem-compact"
@@ -827,6 +838,10 @@
                             {% endif %}
                             <span>{{src}}</span>
                             <span class="unread-count" data-unread-source="{{src}}">{{('+' ~ unread_counts.get(src, 0)) if unread_counts.get(src, 0) else ''}}</span>
+                        </button>
+                        <button class="source-mute-toggle" type="button" data-source-mute="{{src}}" aria-pressed="{{'true' if src in muted_sources else 'false'}}" aria-label="{{'Показывать источник' if src in muted_sources else 'Скрыть источник'}}" title="{{'Показывать источник' if src in muted_sources else 'Скрыть источник'}}">
+                            <svg class="mute-eye-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+                            <svg class="mute-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c6 0 9.5 6 9.5 6a15.5 15.5 0 0 1-2.2 2.8M6.1 6.2C3.7 8 2.5 12 2.5 12s3.5 6 9.5 6c1 0 1.9-.2 2.7-.4M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
                         </button>
                     </div>
                     {% endfor %}
@@ -841,12 +856,16 @@
                     </div>
                     <span id="yahoo-source-items"></span>
                     {% for src, count, label in yahoo_sources %}
-                    <div class="source-row sortable-source yahoo-source-row {{'active' if src in source_filters else ''}}" data-source-row data-source-name="{{src}}">
+                    <div class="source-row sortable-source yahoo-source-row {{'active' if src in source_filters else ''}} {{'source-muted' if src in muted_sources else ''}}" data-source-row data-source-name="{{src}}">
                         <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
-                        <button class="source-link" type="button" data-source-filter="{{src}}">
+                        <button class="source-link" type="button" data-source-filter="{{src}}" aria-disabled="{{'true' if src in muted_sources else 'false'}}">
                             <img class="source-emblem source-emblem-compact" src="{{url_for('static', filename='source-logos/' ~ source_emblems.get(src))}}?v={{asset_version|urlencode}}" width="24" height="24" loading="lazy" decoding="async" alt="">
                             <span>{{label}}</span>
                             <span class="unread-count" data-unread-source="{{src}}">{{('+' ~ unread_counts.get(src, 0)) if unread_counts.get(src, 0) else ''}}</span>
+                        </button>
+                        <button class="source-mute-toggle" type="button" data-source-mute="{{src}}" aria-pressed="{{'true' if src in muted_sources else 'false'}}" aria-label="{{'Показывать источник' if src in muted_sources else 'Скрыть источник'}}" title="{{'Показывать источник' if src in muted_sources else 'Скрыть источник'}}">
+                            <svg class="mute-eye-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+                            <svg class="mute-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c6 0 9.5 6 9.5 6a15.5 15.5 0 0 1-2.2 2.8M6.1 6.2C3.7 8 2.5 12 2.5 12s3.5 6 9.5 6c1 0 1.9-.2 2.7-.4M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
                         </button>
                     </div>
                     {% endfor %}
@@ -950,6 +969,7 @@
     let unreadCounts = {{unread_counts|tojson}};
     let groupUnreadCount = {{unread_total|tojson}};
     let yahooUnreadCount = {{yahoo_unread_count|tojson}};
+    const mutedSources = new Set({{muted_sources|tojson}});
 
     function replaceUnread(items){
         unread = new Set();
@@ -1186,6 +1206,7 @@
     if(yahooSourceToggle){
         yahooSourceToggle.addEventListener('click', () => {
             const yahooSources = [...sourceList.querySelectorAll('.yahoo-source-row [data-source-filter]')]
+                .filter(button => !button.closest('[data-source-row]').classList.contains('source-muted'))
                 .map(button => button.dataset.sourceFilter);
             const allSelected = yahooSources.length > 0 && yahooSources.every(source => selectedSources.has(source));
             yahooSources.forEach(source => {
@@ -1208,6 +1229,7 @@
     });
     document.querySelectorAll('[data-source-filter]').forEach(button => {
         button.addEventListener('click', () => {
+            if(button.closest('[data-source-row]')?.classList.contains('source-muted')) return;
             const source = button.dataset.sourceFilter;
             selectedSources.has(source)
                 ? selectedSources.delete(source)
@@ -1236,9 +1258,40 @@
             throw new Error(data.error || 'Не удалось сохранить порядок источников');
         }
     }
+    async function saveSourceMutes(){
+        const response = await fetch('/api/source-mutes', {
+            method:'POST',
+            headers:{
+                'Content-Type':'application/json',
+                'X-CSRF-Token': {{csrf_token|tojson}}
+            },
+            body:JSON.stringify({sources:[...mutedSources]})
+        });
+        if(!response.ok){
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'Не удалось сохранить скрытые источники');
+        }
+    }
     const sourceOrderToggle = document.getElementById('source-order-toggle');
     let draggedSourceRow = null;
     let sourceOrderChanged = false;
+    let sourceMutesChanged = false;
+    document.querySelectorAll('[data-source-mute]').forEach(button => {
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            const source = button.dataset.sourceMute;
+            const row = button.closest('[data-source-row]');
+            const muted = !mutedSources.has(source);
+            muted ? mutedSources.add(source) : mutedSources.delete(source);
+            row.classList.toggle('source-muted', muted);
+            row.querySelector('[data-source-filter]').setAttribute('aria-disabled', String(muted));
+            button.setAttribute('aria-pressed', String(muted));
+            const label = muted ? 'Показывать источник' : 'Скрыть источник';
+            button.setAttribute('aria-label', label);
+            button.setAttribute('title', label);
+            sourceMutesChanged = true;
+        });
+    });
     function setSourceOrderEditing(editing){
         sourceList.classList.toggle('order-editing', editing);
         if(editing && yahooSourceToggle){
@@ -1256,12 +1309,18 @@
         const editing = sourceList.classList.contains('order-editing');
         if(!editing){
             sourceOrderChanged = false;
+            sourceMutesChanged = false;
             setSourceOrderEditing(true);
             return;
         }
         sourceOrderToggle.disabled = true;
         try{
             if(sourceOrderChanged) await saveSourceOrder();
+            if(sourceMutesChanged){
+                await saveSourceMutes();
+                window.location.reload();
+                return;
+            }
             setSourceOrderEditing(false);
         }catch(error){
             window.alert(error.message);
@@ -1271,6 +1330,10 @@
         }
     });
     sourceList.addEventListener('dragstart', event => {
+        if(event.target.closest('[data-source-mute]')){
+            event.preventDefault();
+            return;
+        }
         const row = event.target.closest('[data-source-row]');
         if(!row || !sourceList.classList.contains('order-editing')) return;
         draggedSourceRow = row;

@@ -232,6 +232,16 @@ def save_source_order(user_id, source_group, sources):
     )
 
 
+def load_muted_sources(user_id):
+    """Возвращает личный список источников, скрытых из ленты."""
+    return _SOURCE_CONTROL_STORAGE.load_muted_sources(user_id)
+
+
+def save_muted_sources(user_id, sources):
+    """Сохраняет личный список источников, скрытых из ленты."""
+    return _SOURCE_CONTROL_STORAGE.save_muted_sources(user_id, sources)
+
+
 def source_is_enabled(source):
     """По умолчанию источник включён; администратор может поставить его на паузу."""
     return _SOURCE_CONTROL_STORAGE.source_is_enabled(source)
@@ -312,6 +322,7 @@ def news_source_counts(source_group):
 
 
 def list_news_page(source_group, *, found_only=False, sources=None,
+                   excluded_sources=None,
                    search_query="", keyword="", date_from="", date_to="",
                    limit=20, offset=0):
     """Читает одну страницу новостей и считает результат средствами SQLite."""
@@ -319,6 +330,7 @@ def list_news_page(source_group, *, found_only=False, sources=None,
         source_group,
         found_only=found_only,
         sources=sources,
+        excluded_sources=excluded_sources,
         search_query=search_query,
         keyword=keyword,
         date_from=date_from,
