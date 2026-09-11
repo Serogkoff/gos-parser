@@ -83,6 +83,33 @@ class NewsPersistenceStorageTests(unittest.TestCase):
             "Обновлённая версия",
         )
 
+    def test_parser_update_does_not_delete_the_news_table(self):
+        first = self._item(1, summary="Старая версия")
+        untouched = self._item(2, summary="Не менялась")
+        storage.save_results([first, untouched], [], set())
+        persistence = storage._NEWS_PERSISTENCE
+        with (
+            patch.object(
+                persistence,
+                "replace_collections",
+                side_effect=AssertionError("full replacement is forbidden"),
+            ),
+            patch.object(
+                persistence,
+                "upsert_news_items",
+                wraps=persistence.upsert_news_items,
+            ) as upsert,
+        ):
+            storage.save_results(
+                [{**first, "summary": "Новая версия"}],
+                [],
+                storage.load_existing_urls(),
+            )
+
+        self.assertEqual(len(upsert.call_args.args[1]), 1)
+        self.assertEqual(upsert.call_args.args[1][0]["url"], first["url"])
+        self.assertEqual(len(storage.load_all_news()), 2)
+
     def test_replacement_discards_orphaned_found_item(self):
         available = self._item(1)
         orphaned = self._item(2, keywords=["тест"])

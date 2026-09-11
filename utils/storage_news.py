@@ -85,7 +85,7 @@ class NewsStorage:
         return dict(self._news_group_overview(source_group)["by_source"])
 
     def _news_group_overview(self, source_group):
-        """Переиспользует агрегаты до следующего изменения SQLite/WAL."""
+        """Переиспользует агрегаты до следующего изменения самих новостей."""
         source_group = str(source_group or "").strip().casefold()
         self.news_group_condition(source_group)
         self._initialize_database()

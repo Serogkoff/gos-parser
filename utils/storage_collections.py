@@ -1,6 +1,7 @@
 """Коллекции, сохранённые материалы и личные закладки."""
 
 import sqlite3
+import time
 from datetime import datetime
 
 
@@ -14,6 +15,30 @@ class CollectionStorage:
         self._lock = lock
         self._normalize_url = normalize_url
         self._validate_user_id = validate_user_id
+
+    @staticmethod
+    def _database_is_busy(error):
+        message = str(error).casefold()
+        return (
+            "database is locked" in message
+            or "database table is locked" in message
+        )
+
+    def _write_with_retry(self, operation):
+        """Даёт короткой конкурирующей записи SQLite завершиться без HTTP 500."""
+        delays = (0.0, 0.15, 0.35, 0.75)
+        for attempt, delay in enumerate(delays):
+            if delay:
+                time.sleep(delay)
+            try:
+                with self._lock, self._connection_factory() as connection:
+                    # Общий connection ждёт 30 секунд. Для пользовательской
+                    # формы лучше несколько коротких попыток с понятным итогом.
+                    connection.execute("PRAGMA busy_timeout = 2000")
+                    return operation(connection)
+            except sqlite3.OperationalError as error:
+                if not self._database_is_busy(error) or attempt == len(delays) - 1:
+                    raise
 
     def list_bookmark_folders(self, user_id):
         """Возвращает только папки указанного пользователя и число материалов."""
@@ -358,7 +383,7 @@ class CollectionStorage:
             title, body, url, source, publication_date, comment,
         )
         now = datetime.now().isoformat(timespec="seconds")
-        with self._lock, self._connection_factory() as connection:
+        def insert_note(connection):
             cursor = connection.execute(
                 """INSERT INTO collection_notes(
                        folder_id, user_id, title, body, url, source,
@@ -366,7 +391,8 @@ class CollectionStorage:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (folder_id, user_id, *fields, now, now),
             )
-        return cursor.lastrowid
+            return cursor.lastrowid
+        return self._write_with_retry(insert_note)
 
     def update_collection_note(self, user_id, folder_id, note_id, title, body, url="",
                                source="", publication_date="", comment=""):
@@ -381,14 +407,15 @@ class CollectionStorage:
             title, body, url, source, publication_date, comment,
         )
         now = datetime.now().isoformat(timespec="seconds")
-        with self._lock, self._connection_factory() as connection:
-            cursor = connection.execute(
+        def update_note(connection):
+            return connection.execute(
                 """UPDATE collection_notes
                    SET title = ?, body = ?, url = ?, source = ?,
                        publication_date = ?, comment = ?, updated_at = ?
                    WHERE id = ? AND folder_id = ? AND user_id = ?""",
                 (*fields, now, note_id, folder_id, user_id),
             )
+        cursor = self._write_with_retry(update_note)
         if cursor.rowcount != 1:
             raise ValueError("Заметка не найдена")
         return note_id

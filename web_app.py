@@ -2,6 +2,7 @@ import gzip
 import json
 import re
 import secrets
+import sqlite3
 from calendar import monthrange
 from io import BytesIO
 from datetime import date, datetime, timedelta
@@ -1532,6 +1533,24 @@ def bookmarks_page():
                     folder=selected_folder,
                     sort=sort_mode,
                     error=str(operation_error),
+                )
+            )
+        except sqlite3.OperationalError as operation_error:
+            busy_message = str(operation_error).casefold()
+            if not (
+                "database is locked" in busy_message
+                or "database table is locked" in busy_message
+            ):
+                raise
+            return redirect(
+                url_for(
+                    "bookmarks_page",
+                    folder=selected_folder,
+                    sort=sort_mode,
+                    error=(
+                        "База сейчас обновляется. Повтори сохранение статьи "
+                        "через несколько секунд."
+                    ),
                 )
             )
         return redirect(url_for(

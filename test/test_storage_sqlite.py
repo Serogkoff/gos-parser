@@ -75,6 +75,61 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual(titles, {first["title"], second["title"]})
         self.assertEqual(load_collection.call_count, 2)
 
+    def test_collection_cache_ignores_unrelated_database_writes(self):
+        item = {
+            "source": "МЧС",
+            "title": "Кешируемая публикация",
+            "url": "https://mchs.gov.ru/news/cache-unrelated-write",
+            "date": "2026-08-17",
+        }
+        self._write_json(self.all_json, [item])
+        self._write_json(self.found_json, [])
+
+        with patch.object(
+            storage,
+            "_load_collection",
+            wraps=storage._load_collection,
+        ) as load_collection:
+            storage.load_all_news()
+            with storage._connection() as connection:
+                connection.execute(
+                    "INSERT OR REPLACE INTO metadata(key, value) VALUES ('ui_state', '1')"
+                )
+            storage.load_all_news()
+
+        self.assertEqual(load_collection.call_count, 1)
+
+    def test_collection_write_retries_a_short_database_lock(self):
+        attempts = []
+
+        @contextmanager
+        def flaky_connection():
+            attempts.append(1)
+            if len(attempts) < 3:
+                raise sqlite3.OperationalError("database is locked")
+
+            class Connection:
+                @staticmethod
+                def execute(statement):
+                    self.assertIn("busy_timeout", statement)
+
+            yield Connection()
+
+        with (
+            patch.object(
+                storage._COLLECTION_STORAGE,
+                "_connection_factory",
+                flaky_connection,
+            ),
+            patch("utils.storage_collections.time.sleep"),
+        ):
+            result = storage._COLLECTION_STORAGE._write_with_retry(
+                lambda connection: "saved"
+            )
+
+        self.assertEqual(result, "saved")
+        self.assertEqual(len(attempts), 3)
+
     def test_web_request_loads_each_news_collection_once(self):
         items = [{"source": "МЧС", "title": "Новость"}]
         with (

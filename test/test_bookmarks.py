@@ -343,6 +343,7 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertNotIn(note["updated_at"], page)
         self.assertNotIn("Добавить ссылку", page)
         self.assertNotIn("Добавить заметку", page)
+
         self.assertIn('data-composer-open', page)
         self.assertIn("Добавить статью", page)
         self.assertIn("Сохранить в подборку", page)
@@ -396,6 +397,31 @@ class PersonalBookmarksTests(unittest.TestCase):
         ).get_data(as_text=True)
         self.assertIn("Сохранить изменения", updated_page)
         self.assertIn("data-note-edit-toggle", updated_page)
+
+    def test_temporary_collection_database_lock_returns_friendly_error(self):
+        folder = storage.create_bookmark_folder(self.first["id"], "Занятая база")
+        client = web_app.app.test_client()
+        token = self._login(client, self.first["id"])
+
+        with patch.object(
+            web_app,
+            "save_collection_note",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ):
+            response = client.post(
+                f"/collections?folder={folder['id']}",
+                data={
+                    "csrf_token": token,
+                    "action": "add_note",
+                    "folder_id": folder["id"],
+                    "title": "Статья во время обновления",
+                    "body": "Текст",
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        page = client.get(response.headers["Location"]).get_data(as_text=True)
+        self.assertIn("База сейчас обновляется", page)
 
     def test_user_can_change_collection_order(self):
         first = storage.create_bookmark_folder(self.first["id"], "Первая")

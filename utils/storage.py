@@ -641,6 +641,7 @@ _NEWS_PERSISTENCE = NewsPersistenceStorage(
     ),
     max_cached_article_chars=MAX_CACHED_ARTICLE_CHARS,
     now=lambda: datetime.now(),
+    news_revision_signature=lambda: _news_overview_signature(),
 )
 
 

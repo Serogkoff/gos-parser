@@ -1402,25 +1402,34 @@
         orderedSourceRows().forEach(row => row.classList.remove('source-dragging', 'source-drag-over'));
         draggedSourceRow = null;
     });
+    const clockFormatters = new Map();
+    document.querySelectorAll('[data-clock]').forEach(clock => {
+        clockFormatters.set(clock.dataset.clock, {
+            time:new Intl.DateTimeFormat('ru-RU', {
+                timeZone:clock.dataset.clock, hour:'2-digit', minute:'2-digit',
+                second:'2-digit', hourCycle:'h23'
+            }),
+            date:new Intl.DateTimeFormat('ru-RU', {
+                timeZone:clock.dataset.clock, day:'2-digit', month:'2-digit', year:'numeric'
+            })
+        });
+    });
     function updateClocks(){
         document.querySelectorAll('[data-clock]').forEach(clock => {
-            const parts = Object.fromEntries(
-                new Intl.DateTimeFormat('ru-RU', {
-                    timeZone: clock.dataset.clock, hour:'2-digit', minute:'2-digit',
-                    second:'2-digit', hourCycle:'h23'
-                }).formatToParts(new Date()).map(part => [part.type, part.value])
+            const formatters = clockFormatters.get(clock.dataset.clock);
+            const now = new Date();
+            const zonedParts = Object.fromEntries(
+                formatters.time.formatToParts(now).map(part => [part.type, part.value])
             );
-            const hour = Number(parts.hour), minute = Number(parts.minute), second = Number(parts.second);
+            const hour = Number(zonedParts.hour), minute = Number(zonedParts.minute), second = Number(zonedParts.second);
             clock.style.setProperty('--hour', (hour % 12 * 30 + minute * .5) + 'deg');
             clock.style.setProperty('--minute', (minute * 6 + second * .1) + 'deg');
             clock.style.setProperty('--second', (second * 6) + 'deg');
-            clock.querySelector('.clock-time').textContent = `${parts.hour}:${parts.minute}`;
-            clock.querySelector('.clock-date').textContent = new Intl.DateTimeFormat('ru-RU', {
-                timeZone: clock.dataset.clock, day:'2-digit', month:'2-digit', year:'numeric'
-            }).format(new Date());
+            clock.querySelector('.clock-time').textContent = `${zonedParts.hour}:${zonedParts.minute}`;
+            clock.querySelector('.clock-date').textContent = formatters.date.format(now);
         });
     }
-    updateClocks(); setInterval(updateClocks, 1000);
+    updateClocks(); setInterval(updateClocks, 30000);
 
     const keywordModal = document.getElementById('keyword-modal');
     const keywordList = document.getElementById('keyword-list');

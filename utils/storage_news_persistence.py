@@ -16,6 +16,7 @@ class NewsPersistenceStorage:
         self, initialize_database, connect, connection_factory, lock,
         database_file, logger, load_all_news, load_found_news,
         load_collection, max_cached_article_chars=100_000, now=None,
+        news_revision_signature=None,
     ):
         self._initialize_database = initialize_database
         self._connect = connect
@@ -28,6 +29,9 @@ class NewsPersistenceStorage:
         self._load_collection_callback = load_collection
         self._max_cached_article_chars = max_cached_article_chars
         self._now = now or datetime.now
+        self._news_revision_signature = (
+            news_revision_signature or self.database_change_signature
+        )
         self._collection_cache = {}
 
     def database_change_signature(self):
@@ -54,7 +58,10 @@ class NewsPersistenceStorage:
         """Не разбирает десятки тысяч JSON-записей заново на каждой странице."""
         if table not in {"news_items", "found_items"}:
             raise ValueError("неизвестная таблица новостей")
-        signature = self.database_change_signature()
+        # Личные записи, отметки чтения и настройки тоже меняют WAL-файл, но
+        # не меняют сами новости. Поэтому такой шум не должен заставлять
+        # каждый веб-процесс заново разбирать всю коллекцию JSON.
+        signature = self._news_revision_signature()
         cache_key = (signature[0], table)
         with self._lock:
             cached = self._collection_cache.get(cache_key)
@@ -69,7 +76,7 @@ class NewsPersistenceStorage:
         finally:
             connection.close()
 
-        final_signature = self.database_change_signature()
+        final_signature = self._news_revision_signature()
         # Если запись шла одновременно с чтением, не закрепляем снимок под
         # новой сигнатурой: следующий запрос перечитает актуальную коллекцию.
         if final_signature == signature:
@@ -228,7 +235,13 @@ class NewsPersistenceStorage:
         # дискового I/O и не сбрасывает агрегатные кеши каждые несколько минут.
         if merged_all != old_all or merged_found != old_found:
             with self._connection_factory() as connection:
-                self.replace_collections(connection, merged_all, merged_found)
+                self.sync_collections(
+                    connection,
+                    old_all,
+                    merged_all,
+                    old_found,
+                    merged_found,
+                )
 
         print(f"✅ Новых: {len(new_all)} | Всего: {len(merged_all)}")
         print(
@@ -276,6 +289,93 @@ class NewsPersistenceStorage:
         ]
         self.insert_found_items(connection, safe_found)
 
+    def sync_collections(
+        self, connection, old_all, all_news, old_found, found_news,
+    ):
+        """Записывает только реально изменившиеся новости и совпадения."""
+        old_news = {self.news_key(item): item for item in old_all}
+        next_news = {self.news_key(item): item for item in all_news}
+        changed_news = [
+            item for key, item in next_news.items()
+            if old_news.get(key) != item
+        ]
+        removed_news = set(old_news) - set(next_news)
+
+        safe_found = {
+            self.news_key(item): item
+            for item in found_news
+            if self.news_key(item) in next_news
+        }
+        old_matches = {self.news_key(item): item for item in old_found}
+        changed_matches = [
+            item for key, item in safe_found.items()
+            if old_matches.get(key) != item
+        ]
+        replaced_match_keys = {
+            self.news_key(item) for item in changed_matches
+        }
+        removed_matches = (
+            set(old_matches) - set(safe_found)
+        ) | replaced_match_keys
+
+        self.delete_keys(connection, "found_items", removed_matches)
+        self.delete_keys(connection, "news_items", removed_news)
+        self.upsert_news_items(connection, changed_news)
+        self.insert_found_items(
+            connection, changed_matches, bump_revision=False,
+        )
+        if changed_news or removed_news or changed_matches or removed_matches:
+            self.bump_news_revision(connection)
+
+    @staticmethod
+    def delete_keys(connection, table, keys):
+        if table not in {"news_items", "found_items"}:
+            raise ValueError("неизвестная таблица новостей")
+        keys = list(keys)
+        for start in range(0, len(keys), 500):
+            chunk = keys[start:start + 500]
+            placeholders = ", ".join("?" for _ in chunk)
+            connection.execute(
+                f"DELETE FROM {table} WHERE news_key IN ({placeholders})",
+                chunk,
+            )
+
+    def upsert_news_items(self, connection, items):
+        """Обновляет карточки без удаления связанных пользовательских данных."""
+        updated_at = self._now().isoformat(timespec="seconds")
+        first_seen_at = self._now().isoformat(timespec="microseconds")
+        rows = []
+        for item in deduplicate_news(items):
+            rows.append((
+                self.news_key(item),
+                normalize_url(item.get("url", "")),
+                str(item.get("source", "")),
+                str(item.get("title", "")),
+                parse_date(item.get("date", "")),
+                str(item.get("parsed_date", "")),
+                self.encode_item(item),
+                updated_at,
+                first_seen_at,
+            ))
+        connection.executemany(
+            """
+            INSERT INTO news_items(
+                news_key, normalized_url, source, title,
+                publication_date, parsed_date, payload_json, updated_at,
+                first_seen_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(news_key) DO UPDATE SET
+                normalized_url = excluded.normalized_url,
+                source = excluded.source,
+                title = excluded.title,
+                publication_date = excluded.publication_date,
+                parsed_date = excluded.parsed_date,
+                payload_json = excluded.payload_json,
+                updated_at = excluded.updated_at
+            """,
+            rows,
+        )
+
     def insert_news_items(self, connection, items, first_seen_by_key=None):
         updated_at = self._now().isoformat(timespec="seconds")
         first_seen_at = self._now().isoformat(timespec="microseconds")
@@ -308,7 +408,7 @@ class NewsPersistenceStorage:
         )
         self.bump_news_revision(connection)
 
-    def insert_found_items(self, connection, items):
+    def insert_found_items(self, connection, items, bump_revision=True):
         updated_at = self._now().isoformat(timespec="seconds")
         keyword_rows = []
         encoded_rows = []
@@ -336,7 +436,8 @@ class NewsPersistenceStorage:
                ) VALUES (?, ?, ?)""",
             keyword_rows,
         )
-        self.bump_news_revision(connection)
+        if bump_revision:
+            self.bump_news_revision(connection)
 
     @staticmethod
     def bump_news_revision(connection):
