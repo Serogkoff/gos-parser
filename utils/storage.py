@@ -171,17 +171,24 @@ def delete_personal_note(user_id, note_id):
 
 def save_calendar_event(user_id, title, event_date, event_time="", place="",
                         description="", visibility="private",
-                        shared_user_ids=None, event_id=None, color="red"):
+                        shared_user_ids=None, event_id=None, color="red",
+                        is_bold=False, is_italic=False):
     """Создаёт или обновляет событие календаря владельца."""
     return _WORKSPACE_STORAGE.save_calendar_event(
         user_id, title, event_date, event_time, place, description,
-        visibility, shared_user_ids, event_id, color
+        visibility, shared_user_ids, event_id, color, is_bold, is_italic
     )
 
 
 def list_calendar_events(user_id, date_from, date_to):
     """Возвращает события владельца за включительный диапазон дат."""
     return _WORKSPACE_STORAGE.list_calendar_events(user_id, date_from, date_to)
+
+
+def reorder_calendar_events(user_id, event_date, event_ids):
+    return _WORKSPACE_STORAGE.reorder_calendar_events(
+        user_id, event_date, event_ids
+    )
 
 
 def delete_calendar_event(user_id, event_id):

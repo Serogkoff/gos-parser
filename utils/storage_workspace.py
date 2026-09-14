@@ -47,6 +47,12 @@ def _validated_event_color(value):
     return color
 
 
+def _validated_checkbox(value):
+    return 1 if str(value or "").strip().casefold() in {
+        "1", "true", "yes", "on",
+    } else 0
+
+
 def _replace_notes_shares(connection, table, owner_id, item_id, visibility,
                           shared_user_ids):
     id_column = "note_id" if table == "personal_note_shares" else "event_id"
@@ -168,7 +174,8 @@ class PersonalWorkspaceStorage:
 
     def save_calendar_event(self, user_id, title, event_date, event_time="", place="",
                             description="", visibility="private",
-                            shared_user_ids=None, event_id=None, color="red"):
+                            shared_user_ids=None, event_id=None, color="red",
+                            is_bold=False, is_italic=False):
         """Создаёт или обновляет событие календаря владельца."""
         user_id = self._validate_user_id(user_id)
         title = _validated_notes_text(title, "Название", 200, required=True)
@@ -178,31 +185,54 @@ class PersonalWorkspaceStorage:
         description = _validated_notes_text(description, "Комментарий", 5000)
         visibility = _validated_visibility(visibility)
         color = _validated_event_color(color)
+        is_bold = _validated_checkbox(is_bold)
+        is_italic = _validated_checkbox(is_italic)
         now = datetime.now().isoformat(timespec="seconds")
         with self._lock, self._connection_factory() as connection:
+            sort_order = 0
             if event_id:
                 try:
                     event_id = int(event_id)
                 except (TypeError, ValueError) as error:
                     raise ValueError("Мероприятие не найдено") from error
+                current = connection.execute(
+                    """SELECT event_date, event_time, sort_order
+                       FROM calendar_events WHERE id = ? AND user_id = ?""",
+                    (event_id, user_id),
+                ).fetchone()
+                if current is None:
+                    raise ValueError("Мероприятие не найдено")
+                if not event_time:
+                    if current["event_date"] == event_date and not current["event_time"]:
+                        sort_order = int(current["sort_order"])
+                    else:
+                        sort_order = self._next_calendar_sort_order(
+                            connection, user_id, event_date,
+                        )
                 cursor = connection.execute(
                     """UPDATE calendar_events SET title = ?, event_date = ?,
                            event_time = ?, place = ?, description = ?, visibility = ?,
-                           color = ?,
+                           color = ?, is_bold = ?, is_italic = ?, sort_order = ?,
                            updated_at = ? WHERE id = ? AND user_id = ?""",
                     (title, event_date, event_time, place, description, visibility,
-                     color, now, event_id, user_id),
+                     color, is_bold, is_italic, sort_order,
+                     now, event_id, user_id),
                 )
                 if cursor.rowcount != 1:
                     raise ValueError("Мероприятие не найдено")
             else:
+                if not event_time:
+                    sort_order = self._next_calendar_sort_order(
+                        connection, user_id, event_date,
+                    )
                 cursor = connection.execute(
                     """INSERT INTO calendar_events(
                            user_id, title, event_date, event_time, place, description,
-                           visibility, color, created_at, updated_at
-                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           visibility, color, is_bold, is_italic, sort_order,
+                           created_at, updated_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (user_id, title, event_date, event_time, place, description,
-                     visibility, color, now, now),
+                     visibility, color, is_bold, is_italic, sort_order, now, now),
                 )
                 event_id = cursor.lastrowid
             _replace_notes_shares(
@@ -210,6 +240,16 @@ class PersonalWorkspaceStorage:
                 visibility, shared_user_ids,
             )
         return int(event_id)
+
+    @staticmethod
+    def _next_calendar_sort_order(connection, user_id, event_date):
+        row = connection.execute(
+            """SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order
+               FROM calendar_events
+               WHERE user_id = ? AND event_date = ? AND event_time = ''""",
+            (user_id, event_date),
+        ).fetchone()
+        return int(row["next_order"])
 
     def list_calendar_events(self, user_id, date_from, date_to):
         """Возвращает события владельца за включительный диапазон дат."""
@@ -220,10 +260,14 @@ class PersonalWorkspaceStorage:
         with self._connection_factory() as connection:
             rows = connection.execute(
                 """SELECT id, title, event_date, event_time, place, description,
-                          visibility, color, created_at, updated_at
+                          visibility, color, is_bold, is_italic, sort_order,
+                          created_at, updated_at
                    FROM calendar_events
                    WHERE user_id = ? AND event_date BETWEEN ? AND ?
-                   ORDER BY event_date, event_time, id""",
+                   ORDER BY event_date,
+                            CASE WHEN event_time = '' THEN 0 ELSE 1 END,
+                            CASE WHEN event_time = '' THEN sort_order ELSE 0 END,
+                            event_time, id""",
                 (user_id, date_from, date_to),
             ).fetchall()
             result = []
@@ -235,6 +279,36 @@ class PersonalWorkspaceStorage:
                 )
                 result.append(item)
         return result
+
+    def reorder_calendar_events(self, user_id, event_date, event_ids):
+        """Сохраняет порядок всех событий без времени в одном дне."""
+        user_id = self._validate_user_id(user_id)
+        event_date = _validated_date(event_date)
+        try:
+            ordered_ids = [int(value) for value in event_ids]
+        except (TypeError, ValueError) as error:
+            raise ValueError("Не удалось изменить порядок заметок") from error
+        if not ordered_ids or len(ordered_ids) != len(set(ordered_ids)):
+            raise ValueError("Не удалось изменить порядок заметок")
+
+        with self._lock, self._connection_factory() as connection:
+            rows = connection.execute(
+                """SELECT id FROM calendar_events
+                   WHERE user_id = ? AND event_date = ? AND event_time = ''""",
+                (user_id, event_date),
+            ).fetchall()
+            available_ids = {int(row["id"]) for row in rows}
+            if set(ordered_ids) != available_ids:
+                raise ValueError("Список заметок изменился. Обновите страницу")
+            connection.executemany(
+                """UPDATE calendar_events SET sort_order = ?
+                   WHERE id = ? AND user_id = ?""",
+                [
+                    (position, event_id, user_id)
+                    for position, event_id in enumerate(ordered_ids)
+                ],
+            )
+        return True
 
     def delete_calendar_event(self, user_id, event_id):
         user_id = self._validate_user_id(user_id)

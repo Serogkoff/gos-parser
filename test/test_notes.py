@@ -76,6 +76,8 @@ class NotesTestModeTests(unittest.TestCase):
                 "place": "Смоленская площадь",
                 "description": "Взять паспорт",
                 "color": "green",
+                "is_bold": "1",
+                "is_italic": "1",
                 "calendar_mode": "month",
             },
         )
@@ -87,6 +89,8 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertEqual(events[0]["title"], "Встреча в МИД")
         self.assertEqual(events[0]["visibility"], "private")
         self.assertEqual(events[0]["color"], "green")
+        self.assertEqual(events[0]["is_bold"], 1)
+        self.assertEqual(events[0]["is_italic"], 1)
         self.assertEqual(events[0]["shared_users"], [])
         page = client.get("/notes?view=calendar&year=2026&month=8&selected=2026-08-28")
         html = page.get_data(as_text=True)
@@ -96,6 +100,8 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn("Записи", html)
         self.assertIn("Словарь-квиз", html)
         self.assertNotIn("Выбранные пользователи", html)
+        self.assertIn("event-bold", html)
+        self.assertIn("event-italic", html)
 
     def test_calendar_supports_month_week_and_day_views(self):
         client, _ = self._client_for(self.admin)
@@ -134,6 +140,50 @@ class NotesTestModeTests(unittest.TestCase):
 
         self.assertIn(f'data-date="{today.isoformat()}"', html)
         self.assertIn(f"{week_start.day}–{week_end.day}", html)
+
+    def test_admin_reorders_all_day_events(self):
+        client, token = self._client_for(self.admin)
+        first = storage.save_calendar_event(
+            self.admin["id"], "Первое", "2026-09-14"
+        )
+        second = storage.save_calendar_event(
+            self.admin["id"], "Второе", "2026-09-14"
+        )
+
+        response = client.post(
+            "/notes?view=calendar",
+            data={
+                "csrf_token": token,
+                "action": "reorder_events",
+                "event_date": "2026-09-14",
+                "event_id": [second, first],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"status": "ok"})
+        events = storage.list_calendar_events(
+            self.admin["id"], "2026-09-14", "2026-09-14"
+        )
+        self.assertEqual(
+            [event["title"] for event in events],
+            ["Второе", "Первое"],
+        )
+
+    def test_day_view_places_all_day_events_above_timeline(self):
+        client, _ = self._client_for(self.admin)
+        storage.save_calendar_event(
+            self.admin["id"], "Главное событие", "2026-09-14"
+        )
+
+        html = client.get(
+            "/notes?view=calendar&mode=day&selected=2026-09-14"
+        ).get_data(as_text=True)
+
+        self.assertLess(html.index("Главное событие"), html.index("09:00"))
+        self.assertNotIn("На весь день", html)
+        self.assertNotIn("Без времени", html)
+        self.assertNotIn("day-aside", html)
 
 
 if __name__ == "__main__":

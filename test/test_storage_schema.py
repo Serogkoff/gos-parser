@@ -67,7 +67,8 @@ class StorageSchemaTests(unittest.TestCase):
                 connection.commit()
                 create_schema(connection)
                 row = connection.execute(
-                    "SELECT title, color FROM calendar_events"
+                    """SELECT title, color, is_bold, is_italic, sort_order
+                       FROM calendar_events"""
                 ).fetchone()
             finally:
                 connection.close()
@@ -75,6 +76,9 @@ class StorageSchemaTests(unittest.TestCase):
         self.assertEqual(dict(row), {
             "title": "Старое событие",
             "color": "red",
+            "is_bold": 0,
+            "is_italic": 0,
+            "sort_order": 0,
         })
 
     def test_schema_normalizes_legacy_publication_dates_once(self):

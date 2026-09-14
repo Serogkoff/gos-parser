@@ -99,6 +99,7 @@ from utils.storage import (
     migrate_legacy_unread,
     remove_bookmark,
     rename_bookmark_folder,
+    reorder_calendar_events,
     save_cached_article,
     save_bookmark,
     save_bookmark_folder_order,
@@ -1184,6 +1185,13 @@ def notes_page():
             abort(400)
         action = str(request.form.get("action", "")).strip()
         try:
+            if action == "reorder_events":
+                reorder_calendar_events(
+                    user_id,
+                    request.form.get("event_date"),
+                    request.form.getlist("event_id"),
+                )
+                return jsonify({"status": "ok"})
             if action == "save_event":
                 save_calendar_event(
                     user_id, request.form.get("title"),
@@ -1192,6 +1200,8 @@ def notes_page():
                     "private", (),
                     request.form.get("event_id"),
                     color=request.form.get("color"),
+                    is_bold=request.form.get("is_bold"),
+                    is_italic=request.form.get("is_italic"),
                 )
                 event_date = request.form.get("event_date")
                 return _notes_redirect(
@@ -1207,6 +1217,8 @@ def notes_page():
                 )
             raise ValueError("Неизвестное действие")
         except ValueError as operation_error:
+            if action == "reorder_events":
+                return jsonify({"error": str(operation_error)}), 409
             return _notes_redirect(view, error=str(operation_error))
 
     context = {
@@ -1304,6 +1316,7 @@ def notes_page():
         event_form = selected_event or {
             "id": "", "title": "", "event_date": selected_date,
             "event_time": "", "place": "", "description": "", "color": "red",
+            "is_bold": 0, "is_italic": 0,
         }
         context.update(
             calendar_mode=mode,

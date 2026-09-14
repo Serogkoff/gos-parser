@@ -73,6 +73,8 @@ class PersonalWorkspaceStorageTests(unittest.TestCase):
             "2026-09-02",
             "14:00",
             color="violet",
+            is_bold=True,
+            is_italic=True,
             event_id=event_id,
         )
         events = storage.list_calendar_events(
@@ -80,6 +82,8 @@ class PersonalWorkspaceStorageTests(unittest.TestCase):
         )
         self.assertEqual(events[0]["title"], "Перенесённая встреча")
         self.assertEqual(events[0]["color"], "violet")
+        self.assertEqual(events[0]["is_bold"], 1)
+        self.assertEqual(events[0]["is_italic"], 1)
 
         storage.delete_calendar_event(self.owner["id"], event_id)
         self.assertEqual(
@@ -87,6 +91,29 @@ class PersonalWorkspaceStorageTests(unittest.TestCase):
                 self.owner["id"], "2026-09-01", "2026-09-30"
             ),
             [],
+        )
+
+    def test_all_day_calendar_events_can_be_reordered(self):
+        first = storage.save_calendar_event(
+            self.owner["id"], "Первое", "2026-09-14"
+        )
+        second = storage.save_calendar_event(
+            self.owner["id"], "Второе", "2026-09-14"
+        )
+        third = storage.save_calendar_event(
+            self.owner["id"], "Третье", "2026-09-14"
+        )
+
+        storage.reorder_calendar_events(
+            self.owner["id"], "2026-09-14", [third, first, second]
+        )
+
+        events = storage.list_calendar_events(
+            self.owner["id"], "2026-09-14", "2026-09-14"
+        )
+        self.assertEqual(
+            [event["title"] for event in events],
+            ["Третье", "Первое", "Второе"],
         )
 
     def test_dictionary_is_private_to_its_owner(self):
