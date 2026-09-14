@@ -72,6 +72,7 @@ def create_schema(connection):
         CREATE TABLE IF NOT EXISTS bookmark_folders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
+            parent_id INTEGER,
             name TEXT NOT NULL COLLATE NOCASE,
             description TEXT NOT NULL DEFAULT '',
             visibility TEXT NOT NULL DEFAULT 'private',
@@ -80,7 +81,8 @@ def create_schema(connection):
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL DEFAULT '',
             UNIQUE(user_id, name),
-            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(parent_id) REFERENCES bookmark_folders(id) ON DELETE SET NULL
         );
 
         CREATE TABLE IF NOT EXISTS bookmark_folder_shares (
@@ -507,9 +509,18 @@ def create_schema(connection):
         connection.execute(
             "ALTER TABLE bookmark_folders ADD COLUMN system_key TEXT NOT NULL DEFAULT ''"
         )
+    if "parent_id" not in columns:
+        connection.execute(
+            "ALTER TABLE bookmark_folders ADD COLUMN parent_id INTEGER "
+            "REFERENCES bookmark_folders(id) ON DELETE SET NULL"
+        )
     connection.execute(
         """CREATE UNIQUE INDEX IF NOT EXISTS idx_bookmark_folders_system
            ON bookmark_folders(user_id, system_key) WHERE system_key != ''"""
+    )
+    connection.execute(
+        """CREATE INDEX IF NOT EXISTS idx_bookmark_folders_tree
+           ON bookmark_folders(user_id, parent_id, sort_order)"""
     )
 
     note_columns = {

@@ -47,7 +47,7 @@ class CollectionStorage:
         with self._connection_factory() as connection:
             rows = connection.execute(
                 """
-                SELECT f.id, f.name, f.description, f.visibility, f.system_key,
+                SELECT f.id, f.parent_id, f.name, f.description, f.visibility, f.system_key,
                        f.sort_order, f.created_at, f.updated_at,
                        COUNT(DISTINCT b.id) AS bookmark_count,
                        COUNT(DISTINCT n.id) AS note_count
@@ -64,6 +64,7 @@ class CollectionStorage:
         return [
             {
                 "id": int(row["id"]),
+                "parent_id": int(row["parent_id"]) if row["parent_id"] else None,
                 "name": row["name"],
                 "description": row["description"],
                 "visibility": row["visibility"],
@@ -190,8 +191,8 @@ class CollectionStorage:
             if cursor.rowcount != 1:
                 raise ValueError("Папка не найдена")
 
-    def save_bookmark_folder_order(self, user_id, folder_ids):
-        """Сохраняет полный личный порядок подборок после перетаскивания."""
+    def save_bookmark_folder_order(self, user_id, folder_ids, folder_tree=None):
+        """Сохраняет порядок и вложенность личных подборок."""
         user_id = self._validate_user_id(user_id)
         if not isinstance(folder_ids, list):
             raise ValueError("Некорректный порядок подборок")
@@ -204,6 +205,30 @@ class CollectionStorage:
             if folder_id < 1 or folder_id in requested:
                 raise ValueError("Некорректный порядок подборок")
             requested.append(folder_id)
+        requested_tree = None
+        if folder_tree is not None:
+            if not isinstance(folder_tree, list) or len(folder_tree) != len(requested):
+                raise ValueError("Некорректное дерево подборок")
+            requested_tree = []
+            tree_ids = set()
+            for item in folder_tree:
+                if not isinstance(item, dict):
+                    raise ValueError("Некорректное дерево подборок")
+                try:
+                    folder_id = int(item.get("id"))
+                    raw_parent = item.get("parent_id")
+                    parent_id = (
+                        None if raw_parent is None or raw_parent == ""
+                        else int(raw_parent)
+                    )
+                except (TypeError, ValueError) as error:
+                    raise ValueError("Некорректное дерево подборок") from error
+                if folder_id in tree_ids or parent_id == folder_id:
+                    raise ValueError("Папку нельзя поместить внутрь самой себя")
+                tree_ids.add(folder_id)
+                requested_tree.append((folder_id, parent_id))
+            if [item[0] for item in requested_tree] != requested:
+                raise ValueError("Некорректное дерево подборок")
         self._initialize_database()
         with self._lock, self._connection_factory() as connection:
             owned = {
@@ -214,10 +239,40 @@ class CollectionStorage:
             }
             if set(requested) != owned:
                 raise ValueError("Список подборок изменился. Обнови страницу")
-            connection.executemany(
-                "UPDATE bookmark_folders SET sort_order = ? WHERE id = ? AND user_id = ?",
-                [(position, folder_id, user_id) for position, folder_id in enumerate(requested)],
-            )
+            if requested_tree is None:
+                connection.executemany(
+                    "UPDATE bookmark_folders SET sort_order = ? WHERE id = ? AND user_id = ?",
+                    [(position, folder_id, user_id) for position, folder_id in enumerate(requested)],
+                )
+            else:
+                parents = {
+                    folder_id: parent_id for folder_id, parent_id in requested_tree
+                }
+                if any(
+                    parent_id is not None and parent_id not in owned
+                    for parent_id in parents.values()
+                ):
+                    raise ValueError("Родительская папка не найдена")
+                for folder_id in requested:
+                    seen = {folder_id}
+                    parent_id = parents[folder_id]
+                    while parent_id is not None:
+                        if parent_id in seen:
+                            raise ValueError("Папки нельзя замкнуть в круг")
+                        seen.add(parent_id)
+                        parent_id = parents[parent_id]
+                sibling_positions = {}
+                updates = []
+                for folder_id, parent_id in requested_tree:
+                    position = sibling_positions.get(parent_id, 0)
+                    sibling_positions[parent_id] = position + 1
+                    updates.append((parent_id, position, folder_id, user_id))
+                connection.executemany(
+                    """UPDATE bookmark_folders
+                       SET parent_id = ?, sort_order = ?
+                       WHERE id = ? AND user_id = ?""",
+                    updates,
+                )
         return self.list_bookmark_folders(user_id)
 
     def update_collection(self, user_id, folder_id, name, description="", visibility="private",

@@ -144,6 +144,8 @@ class WebTemplateTests(unittest.TestCase):
             'class="collection-tree"',
             'class="tree-copy"',
             'data-create-collection-open',
+            'id="folder-order-toggle"',
+            'id="folder-root-drop"',
             'data-composer-open',
             'class="icon-button danger"',
             'class="icon-button add-action"',
@@ -161,6 +163,8 @@ class WebTemplateTests(unittest.TestCase):
         self.assertNotIn('class="panel"', template)
         self.assertIn(".collections-title{margin:0;padding:0 0 22px 2px", template)
         self.assertIn(".collections-title{font-size:20px}", template)
+        self.assertIn(".collections-title:after", template)
+        self.assertIn("data-parent-id=", template)
         self.assertIn(".collection-tree-list{overflow:visible}", template)
         self.assertIn(".left-rail::-webkit-scrollbar{display:none}", template)
         self.assertIn('class="search-icon"', template)

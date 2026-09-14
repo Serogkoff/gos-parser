@@ -1064,6 +1064,41 @@ COLLECTION_SORTS = {
 }
 
 
+def _collection_folder_tree(folders):
+    """Разворачивает сохранённую иерархию папок в безопасный список для меню."""
+    folder_ids = {int(folder["id"]) for folder in folders}
+    children = {}
+    for folder in folders:
+        parent_id = folder.get("parent_id")
+        if parent_id not in folder_ids or parent_id == folder["id"]:
+            parent_id = None
+        children.setdefault(parent_id, []).append(folder)
+
+    flattened = []
+    visited = set()
+
+    def append_branch(parent_id, depth):
+        for folder in children.get(parent_id, []):
+            folder_id = int(folder["id"])
+            if folder_id in visited:
+                continue
+            visited.add(folder_id)
+            item = dict(folder)
+            item["depth"] = depth
+            flattened.append(item)
+            append_branch(folder_id, depth + 1)
+
+    append_branch(None, 0)
+    # Повреждённый цикл не должен скрыть папки из меню.
+    for folder in folders:
+        if int(folder["id"]) not in visited:
+            item = dict(folder)
+            item["parent_id"] = None
+            item["depth"] = 0
+            flattened.append(item)
+    return flattened
+
+
 def _collection_materials(bookmarks, notes, sort_mode="newest"):
     """Объединяет статьи из ленты и добавленные вручную материалы для сортировки."""
     materials = []
@@ -1542,6 +1577,7 @@ def bookmarks_page():
         current_user=user,
         csrf_token=csrf_token(),
         folders=folders,
+        folder_tree=_collection_folder_tree(folders),
         shared_folders=shared_folders,
         bookmarks=bookmarks,
         notes=notes,
@@ -2409,16 +2445,26 @@ def source_mutes_api():
 
 @app.post("/api/collection-order")
 def collection_order_api():
-    """Сохраняет порядок личных подборок после перетаскивания мышкой."""
+    """Сохраняет порядок и вложенность личных подборок после перетаскивания."""
     user = current_user()
     if not csrf_is_valid():
         return jsonify(error="Сессия устарела. Обновите страницу."), 400
     payload = request.get_json(silent=True) or {}
+    requested_tree = payload.get("folders")
     requested = payload.get("folder_ids")
+    if requested_tree is not None:
+        if not isinstance(requested_tree, list):
+            return jsonify(error="Некорректное дерево подборок"), 400
+        requested = [
+            item.get("id") if isinstance(item, dict) else None
+            for item in requested_tree
+        ]
     if not isinstance(requested, list):
         return jsonify(error="Некорректный порядок подборок"), 400
     try:
-        folders = save_bookmark_folder_order(user["id"], requested)
+        folders = save_bookmark_folder_order(
+            user["id"], requested, requested_tree
+        )
     except ValueError as error:
         return jsonify(error=str(error)), 400
     return jsonify(folder_ids=[folder["id"] for folder in folders])

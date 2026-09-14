@@ -462,9 +462,11 @@ def delete_bookmark_folder(user_id, folder_id):
     return _COLLECTION_STORAGE.delete_bookmark_folder(user_id, folder_id)
 
 
-def save_bookmark_folder_order(user_id, folder_ids):
-    """Сохраняет полный личный порядок подборок после перетаскивания."""
-    return _COLLECTION_STORAGE.save_bookmark_folder_order(user_id, folder_ids)
+def save_bookmark_folder_order(user_id, folder_ids, folder_tree=None):
+    """Сохраняет порядок и вложенность личных подборок."""
+    return _COLLECTION_STORAGE.save_bookmark_folder_order(
+        user_id, folder_ids, folder_tree
+    )
 
 
 def update_collection(user_id, folder_id, name, description="",

@@ -458,6 +458,73 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertIn("материалов", page)
         self.assertNotIn("Поднять подборку", page)
 
+    def test_user_can_build_nested_collection_tree(self):
+        parent = storage.create_bookmark_folder(self.first["id"], "Выборы")
+        apple = storage.create_bookmark_folder(self.first["id"], "Яблоко")
+        parties = storage.create_bookmark_folder(self.first["id"], "Партии")
+        client = web_app.app.test_client()
+        token = self._login(client, self.first["id"])
+
+        response = client.post(
+            "/api/collection-order",
+            json={
+                "folders": [
+                    {"id": parent["id"], "parent_id": None},
+                    {"id": apple["id"], "parent_id": parent["id"]},
+                    {"id": parties["id"], "parent_id": parent["id"]},
+                ],
+            },
+            headers={"X-CSRF-Token": token},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        folders = storage.list_bookmark_folders(self.first["id"])
+        self.assertEqual(
+            {folder["name"]: folder["parent_id"] for folder in folders},
+            {"Выборы": None, "Яблоко": parent["id"], "Партии": parent["id"]},
+        )
+        page = client.get("/collections").get_data(as_text=True)
+        self.assertIn('id="folder-order-toggle"', page)
+        self.assertIn('id="folder-root-drop"', page)
+        self.assertIn(
+            f'data-folder-id="{apple["id"]}" data-parent-id="{parent["id"]}" '
+            'data-depth="1"',
+            page,
+        )
+
+        cycle = client.post(
+            "/api/collection-order",
+            json={
+                "folders": [
+                    {"id": parent["id"], "parent_id": apple["id"]},
+                    {"id": apple["id"], "parent_id": parent["id"]},
+                    {"id": parties["id"], "parent_id": parent["id"]},
+                ],
+            },
+            headers={"X-CSRF-Token": token},
+        )
+        self.assertEqual(cycle.status_code, 400)
+        self.assertIn("круг", cycle.get_json()["error"])
+
+    def test_deleting_parent_promotes_child_collection(self):
+        parent = storage.create_bookmark_folder(self.first["id"], "Выборы")
+        child = storage.create_bookmark_folder(self.first["id"], "Яблоко")
+        storage.save_bookmark_folder_order(
+            self.first["id"],
+            [parent["id"], child["id"]],
+            [
+                {"id": parent["id"], "parent_id": None},
+                {"id": child["id"], "parent_id": parent["id"]},
+            ],
+        )
+
+        storage.delete_bookmark_folder(self.first["id"], parent["id"])
+
+        folders = storage.list_bookmark_folders(self.first["id"])
+        self.assertEqual(len(folders), 1)
+        self.assertEqual(folders[0]["name"], "Яблоко")
+        self.assertIsNone(folders[0]["parent_id"])
+
     def test_collection_tree_is_in_left_navigation_and_right_panel_is_removed(self):
         client = web_app.app.test_client()
         self._login(client, self.first["id"])
@@ -471,6 +538,8 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertIn('class="rail-link active" href="/collections"', collections)
         self.assertIn('class="collection-tree"', collections)
         self.assertIn("Создать подборку", collections)
+        self.assertIn('id="folder-order-toggle"', collections)
+        self.assertIn('id="folder-root-drop"', collections)
         self.assertIn('id="folder-list"', collections)
         self.assertIn('class="tree-copy"', collections)
         self.assertIn('class="toolbar-row"', collections)

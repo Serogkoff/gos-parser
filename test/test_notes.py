@@ -119,6 +119,9 @@ class NotesTestModeTests(unittest.TestCase):
             self.assertRegex(
                 html, rf'class="view active"[^>]*>{view_label}</a>'
             )
+            self.assertIn('class="icon-button new-event-button"', html)
+            self.assertIn('aria-label="Новая заметка"', html)
+            self.assertNotIn('</svg>Новая заметка</button>', html)
 
     def test_records_and_dictionary_are_visible_placeholders(self):
         client, _ = self._client_for(self.admin)

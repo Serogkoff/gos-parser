@@ -48,6 +48,16 @@
         .collections-title{font-size:20px}
         @media(max-width:920px){.collection-tree{display:none}.collections-topbar{grid-template-columns:1fr}.collections-title{padding-top:18px}.collections-topbar .clocks{grid-column:1}.share-form{grid-template-columns:1fr}.toolbar-row{align-items:stretch;flex-direction:column}.search{width:100%}}
         @media(max-width:560px){.collection-actions{flex-wrap:wrap}.collection-head-main{align-items:flex-start;flex-direction:column}.composer-link-row{grid-template-columns:1fr}.rename-form{flex-wrap:wrap}.collections-title{font-size:20px}}
+        /* Подборки 16.78: заголовок раздела и вложенное дерево. */
+        .collections-title{grid-row:2;position:relative;align-self:stretch;justify-self:start;padding:0 0 12px 2px;display:flex;align-items:center;color:var(--coral-dark);font-size:16px}
+        .collections-title:after{content:"";position:absolute;left:2px;right:0;bottom:-1px;height:2px;background:var(--coral)}
+        .tree-create-bar{display:grid;grid-template-columns:minmax(0,1fr) 34px;align-items:center;border-left:1px solid #ddd9d2}
+        .tree-create-bar .tree-create{border-left:0}.tree-order-toggle{width:34px;min-height:34px;padding:0;display:grid;place-items:center;border:0;border-radius:3px;color:var(--muted)}
+        .tree-order-toggle:hover,.tree-order-toggle[aria-pressed="true"]{color:var(--coral-dark);background:#fff7f5}.tree-order-toggle svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+        .tree-root-drop{margin:4px 0;padding:8px 7px 8px 16px;border:1px dashed #c9c5bc;border-radius:3px;color:var(--muted);font-size:10px}.tree-root-drop.root-drag-over{color:var(--coral-dark);border-color:var(--coral);background:#fff7f5}
+        .folder-row{display:block;cursor:default}.folder-row .tree-link{padding-left:calc(16px + var(--tree-depth,0) * 14px)}.folder-row .tree-link.active{padding-left:calc(14px + var(--tree-depth,0) * 14px)}
+        .folder-row[data-depth]:not([data-depth="0"]) .tree-copy strong:before{content:"↳ ";color:#aaa8a1}.collection-tree-list.order-editing .folder-row{cursor:grab}.collection-tree-list.order-editing .tree-link{padding-left:calc(16px + var(--tree-depth,0) * 14px)}
+        .folder-drop-before{box-shadow:inset 0 2px var(--coral)}.folder-drop-after{box-shadow:inset 0 -2px var(--coral)}.folder-drop-inside{outline:1px solid var(--coral);outline-offset:-2px;background:#fff7f5}.folder-dragging{opacity:.35}
     </style>
 </head>
 <body><div class="app-layout">
@@ -59,11 +69,12 @@
             <a class="rail-link active" href="/collections"><span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2-2h3l2 2h4v10.75A1.75 1.75 0 0 1 18.75 20H5.25a1.75 1.75 0 0 1-1.75-1.75Z"/><path d="M3.5 10h17"/></svg></span><span>Подборки</span></a>
         </nav>
             <div class="collection-tree">
-                <button class="tree-create" type="button" data-create-collection-open>＋ Создать подборку</button>
+                <div class="tree-create-bar"><button class="tree-create" type="button" data-create-collection-open>＋ Создать подборку</button><button class="tree-order-toggle" id="folder-order-toggle" type="button" aria-pressed="false" aria-label="Изменить дерево подборок" title="Переместить подборки"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5-5L12 3.6 8.6 7 6.3 4.7a4 4 0 0 0 5 5L4 17l3 3 7.3-7.3a4 4 0 0 0 5-5L17 10l-3-3Z"/></svg></button></div>
                 <form class="tree-create-form" method="post" data-create-collection-form hidden><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="action" value="create_folder"><input name="name" maxlength="80" placeholder="Название подборки" required><div class="tree-create-actions"><button class="primary" type="submit">Создать</button><button type="button" data-create-collection-cancel>Отмена</button></div></form>
+                <div class="tree-root-drop" id="folder-root-drop" hidden>Перетащи сюда — верхний уровень</div>
                 <div class="collection-tree-list" id="folder-list">
-                    {% for folder in folders %}<div class="folder-row" data-folder-id="{{folder.id}}"><a class="tree-link {{'active' if selected_folder == folder.id|string else ''}}" href="/collections?folder={{folder.id}}"><span class="tree-copy"><strong>{{folder.name}}</strong><small>{{folder.bookmark_count + folder.note_count}} материалов</small></span></a></div>{% endfor %}
-                    <a class="tree-link {{'active' if selected_folder == 'unfiled' else ''}}" href="/collections?folder=unfiled"><span class="tree-copy"><strong>Без подборки</strong><small>{{unfiled_count}} материалов</small></span></a>
+                    {% for folder in folder_tree %}<div class="folder-row" data-folder-row data-folder-id="{{folder.id}}" data-parent-id="{{folder.parent_id or ''}}" data-depth="{{folder.depth}}" style="--tree-depth:{{folder.depth}}"><a class="tree-link {{'active' if selected_folder == folder.id|string else ''}}" href="/collections?folder={{folder.id}}"><span class="tree-copy"><strong>{{folder.name}}</strong><small>{{folder.bookmark_count + folder.note_count}} материалов</small></span></a></div>{% endfor %}
+                    <a class="tree-link {{'active' if selected_folder == 'unfiled' else ''}}" data-unfiled href="/collections?folder=unfiled"><span class="tree-copy"><strong>Без подборки</strong><small>{{unfiled_count}} материалов</small></span></a>
                 </div>
                 {% if shared_folders %}<div class="tree-section">Доступные мне</div>{% for folder in shared_folders %}<a class="tree-link {{'active' if selected_folder == folder.id|string else ''}}" href="/collections?folder={{folder.id}}"><span class="tree-copy"><strong>{{folder.name}}</strong><small>{{folder.bookmark_count + folder.note_count}} материалов · {{folder.owner_name}}</small></span></a>{% endfor %}{% endif %}
             </div>
@@ -197,17 +208,53 @@
     });
     const folderList = document.getElementById('folder-list');
     const folderOrderToggle = document.getElementById('folder-order-toggle');
+    const folderRootDrop = document.getElementById('folder-root-drop');
     if(folderList && folderOrderToggle){
         const orderedFolderRows = () => [...folderList.querySelectorAll('[data-folder-row]')];
         let draggedFolderRow = null;
         let folderOrderChanged = false;
+        const rowDepth = row => Number(row.dataset.depth || 0);
+        const subtreeRows = row => {
+            const rows = orderedFolderRows();
+            const start = rows.indexOf(row);
+            const depth = rowDepth(row);
+            let end = start + 1;
+            while(end < rows.length && rowDepth(rows[end]) > depth) end += 1;
+            return rows.slice(start, end);
+        };
+        function clearFolderDropState(){
+            orderedFolderRows().forEach(row => row.classList.remove(
+                'folder-drop-before', 'folder-drop-after', 'folder-drop-inside'
+            ));
+            if(folderRootDrop) folderRootDrop.classList.remove('root-drag-over');
+        }
+        function updateBlockDepth(block, depth, parentId){
+            const shift = depth - rowDepth(block[0]);
+            block.forEach(row => {
+                const nextDepth = Math.max(0, rowDepth(row) + shift);
+                row.dataset.depth = String(nextDepth);
+                row.style.setProperty('--tree-depth', nextDepth);
+            });
+            block[0].dataset.parentId = parentId === null ? '' : String(parentId);
+        }
+        function insertBlock(block, reference){
+            block.forEach(row => folderList.insertBefore(row, reference));
+        }
         function setFolderOrderEditing(editing){
             folderList.classList.toggle('order-editing', editing);
             folderOrderToggle.setAttribute('aria-pressed', String(editing));
-            folderOrderToggle.textContent = editing ? 'Готово' : 'Изменить';
+            folderOrderToggle.setAttribute(
+                'aria-label', editing ? 'Сохранить дерево подборок' : 'Изменить дерево подборок'
+            );
+            folderOrderToggle.title = editing ? 'Готово' : 'Переместить подборки';
+            if(folderRootDrop) folderRootDrop.hidden = !editing;
             orderedFolderRows().forEach(row => row.draggable = editing);
         }
         async function saveFolderOrder(){
+            const folders = orderedFolderRows().map(row => ({
+                id:Number(row.dataset.folderId),
+                parent_id:row.dataset.parentId ? Number(row.dataset.parentId) : null
+            }));
             const response = await fetch('/api/collection-order', {
                 method:'POST',
                 headers:{
@@ -215,7 +262,8 @@
                     'X-CSRF-Token': {{csrf_token|tojson}}
                 },
                 body:JSON.stringify({
-                    folder_ids:orderedFolderRows().map(row => Number(row.dataset.folderId))
+                    folder_ids:folders.map(folder => folder.id),
+                    folders
                 })
             });
             if(!response.ok){
@@ -247,24 +295,69 @@
             draggedFolderRow = row;
             row.classList.add('folder-dragging');
             event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', row.dataset.folderId);
         });
         folderList.addEventListener('dragover', event => {
             if(!draggedFolderRow) return;
             const target = event.target.closest('[data-folder-row]');
-            if(!target || target === draggedFolderRow) return;
+            if(!target || subtreeRows(draggedFolderRow).includes(target)) return;
             event.preventDefault();
-            orderedFolderRows().forEach(row => row.classList.remove('folder-drag-over'));
-            target.classList.add('folder-drag-over');
+            clearFolderDropState();
             const bounds = target.getBoundingClientRect();
-            folderList.insertBefore(
-                draggedFolderRow,
-                event.clientY < bounds.top + bounds.height / 2 ? target : target.nextSibling
+            const ratio = (event.clientY - bounds.top) / bounds.height;
+            target.classList.add(
+                ratio < .25 ? 'folder-drop-before' :
+                ratio > .75 ? 'folder-drop-after' : 'folder-drop-inside'
             );
-            folderOrderChanged = true;
         });
-        folderList.addEventListener('drop', event => event.preventDefault());
+        folderList.addEventListener('drop', event => {
+            if(!draggedFolderRow) return;
+            const target = event.target.closest('[data-folder-row]');
+            const block = subtreeRows(draggedFolderRow);
+            if(!target || block.includes(target)) return;
+            event.preventDefault();
+            const targetBlock = subtreeRows(target);
+            if(target.classList.contains('folder-drop-inside')){
+                const reference = targetBlock[targetBlock.length - 1].nextSibling;
+                insertBlock(block, reference);
+                updateBlockDepth(block, rowDepth(target) + 1, Number(target.dataset.folderId));
+            }else if(target.classList.contains('folder-drop-before')){
+                insertBlock(block, target);
+                updateBlockDepth(
+                    block, rowDepth(target),
+                    target.dataset.parentId ? Number(target.dataset.parentId) : null
+                );
+            }else{
+                const reference = targetBlock[targetBlock.length - 1].nextSibling;
+                insertBlock(block, reference);
+                updateBlockDepth(
+                    block, rowDepth(target),
+                    target.dataset.parentId ? Number(target.dataset.parentId) : null
+                );
+            }
+            folderOrderChanged = true;
+            clearFolderDropState();
+        });
+        if(folderRootDrop){
+            folderRootDrop.addEventListener('dragover', event => {
+                if(!draggedFolderRow) return;
+                event.preventDefault();
+                clearFolderDropState();
+                folderRootDrop.classList.add('root-drag-over');
+            });
+            folderRootDrop.addEventListener('drop', event => {
+                if(!draggedFolderRow) return;
+                event.preventDefault();
+                const block = subtreeRows(draggedFolderRow);
+                insertBlock(block, folderList.querySelector('[data-unfiled]'));
+                updateBlockDepth(block, 0, null);
+                folderOrderChanged = true;
+                clearFolderDropState();
+            });
+        }
         folderList.addEventListener('dragend', () => {
-            orderedFolderRows().forEach(row => row.classList.remove('folder-dragging', 'folder-drag-over'));
+            orderedFolderRows().forEach(row => row.classList.remove('folder-dragging'));
+            clearFolderDropState();
             draggedFolderRow = null;
         });
     }
