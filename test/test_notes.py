@@ -74,8 +74,7 @@ class NotesTestModeTests(unittest.TestCase):
                 "event_time": "14:00",
                 "place": "Смоленская площадь",
                 "description": "Взять паспорт",
-                "visibility": "selected",
-                "shared_user_ids": [str(self.reader["id"])],
+                "calendar_mode": "month",
             },
         )
 
@@ -84,64 +83,41 @@ class NotesTestModeTests(unittest.TestCase):
             self.admin["id"], "2026-08-01", "2026-08-31"
         )
         self.assertEqual(events[0]["title"], "Встреча в МИД")
-        self.assertEqual(events[0]["shared_users"][0]["username"], "reader")
+        self.assertEqual(events[0]["visibility"], "private")
+        self.assertEqual(events[0]["shared_users"], [])
         page = client.get("/notes?view=calendar&year=2026&month=8&selected=2026-08-28")
         html = page.get_data(as_text=True)
-        self.assertIn("28.08.2026", html)
+        self.assertIn("Август 2026", html)
         self.assertIn("Встреча в МИД", html)
-        self.assertIn("Смоленская площадь", html)
+        self.assertIn("Календарь", html)
+        self.assertIn("Записи", html)
+        self.assertIn("Словарь-квиз", html)
+        self.assertNotIn("Выбранные пользователи", html)
 
-    def test_admin_uses_records_and_dictionary_quiz(self):
-        client, token = self._client_for(self.admin)
-        note = client.post(
-            "/notes?view=records",
-            data={
-                "csrf_token": token,
-                "action": "save_note",
-                "folder": "Контакты",
-                "title": "Пресс-центр",
-                "body": "+7 495 000-00-00",
-                "visibility": "private",
-            },
-        )
-        self.assertEqual(note.status_code, 302)
-        self.assertIn("Пресс-центр", client.get("/notes?view=records").get_data(as_text=True))
+    def test_calendar_supports_month_week_and_day_views(self):
+        client, _ = self._client_for(self.admin)
+        for mode, label, view_label in (
+            ("month", "Август 2026", "Месяц"),
+            ("week", "24–30 августа 2026", "Неделя"),
+            ("day", "28 августа 2026", "День"),
+        ):
+            page = client.get(
+                f"/notes?view=calendar&mode={mode}&selected=2026-08-28"
+            )
+            self.assertEqual(page.status_code, 200)
+            html = page.get_data(as_text=True)
+            self.assertIn(label, html)
+            self.assertRegex(
+                html, rf'class="view active"[^>]*>{view_label}</a>'
+            )
 
-        deck = client.post(
-            "/notes?view=dictionary",
-            data={"csrf_token": token, "action": "create_deck", "name": "Политика"},
-        )
-        self.assertEqual(deck.status_code, 302)
-        deck_id = storage.list_dictionary_decks(self.admin["id"])[0]["id"]
-        card = client.post(
-            "/notes?view=dictionary",
-            data={
-                "csrf_token": token,
-                "action": "add_card",
-                "deck_id": deck_id,
-                "term": "記者会見",
-                "reading": "きしゃかいけん",
-                "translation": "пресс-конференция",
-            },
-        )
-        self.assertEqual(card.status_code, 302)
-        page = client.get(f"/notes?view=dictionary&deck={deck_id}")
-        self.assertIn("記者会見", page.get_data(as_text=True))
-        card_id = storage.list_dictionary_cards(self.admin["id"], deck_id)[0]["id"]
-        review = client.post(
-            "/notes?view=dictionary",
-            data={
-                "csrf_token": token,
-                "action": "review_card",
-                "deck_id": deck_id,
-                "card_id": card_id,
-                "rating": "good",
-            },
-        )
-        self.assertEqual(review.status_code, 302)
-        reviewed = storage.list_dictionary_cards(self.admin["id"], deck_id)[0]
-        self.assertEqual(reviewed["interval_days"], 1)
-        self.assertTrue(reviewed["next_review"])
+    def test_records_and_dictionary_are_visible_placeholders(self):
+        client, _ = self._client_for(self.admin)
+        records = client.get("/notes?view=records").get_data(as_text=True)
+        dictionary = client.get("/notes?view=dictionary").get_data(as_text=True)
+
+        self.assertIn("Форму записей и папки сделаем следующим патчем", records)
+        self.assertIn("Карточки и проверку знаний добавим", dictionary)
 
 
 if __name__ == "__main__":

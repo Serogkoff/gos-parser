@@ -61,14 +61,12 @@ from utils.source_icons import (
 from utils.storage import (
     authenticate_user,
     create_manual_backup,
-    create_dictionary_deck,
     bookmarked_urls,
     count_users,
     count_bookmarks,
     create_bookmark_folder,
     delete_collection_note,
     delete_calendar_event,
-    delete_personal_note,
     create_user,
     delete_user,
     delete_bookmark_folder,
@@ -85,9 +83,6 @@ from utils.storage import (
     list_collection_note_read_ids,
     list_collection_notes,
     list_calendar_events,
-    list_dictionary_cards,
-    list_dictionary_decks,
-    list_personal_notes,
     list_news_index,
     list_unread_news_index,
     list_news_page,
@@ -108,8 +103,6 @@ from utils.storage import (
     save_bookmark_folder_order,
     save_collection_note,
     save_calendar_event,
-    save_dictionary_card,
-    save_personal_note,
     save_external_bookmark,
     save_muted_sources,
     save_source_order,
@@ -120,7 +113,6 @@ from utils.storage import (
     set_user_active,
     set_user_password,
     set_user_role,
-    review_dictionary_card,
     update_collection,
     update_collection_note,
     news_group_counts,
@@ -1160,10 +1152,10 @@ MONTH_NAMES_RU = (
     "", "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
     "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
 )
-ACCESS_LABELS = {
-    "private": "Только я", "selected": "Выбранные пользователи",
-    "all": "Все пользователи",
-}
+MONTH_NAMES_GENITIVE_RU = (
+    "", "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+)
 
 
 def _notes_admin():
@@ -1179,7 +1171,7 @@ def _notes_redirect(view, **values):
 
 @app.route("/notes", methods=["GET", "POST"])
 def notes_page():
-    """Экспериментальные заметки, доступные только администратору."""
+    """Личное рабочее пространство, доступное только администратору."""
     user = _notes_admin()
     user_id = user["id"]
     view = str(request.values.get("view", "calendar")).strip().casefold()
@@ -1192,124 +1184,111 @@ def notes_page():
         action = str(request.form.get("action", "")).strip()
         try:
             if action == "save_event":
-                event_id = save_calendar_event(
+                save_calendar_event(
                     user_id, request.form.get("title"),
                     request.form.get("event_date"), request.form.get("event_time"),
                     request.form.get("place"), request.form.get("description"),
-                    request.form.get("visibility"),
-                    request.form.getlist("shared_user_ids"),
+                    "private", (),
                     request.form.get("event_id"),
                 )
                 event_date = request.form.get("event_date")
                 return _notes_redirect(
-                    "calendar", selected=event_date, event=event_id,
-                    message="Мероприятие сохранено",
+                    "calendar", mode=request.form.get("calendar_mode", "month"),
+                    selected=event_date, message="Заметка сохранена",
                 )
             if action == "delete_event":
                 delete_calendar_event(user_id, request.form.get("event_id"))
                 return _notes_redirect(
-                    "calendar", selected=request.form.get("return_date"),
-                    message="Мероприятие удалено",
-                )
-            if action == "save_note":
-                if "delete_note" in request.form.getlist("action"):
-                    delete_personal_note(user_id, request.form.get("note_id"))
-                    return _notes_redirect("records", message="Запись удалена")
-                note_id = save_personal_note(
-                    user_id, request.form.get("folder"), request.form.get("title"),
-                    request.form.get("body"), request.form.get("visibility"),
-                    request.form.getlist("shared_user_ids"),
-                    request.form.get("note_id"),
-                )
-                return _notes_redirect(
-                    "records", note=note_id, message="Запись сохранена"
-                )
-            if action == "create_deck":
-                deck_id = create_dictionary_deck(user_id, request.form.get("name"))
-                return _notes_redirect(
-                    "dictionary", deck=deck_id, message="Словарь создан"
-                )
-            if action == "add_card":
-                deck_id = request.form.get("deck_id")
-                save_dictionary_card(
-                    user_id, deck_id, request.form.get("term"),
-                    request.form.get("reading"), request.form.get("translation"),
-                )
-                return _notes_redirect(
-                    "dictionary", deck=deck_id, message="Карточка добавлена"
-                )
-            if action == "review_card":
-                deck_id = request.form.get("deck_id")
-                result = review_dictionary_card(
-                    user_id, request.form.get("card_id"), request.form.get("rating")
-                )
-                return _notes_redirect(
-                    "dictionary", deck=deck_id,
-                    message=f"Следующий повтор: {result['next_review']}",
+                    "calendar", mode=request.form.get("calendar_mode", "month"),
+                    selected=request.form.get("return_date"),
+                    message="Заметка удалена",
                 )
             raise ValueError("Неизвестное действие")
         except ValueError as operation_error:
             return _notes_redirect(view, error=str(operation_error))
 
-    available_users = [
-        account for account in list_users()
-        if account["is_active"] and account["id"] != user_id
-    ]
     context = {
         "current_user": user,
         "csrf_token": csrf_token(),
         "view": view,
-        "available_users": available_users,
         "message": str(request.args.get("message", "")).strip(),
         "error": str(request.args.get("error", "")).strip(),
-        "access_labels": ACCESS_LABELS,
+        "asset_version": PROJECT_VERSION,
     }
 
     if view == "calendar":
         today = date.today()
+        mode = str(request.args.get("mode", "month")).strip().casefold()
+        if mode not in {"month", "week", "day"}:
+            mode = "month"
+        selected_date = str(request.args.get("selected", "")).strip()
         try:
-            year = int(request.args.get("year", today.year))
-            month = int(request.args.get("month", today.month))
-            if not 2000 <= year <= 2100 or not 1 <= month <= 12:
+            if selected_date:
+                anchor = datetime.strptime(selected_date, "%Y-%m-%d").date()
+            else:
+                year = int(request.args.get("year", today.year))
+                month = int(request.args.get("month", today.month))
+                anchor = date(year, month, 1)
+            if not 2000 <= anchor.year <= 2100:
                 raise ValueError
         except (TypeError, ValueError):
-            year, month = today.year, today.month
-        first_day = date(year, month, 1)
-        days_in_month = monthrange(year, month)[1]
-        last_day = date(year, month, days_in_month)
-        grid_start = first_day - timedelta(days=first_day.weekday())
-        grid_end = grid_start + timedelta(days=41)
+            anchor = today
+        selected_date = anchor.isoformat()
+
+        if mode == "month":
+            first_day = anchor.replace(day=1)
+            last_day = date(
+                first_day.year, first_day.month,
+                monthrange(first_day.year, first_day.month)[1],
+            )
+            range_start = first_day - timedelta(days=first_day.weekday())
+            range_end = range_start + timedelta(days=41)
+            previous_anchor = first_day - timedelta(days=1)
+            next_anchor = last_day + timedelta(days=1)
+            period_label = f"{MONTH_NAMES_RU[first_day.month]} {first_day.year}"
+        elif mode == "week":
+            range_start = anchor - timedelta(days=anchor.weekday())
+            range_end = range_start + timedelta(days=6)
+            previous_anchor = anchor - timedelta(days=7)
+            next_anchor = anchor + timedelta(days=7)
+            if range_start.month == range_end.month:
+                period_label = (
+                    f"{range_start.day}–{range_end.day} "
+                    f"{MONTH_NAMES_GENITIVE_RU[range_end.month]} {range_end.year}"
+                )
+            else:
+                period_label = (
+                    f"{range_start.day} {MONTH_NAMES_GENITIVE_RU[range_start.month]} — "
+                    f"{range_end.day} {MONTH_NAMES_GENITIVE_RU[range_end.month]} "
+                    f"{range_end.year}"
+                )
+        else:
+            range_start = range_end = anchor
+            previous_anchor = anchor - timedelta(days=1)
+            next_anchor = anchor + timedelta(days=1)
+            period_label = (
+                f"{anchor.day} {MONTH_NAMES_GENITIVE_RU[anchor.month]} {anchor.year}"
+            )
+
         events = list_calendar_events(
-            user_id, grid_start.isoformat(), grid_end.isoformat()
+            user_id, range_start.isoformat(), range_end.isoformat()
         )
         events_by_date = {}
         for event in events:
             events_by_date.setdefault(event["event_date"], []).append(event)
-        selected_date = str(request.args.get("selected", "")).strip()
-        try:
-            parsed_selected = datetime.strptime(selected_date, "%Y-%m-%d").date()
-        except ValueError:
-            parsed_selected = today if first_day <= today <= last_day else first_day
-            selected_date = parsed_selected.isoformat()
-        calendar_days = []
-        for offset in range(42):
-            item_date = grid_start + timedelta(days=offset)
-            calendar_days.append({
+        period_days = []
+        for offset in range((range_end - range_start).days + 1):
+            item_date = range_start + timedelta(days=offset)
+            period_days.append({
                 "number": item_date.day,
                 "iso": item_date.isoformat(),
-                "in_month": item_date.month == month,
+                "weekday": ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")[
+                    item_date.weekday()
+                ],
+                "in_month": mode != "month" or item_date.month == anchor.month,
+                "is_today": item_date == today,
                 "events": events_by_date.get(item_date.isoformat(), []),
-                "url": url_for(
-                    "notes_page", view="calendar", year=item_date.year,
-                    month=item_date.month, selected=item_date.isoformat(),
-                ),
             })
-        selected_events = list(events_by_date.get(selected_date, []))
-        for event in selected_events:
-            event["edit_url"] = url_for(
-                "notes_page", view="calendar", year=year, month=month,
-                selected=selected_date, event=event["id"],
-            )
         selected_event = next(
             (
                 event for event in events
@@ -1320,99 +1299,33 @@ def notes_page():
         event_form = selected_event or {
             "id": "", "title": "", "event_date": selected_date,
             "event_time": "", "place": "", "description": "",
-            "visibility": "private", "shared_users": [],
         }
-        previous_anchor = first_day - timedelta(days=1)
-        next_anchor = last_day + timedelta(days=1)
         context.update(
-            month_label=f"{MONTH_NAMES_RU[month]} {year}",
-            calendar_days=calendar_days,
+            calendar_mode=mode,
+            period_label=period_label,
+            period_days=period_days,
             selected_date=selected_date,
-            selected_date_label=parsed_selected.strftime("%d.%m.%Y"),
-            selected_events=selected_events,
             event_form=event_form,
-            event_shared_ids={item["id"] for item in event_form["shared_users"]},
-            previous_month_url=url_for(
-                "notes_page", view="calendar", year=previous_anchor.year,
-                month=previous_anchor.month,
+            open_event_dialog=bool(selected_event),
+            previous_period_url=url_for(
+                "notes_page", view="calendar", mode=mode,
+                selected=previous_anchor.isoformat(),
             ),
-            next_month_url=url_for(
-                "notes_page", view="calendar", year=next_anchor.year,
-                month=next_anchor.month,
+            next_period_url=url_for(
+                "notes_page", view="calendar", mode=mode,
+                selected=next_anchor.isoformat(),
             ),
             today_url=url_for(
-                "notes_page", view="calendar", year=today.year,
-                month=today.month, selected=today.isoformat(),
+                "notes_page", view="calendar", mode=mode,
+                selected=today.isoformat(),
             ),
-            new_event_url=url_for(
-                "notes_page", view="calendar", year=year, month=month,
-                selected=selected_date,
-            ),
-        )
-    elif view == "records":
-        notes = list_personal_notes(user_id)
-        selected_folder = str(request.args.get("folder", "")).strip()
-        folder_counts = {}
-        for note in notes:
-            folder_counts[note["folder"]] = folder_counts.get(note["folder"], 0) + 1
-            note["url"] = url_for(
-                "notes_page", view="records", folder=selected_folder or None,
-                note=note["id"],
-            )
-        filtered_notes = [
-            note for note in notes
-            if not selected_folder or note["folder"] == selected_folder
-        ]
-        selected_note = next(
-            (
-                note for note in notes
-                if str(note["id"]) == str(request.args.get("note", ""))
-            ),
-            None,
-        )
-        note_form = selected_note or {
-            "id": "", "folder": selected_folder or "Без папки", "title": "",
-            "body": "", "visibility": "private", "shared_users": [],
-        }
-        context.update(
-            notes=notes,
-            filtered_notes=filtered_notes,
-            selected_folder=selected_folder,
-            selected_note=selected_note,
-            note_form=note_form,
-            note_shared_ids={item["id"] for item in note_form["shared_users"]},
-            note_folders=[
-                {"name": name, "count": count,
-                 "url": url_for("notes_page", view="records", folder=name)}
-                for name, count in sorted(folder_counts.items())
-            ],
-        )
-    else:
-        decks = list_dictionary_decks(user_id)
-        requested_deck = str(request.args.get("deck", "")).strip()
-        selected_deck = next(
-            (deck for deck in decks if str(deck["id"]) == requested_deck),
-            decks[0] if decks else None,
-        )
-        for deck in decks:
-            deck["url"] = url_for("notes_page", view="dictionary", deck=deck["id"])
-        cards = (
-            list_dictionary_cards(user_id, selected_deck["id"])
-            if selected_deck else []
-        )
-        due_cards = (
-            list_dictionary_cards(user_id, selected_deck["id"], due_only=True)
-            if selected_deck else []
-        )
-        context.update(
-            decks=decks,
-            deck_total=len(decks),
-            due_total=sum(deck["due_count"] for deck in decks),
-            selected_deck=selected_deck,
-            cards=cards,
-            quiz_card=due_cards[0] if due_cards else None,
-            ratings=(("again", "Снова"), ("hard", "Трудно"),
-                     ("good", "Хорошо"), ("easy", "Легко")),
+            mode_urls={
+                item_mode: url_for(
+                    "notes_page", view="calendar", mode=item_mode,
+                    selected=selected_date,
+                )
+                for item_mode in ("month", "week", "day")
+            },
         )
     return render_template("notes.html", **context)
 
