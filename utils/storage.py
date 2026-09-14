@@ -171,11 +171,11 @@ def delete_personal_note(user_id, note_id):
 
 def save_calendar_event(user_id, title, event_date, event_time="", place="",
                         description="", visibility="private",
-                        shared_user_ids=None, event_id=None):
+                        shared_user_ids=None, event_id=None, color="red"):
     """Создаёт или обновляет событие календаря владельца."""
     return _WORKSPACE_STORAGE.save_calendar_event(
         user_id, title, event_date, event_time, place, description,
-        visibility, shared_user_ids, event_id
+        visibility, shared_user_ids, event_id, color
     )
 
 

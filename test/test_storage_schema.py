@@ -39,6 +39,44 @@ class StorageSchemaTests(unittest.TestCase):
             "users",
         }.issubset(tables))
 
+    def test_schema_adds_default_color_to_existing_calendar(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            database = Path(temporary) / "legacy-calendar.db"
+            connection = sqlite3.connect(database)
+            connection.row_factory = sqlite3.Row
+            try:
+                connection.execute(
+                    """CREATE TABLE calendar_events (
+                           id INTEGER PRIMARY KEY AUTOINCREMENT,
+                           user_id INTEGER NOT NULL,
+                           title TEXT NOT NULL,
+                           event_date TEXT NOT NULL,
+                           event_time TEXT NOT NULL DEFAULT '',
+                           place TEXT NOT NULL DEFAULT '',
+                           description TEXT NOT NULL DEFAULT '',
+                           visibility TEXT NOT NULL DEFAULT 'private',
+                           created_at TEXT NOT NULL,
+                           updated_at TEXT NOT NULL
+                       )"""
+                )
+                connection.execute(
+                    """INSERT INTO calendar_events(
+                           user_id, title, event_date, created_at, updated_at
+                       ) VALUES (1, 'Старое событие', '2026-09-14', 'now', 'now')"""
+                )
+                connection.commit()
+                create_schema(connection)
+                row = connection.execute(
+                    "SELECT title, color FROM calendar_events"
+                ).fetchone()
+            finally:
+                connection.close()
+
+        self.assertEqual(dict(row), {
+            "title": "Старое событие",
+            "color": "red",
+        })
+
     def test_schema_normalizes_legacy_publication_dates_once(self):
         with tempfile.TemporaryDirectory() as temporary:
             database = Path(temporary) / "legacy-dates.db"

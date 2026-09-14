@@ -29,6 +29,7 @@ from config import (
     DATABASE_SIZE_LIMIT_GB,
     NEWS_ARCHIVE_RETENTION_DAYS,
     PROJECT_VERSION,
+    SOURCE_LOGO_VERSION,
 )
 from utils.auth import environment_value, load_secret_key
 from utils.article_reader import extract_article, yahoo_article_is_polluted
@@ -1190,6 +1191,7 @@ def notes_page():
                     request.form.get("place"), request.form.get("description"),
                     "private", (),
                     request.form.get("event_id"),
+                    color=request.form.get("color"),
                 )
                 event_date = request.form.get("event_date")
                 return _notes_redirect(
@@ -1222,13 +1224,16 @@ def notes_page():
         if mode not in {"month", "week", "day"}:
             mode = "month"
         selected_date = str(request.args.get("selected", "")).strip()
+        selected_was_explicit = bool(selected_date)
         try:
             if selected_date:
                 anchor = datetime.strptime(selected_date, "%Y-%m-%d").date()
-            else:
+            elif mode == "month":
                 year = int(request.args.get("year", today.year))
                 month = int(request.args.get("month", today.month))
                 anchor = date(year, month, 1)
+            else:
+                anchor = today
             if not 2000 <= anchor.year <= 2100:
                 raise ValueError
         except (TypeError, ValueError):
@@ -1298,7 +1303,7 @@ def notes_page():
         )
         event_form = selected_event or {
             "id": "", "title": "", "event_date": selected_date,
-            "event_time": "", "place": "", "description": "",
+            "event_time": "", "place": "", "description": "", "color": "red",
         }
         context.update(
             calendar_mode=mode,
@@ -1322,7 +1327,11 @@ def notes_page():
             mode_urls={
                 item_mode: url_for(
                     "notes_page", view="calendar", mode=item_mode,
-                    selected=selected_date,
+                    selected=(
+                        selected_date
+                        if selected_was_explicit or item_mode == "month"
+                        else today.isoformat()
+                    ),
                 )
                 for item_mode in ("month", "week", "day")
             },
@@ -1906,7 +1915,7 @@ def render_news_page(
             if (emblem := get_source_emblem(source))
         },
         defense_source=DEFENSE_SOURCE,
-        asset_version=PROJECT_VERSION,
+        asset_version=SOURCE_LOGO_VERSION,
         group_title=group_title,
         group_eyebrow=group_eyebrow,
         group_home=group_home,
@@ -2178,7 +2187,7 @@ def article_page():
         article_mode=article_mode,
         source_group=navigation_source_group,
         source_emblem=get_source_emblem(item.get("source", "")),
-        asset_version=PROJECT_VERSION,
+        asset_version=SOURCE_LOGO_VERSION,
         group_home=group_home,
         group_found=group_found,
         current_user=current_user(),

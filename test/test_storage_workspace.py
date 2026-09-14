@@ -65,18 +65,21 @@ class PersonalWorkspaceStorageTests(unittest.TestCase):
             "2026-09-01",
             "12:30",
             place="Москва",
+            color="blue",
         )
         storage.save_calendar_event(
             self.owner["id"],
             "Перенесённая встреча",
             "2026-09-02",
             "14:00",
+            color="violet",
             event_id=event_id,
         )
         events = storage.list_calendar_events(
             self.owner["id"], "2026-09-01", "2026-09-30"
         )
         self.assertEqual(events[0]["title"], "Перенесённая встреча")
+        self.assertEqual(events[0]["color"], "violet")
 
         storage.delete_calendar_event(self.owner["id"], event_id)
         self.assertEqual(

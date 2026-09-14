@@ -40,6 +40,13 @@ def _validated_time(value):
     return text
 
 
+def _validated_event_color(value):
+    color = str(value or "red").strip().casefold()
+    if color not in {"red", "blue", "green", "amber", "violet", "gray"}:
+        raise ValueError("Некорректный цвет заметки")
+    return color
+
+
 def _replace_notes_shares(connection, table, owner_id, item_id, visibility,
                           shared_user_ids):
     id_column = "note_id" if table == "personal_note_shares" else "event_id"
@@ -161,7 +168,7 @@ class PersonalWorkspaceStorage:
 
     def save_calendar_event(self, user_id, title, event_date, event_time="", place="",
                             description="", visibility="private",
-                            shared_user_ids=None, event_id=None):
+                            shared_user_ids=None, event_id=None, color="red"):
         """Создаёт или обновляет событие календаря владельца."""
         user_id = self._validate_user_id(user_id)
         title = _validated_notes_text(title, "Название", 200, required=True)
@@ -170,6 +177,7 @@ class PersonalWorkspaceStorage:
         place = _validated_notes_text(place, "Место", 500)
         description = _validated_notes_text(description, "Комментарий", 5000)
         visibility = _validated_visibility(visibility)
+        color = _validated_event_color(color)
         now = datetime.now().isoformat(timespec="seconds")
         with self._lock, self._connection_factory() as connection:
             if event_id:
@@ -180,9 +188,10 @@ class PersonalWorkspaceStorage:
                 cursor = connection.execute(
                     """UPDATE calendar_events SET title = ?, event_date = ?,
                            event_time = ?, place = ?, description = ?, visibility = ?,
+                           color = ?,
                            updated_at = ? WHERE id = ? AND user_id = ?""",
                     (title, event_date, event_time, place, description, visibility,
-                     now, event_id, user_id),
+                     color, now, event_id, user_id),
                 )
                 if cursor.rowcount != 1:
                     raise ValueError("Мероприятие не найдено")
@@ -190,10 +199,10 @@ class PersonalWorkspaceStorage:
                 cursor = connection.execute(
                     """INSERT INTO calendar_events(
                            user_id, title, event_date, event_time, place, description,
-                           visibility, created_at, updated_at
-                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           visibility, color, created_at, updated_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (user_id, title, event_date, event_time, place, description,
-                     visibility, now, now),
+                     visibility, color, now, now),
                 )
                 event_id = cursor.lastrowid
             _replace_notes_shares(
@@ -211,7 +220,7 @@ class PersonalWorkspaceStorage:
         with self._connection_factory() as connection:
             rows = connection.execute(
                 """SELECT id, title, event_date, event_time, place, description,
-                          visibility, created_at, updated_at
+                          visibility, color, created_at, updated_at
                    FROM calendar_events
                    WHERE user_id = ? AND event_date BETWEEN ? AND ?
                    ORDER BY event_date, event_time, id""",

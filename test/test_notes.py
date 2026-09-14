@@ -1,6 +1,7 @@
 import gc
 import tempfile
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -74,6 +75,7 @@ class NotesTestModeTests(unittest.TestCase):
                 "event_time": "14:00",
                 "place": "Смоленская площадь",
                 "description": "Взять паспорт",
+                "color": "green",
                 "calendar_mode": "month",
             },
         )
@@ -84,6 +86,7 @@ class NotesTestModeTests(unittest.TestCase):
         )
         self.assertEqual(events[0]["title"], "Встреча в МИД")
         self.assertEqual(events[0]["visibility"], "private")
+        self.assertEqual(events[0]["color"], "green")
         self.assertEqual(events[0]["shared_users"], [])
         page = client.get("/notes?view=calendar&year=2026&month=8&selected=2026-08-28")
         html = page.get_data(as_text=True)
@@ -118,6 +121,19 @@ class NotesTestModeTests(unittest.TestCase):
 
         self.assertIn("Форму записей и папки сделаем следующим патчем", records)
         self.assertIn("Карточки и проверку знаний добавим", dictionary)
+
+    def test_week_without_selected_date_opens_current_week(self):
+        client, _ = self._client_for(self.admin)
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
+        week_end = week_start + timedelta(days=6)
+
+        html = client.get(
+            "/notes?view=calendar&mode=week"
+        ).get_data(as_text=True)
+
+        self.assertIn(f'data-date="{today.isoformat()}"', html)
+        self.assertIn(f"{week_start.day}–{week_end.day}", html)
 
 
 if __name__ == "__main__":

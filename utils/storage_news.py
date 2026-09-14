@@ -1,6 +1,7 @@
 """Лента новостей и персональные отметки прочитанного."""
 
 from datetime import datetime
+from threading import Thread
 
 from utils.source_groups import (
     ALL_GROUP,
@@ -35,7 +36,22 @@ class NewsStorage:
             unread_signature or self._news_overview_signature
         )
         self._overview_cache = None
+        self._overview_refreshing = False
         self._unread_counts_cache = {}
+        self._unread_refreshing = set()
+        self._unread_cache_epoch = 0
+
+    @staticmethod
+    def _same_database(signature, cached_signature):
+        """Не разрешает отдать старый кеш после переключения файла базы."""
+        try:
+            return signature[0] == cached_signature[0]
+        except (IndexError, TypeError):
+            return signature == cached_signature
+
+    @staticmethod
+    def _run_in_background(target, *arguments):
+        Thread(target=target, args=arguments, daemon=True).start()
 
     @staticmethod
     def news_group_condition(source_group, source_column="n.source"):
@@ -90,12 +106,24 @@ class NewsStorage:
         self.news_group_condition(source_group)
         self._initialize_database()
         signature = self._news_overview_signature()
-        # Держим блокировку до заполнения кеша. Иначе несколько одновременных
-        # переходов после обновления базы запускают один и тот же GROUP BY.
+        refresh_in_background = False
         with self._lock:
             cached = self._overview_cache
             if cached and cached["signature"] == signature:
                 return cached["groups"][source_group]
+            if (
+                cached
+                and self._same_database(signature, cached["signature"])
+            ):
+                stale = cached["groups"][source_group]
+                if not self._overview_refreshing:
+                    self._overview_refreshing = True
+                    refresh_in_background = True
+                if refresh_in_background:
+                    self._run_in_background(
+                        self._refresh_news_overview, signature,
+                    )
+                return stale
             groups = self._query_news_overview()
             final_signature = self._news_overview_signature()
             if final_signature == signature:
@@ -104,6 +132,24 @@ class NewsStorage:
                     "groups": groups,
                 }
         return groups[source_group]
+
+    def _refresh_news_overview(self, signature):
+        """Обновляет устаревший агрегат, не задерживая открытие страницы."""
+        try:
+            groups = self._query_news_overview()
+            if self._news_overview_signature() == signature:
+                with self._lock:
+                    self._overview_cache = {
+                        "signature": signature,
+                        "groups": groups,
+                    }
+        except Exception:
+            # Старый корректный кеш остаётся доступен, следующая страница
+            # повторит обновление. Фоновая ошибка не должна ронять процесс.
+            pass
+        finally:
+            with self._lock:
+                self._overview_refreshing = False
 
     def _query_news_overview(self):
         groups = {
@@ -457,10 +503,19 @@ class NewsStorage:
             context["read_all_before"],
             bool(found_only),
         )
+        refresh_in_background = False
         with self._lock:
             cached = self._unread_counts_cache.get(cache_key)
             if cached and cached["signature"] == signature:
                 by_source = dict(cached["by_source"])
+            elif (
+                cached
+                and self._same_database(signature, cached["signature"])
+            ):
+                by_source = dict(cached["by_source"])
+                if cache_key not in self._unread_refreshing:
+                    self._unread_refreshing.add(cache_key)
+                    refresh_in_background = True
             else:
                 by_source = self._query_unread_counts(
                     context, found_only=found_only,
@@ -475,6 +530,15 @@ class NewsStorage:
                         self._unread_counts_cache = {
                             cache_key: self._unread_counts_cache[cache_key]
                         }
+        if refresh_in_background:
+            self._run_in_background(
+                self._refresh_unread_counts,
+                cache_key,
+                context,
+                bool(found_only),
+                signature,
+                self._unread_cache_epoch,
+            )
 
         with self._connection_factory() as connection:
             visible_unread = set()
@@ -514,6 +578,27 @@ class NewsStorage:
                 if normalized in visible_unread
             ],
         }
+
+    def _refresh_unread_counts(
+        self, cache_key, context, found_only, signature, cache_epoch,
+    ):
+        """Пересчитывает личные счётчики после ответа со старым кешем."""
+        try:
+            by_source = self._query_unread_counts(
+                context, found_only=found_only,
+            )
+            if self._unread_signature() == signature:
+                with self._lock:
+                    if self._unread_cache_epoch == cache_epoch:
+                        self._unread_counts_cache[cache_key] = {
+                            "signature": signature,
+                            "by_source": dict(by_source),
+                        }
+        except Exception:
+            pass
+        finally:
+            with self._lock:
+                self._unread_refreshing.discard(cache_key)
 
     def mark_news_read(self, user_id, url):
         """Сохраняет личную отметку чтения одной новости."""
@@ -641,6 +726,7 @@ class NewsStorage:
     def _invalidate_unread_cache(self, user_id=None):
         """Сбрасывает только личные агрегаты затронутого пользователя."""
         with self._lock:
+            self._unread_cache_epoch += 1
             if user_id is None:
                 self._unread_counts_cache.clear()
                 return

@@ -148,6 +148,7 @@ def create_schema(connection):
             description TEXT NOT NULL DEFAULT '',
             visibility TEXT NOT NULL DEFAULT 'private'
                 CHECK(visibility IN ('private', 'selected', 'all')),
+            color TEXT NOT NULL DEFAULT 'red',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -340,6 +341,16 @@ def create_schema(connection):
     connection.execute(
         "INSERT OR IGNORE INTO metadata(key, value) VALUES ('news_revision', '0')"
     )
+
+    calendar_columns = {
+        row["name"] for row in connection.execute(
+            "PRAGMA table_info(calendar_events)"
+        ).fetchall()
+    }
+    if "color" not in calendar_columns:
+        connection.execute(
+            "ALTER TABLE calendar_events ADD COLUMN color TEXT NOT NULL DEFAULT 'red'"
+        )
 
     news_columns = {
         row["name"] for row in connection.execute(

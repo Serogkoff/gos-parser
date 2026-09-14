@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import tempfile
+import time
 import unittest
 from contextlib import closing, contextmanager
 from datetime import datetime
@@ -270,6 +271,13 @@ class SQLiteStorageTests(unittest.TestCase):
                     }],
                 )
 
+            # Первый переход получает прежний агрегат без ожидания, пока одна
+            # фоновая задача обновляет кеш после изменения ревизии новостей.
+            self.assertEqual(storage.news_group_counts("government"), (1, 0))
+            for _ in range(100):
+                if storage.news_group_counts("government") == (2, 0):
+                    break
+                time.sleep(0.01)
             self.assertEqual(storage.news_group_counts("government"), (2, 0))
             self.assertEqual(storage.news_group_counts("all"), (4, 1))
             self.assertEqual(query.call_count, 2)
@@ -973,7 +981,7 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertIn("window.history.back()".encode(), response.data)
         self.assertIn('class="article-card"'.encode(), response.data)
         self.assertIn(
-            f'/static/source-logos/mchs.png?v={config.PROJECT_VERSION}'.encode(),
+            f'/static/source-logos/mchs.png?v={config.SOURCE_LOGO_VERSION}'.encode(),
             response.data,
         )
         self.assertNotIn("Ключевые факты".encode("utf-8"), response.data)
