@@ -131,6 +131,7 @@ class WebTemplateTests(unittest.TestCase):
         self.assertNotIn('class="article-tools"', template)
         self.assertNotIn('class="article-search"', template)
         self.assertNotIn('class="filter-link"', template)
+        self.assertIn('color:var(--coral);border:1px solid var(--coral)', template)
 
     def test_collections_template_uses_editorial_application_layout(self):
         template_path = Path(web_app.app.template_folder) / "bookmarks.html"

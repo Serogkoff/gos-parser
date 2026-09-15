@@ -540,8 +540,8 @@ class SQLiteStorageTests(unittest.TestCase):
 
         html = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(html.count('class="news-card '), 20)
-        self.assertIn("21–40 из 45", html)
+        self.assertEqual(html.count('class="news-card '), 10)
+        self.assertIn("36–45 из 45", html)
 
     def _write_json(self, path, value):
         path.write_text(

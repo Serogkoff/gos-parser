@@ -131,7 +131,7 @@ from utils.storage import (
 
 app = Flask(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent
-NEWS_PER_PAGE = 20
+NEWS_PER_PAGE = 35
 UNREAD_INDEX_LIMIT = 2000
 FAST_NAVIGATION_ENDPOINTS = {
     "index",
