@@ -81,6 +81,50 @@ class StorageSchemaTests(unittest.TestCase):
             "sort_order": 0,
         })
 
+    def test_schema_expands_existing_personal_notes_without_data_loss(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            database = Path(temporary) / "legacy-notes.db"
+            connection = sqlite3.connect(database)
+            connection.row_factory = sqlite3.Row
+            try:
+                connection.execute(
+                    """CREATE TABLE personal_notes (
+                           id INTEGER PRIMARY KEY AUTOINCREMENT,
+                           user_id INTEGER NOT NULL,
+                           folder TEXT NOT NULL DEFAULT 'Без папки',
+                           title TEXT NOT NULL,
+                           body TEXT NOT NULL DEFAULT '',
+                           visibility TEXT NOT NULL DEFAULT 'private',
+                           created_at TEXT NOT NULL,
+                           updated_at TEXT NOT NULL
+                       )"""
+                )
+                connection.execute(
+                    """INSERT INTO personal_notes(
+                           user_id, title, body, created_at, updated_at
+                       ) VALUES (1, 'Старая запись', 'Текст', 'now', 'now')"""
+                )
+                connection.commit()
+                create_schema(connection)
+                row = connection.execute(
+                    """SELECT title, record_type, tags, is_pinned, is_draft,
+                              organization, phone, last_contact_date
+                       FROM personal_notes"""
+                ).fetchone()
+            finally:
+                connection.close()
+
+        self.assertEqual(dict(row), {
+            "title": "Старая запись",
+            "record_type": "note",
+            "tags": "",
+            "is_pinned": 0,
+            "is_draft": 0,
+            "organization": "",
+            "phone": "",
+            "last_contact_date": "",
+        })
+
     def test_schema_normalizes_legacy_publication_dates_once(self):
         with tempfile.TemporaryDirectory() as temporary:
             database = Path(temporary) / "legacy-dates.db"

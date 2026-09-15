@@ -153,10 +153,11 @@ _WORKSPACE_STORAGE = PersonalWorkspaceStorage(
 
 
 def save_personal_note(user_id, folder, title, body, visibility="private",
-                       shared_user_ids=None, note_id=None):
+                       shared_user_ids=None, note_id=None, **record_fields):
     """Создаёт или обновляет рабочую запись владельца."""
     return _WORKSPACE_STORAGE.save_personal_note(
-        user_id, folder, title, body, visibility, shared_user_ids, note_id
+        user_id, folder, title, body, visibility, shared_user_ids, note_id,
+        **record_fields,
     )
 
 
@@ -167,6 +168,12 @@ def list_personal_notes(user_id):
 
 def delete_personal_note(user_id, note_id):
     return _WORKSPACE_STORAGE.delete_personal_note(user_id, note_id)
+
+
+def set_personal_note_pinned(user_id, note_id, is_pinned):
+    return _WORKSPACE_STORAGE.set_personal_note_pinned(
+        user_id, note_id, is_pinned
+    )
 
 
 def save_calendar_event(user_id, title, event_date, event_time="", place="",

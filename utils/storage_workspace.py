@@ -53,6 +53,18 @@ def _validated_checkbox(value):
     } else 0
 
 
+def _validated_record_type(value):
+    record_type = str(value or "note").strip().casefold()
+    if record_type not in {"note", "contact", "interview", "meeting"}:
+        raise ValueError("Некорректный тип записи")
+    return record_type
+
+
+def _validated_optional_date(value, field):
+    text = str(value or "").strip()
+    return _validated_date(text, field) if text else ""
+
+
 def _replace_notes_shares(connection, table, owner_id, item_id, visibility,
                           shared_user_ids):
     id_column = "note_id" if table == "personal_note_shares" else "event_id"
@@ -101,13 +113,28 @@ class PersonalWorkspaceStorage:
         self._validate_user_id = validate_user_id
 
     def save_personal_note(self, user_id, folder, title, body, visibility="private",
-                           shared_user_ids=None, note_id=None):
+                           shared_user_ids=None, note_id=None, record_type="note",
+                           tags="", is_pinned=False, is_draft=False,
+                           organization="", position="", phone="", email="",
+                           languages="", last_contact_date=""):
         """Создаёт или обновляет рабочую запись владельца."""
         user_id = self._validate_user_id(user_id)
         folder = _validated_notes_text(folder, "Папка", 80) or "Без папки"
         title = _validated_notes_text(title, "Заголовок", 200, required=True)
         body = _validated_notes_text(body, "Текст", 20_000)
         visibility = _validated_visibility(visibility)
+        record_type = _validated_record_type(record_type)
+        tags = _validated_notes_text(tags, "Теги", 500)
+        is_pinned = _validated_checkbox(is_pinned)
+        is_draft = _validated_checkbox(is_draft)
+        organization = _validated_notes_text(organization, "Организация", 300)
+        position = _validated_notes_text(position, "Должность", 300)
+        phone = _validated_notes_text(phone, "Телефон", 100)
+        email = _validated_notes_text(email, "Email", 300)
+        languages = _validated_notes_text(languages, "Языки", 300)
+        last_contact_date = _validated_optional_date(
+            last_contact_date, "Дата последнего контакта",
+        )
         now = datetime.now().isoformat(timespec="seconds")
         with self._lock, self._connection_factory() as connection:
             if note_id:
@@ -117,18 +144,28 @@ class PersonalWorkspaceStorage:
                     raise ValueError("Заметка не найдена") from error
                 cursor = connection.execute(
                     """UPDATE personal_notes
-                       SET folder = ?, title = ?, body = ?, visibility = ?, updated_at = ?
+                       SET folder = ?, title = ?, body = ?, visibility = ?,
+                           record_type = ?, tags = ?, is_pinned = ?, is_draft = ?,
+                           organization = ?, position = ?, phone = ?, email = ?,
+                           languages = ?, last_contact_date = ?, updated_at = ?
                        WHERE id = ? AND user_id = ?""",
-                    (folder, title, body, visibility, now, note_id, user_id),
+                    (folder, title, body, visibility, record_type, tags,
+                     is_pinned, is_draft, organization, position, phone, email,
+                     languages, last_contact_date, now, note_id, user_id),
                 )
                 if cursor.rowcount != 1:
                     raise ValueError("Заметка не найдена")
             else:
                 cursor = connection.execute(
                     """INSERT INTO personal_notes(
-                           user_id, folder, title, body, visibility, created_at, updated_at
-                       ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (user_id, folder, title, body, visibility, now, now),
+                           user_id, folder, title, body, visibility, record_type,
+                           tags, is_pinned, is_draft, organization, position,
+                           phone, email, languages, last_contact_date,
+                           created_at, updated_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (user_id, folder, title, body, visibility, record_type,
+                     tags, is_pinned, is_draft, organization, position, phone,
+                     email, languages, last_contact_date, now, now),
                 )
                 note_id = cursor.lastrowid
             _replace_notes_shares(
@@ -143,20 +180,49 @@ class PersonalWorkspaceStorage:
         self._initialize_database()
         with self._connection_factory() as connection:
             rows = connection.execute(
-                """SELECT id, folder, title, body, visibility, created_at, updated_at
+                """SELECT id, folder, title, body, visibility, record_type, tags,
+                          is_pinned, is_draft, organization, position, phone,
+                          email, languages, last_contact_date, created_at, updated_at
                    FROM personal_notes WHERE user_id = ?
-                   ORDER BY updated_at DESC, id DESC""",
+                   ORDER BY is_pinned DESC, updated_at DESC, id DESC""",
                 (user_id,),
             ).fetchall()
+            share_rows = connection.execute(
+                """SELECT s.note_id, u.id, u.username
+                   FROM personal_note_shares AS s
+                   JOIN personal_notes AS n ON n.id = s.note_id
+                   JOIN users AS u ON u.id = s.user_id
+                   WHERE n.user_id = ?
+                   ORDER BY u.username COLLATE NOCASE""",
+                (user_id,),
+            ).fetchall()
+            shares_by_note = {}
+            for row in share_rows:
+                shares_by_note.setdefault(int(row["note_id"]), []).append({
+                    "id": int(row["id"]), "username": row["username"],
+                })
             result = []
             for row in rows:
                 item = dict(row)
                 item["id"] = int(item["id"])
-                item["shared_users"] = _shared_users(
-                    connection, "personal_note_shares", "note_id", item["id"]
-                )
+                item["shared_users"] = shares_by_note.get(item["id"], [])
                 result.append(item)
         return result
+
+    def set_personal_note_pinned(self, user_id, note_id, is_pinned):
+        user_id = self._validate_user_id(user_id)
+        try:
+            note_id = int(note_id)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Запись не найдена") from error
+        with self._lock, self._connection_factory() as connection:
+            cursor = connection.execute(
+                """UPDATE personal_notes SET is_pinned = ?
+                   WHERE id = ? AND user_id = ?""",
+                (_validated_checkbox(is_pinned), note_id, user_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Запись не найдена")
 
     def delete_personal_note(self, user_id, note_id):
         user_id = self._validate_user_id(user_id)

@@ -123,13 +123,96 @@ class NotesTestModeTests(unittest.TestCase):
             self.assertIn('aria-label="Новая заметка"', html)
             self.assertNotIn('</svg>Новая заметка</button>', html)
 
-    def test_records_and_dictionary_are_visible_placeholders(self):
+    def test_records_workspace_and_dictionary_placeholder_are_visible(self):
         client, _ = self._client_for(self.admin)
         records = client.get("/notes?view=records").get_data(as_text=True)
         dictionary = client.get("/notes?view=dictionary").get_data(as_text=True)
 
-        self.assertIn("Форму записей и папки сделаем следующим патчем", records)
+        self.assertIn("Все записи", records)
+        self.assertIn("Контакты", records)
+        self.assertIn('data-new-record', records)
         self.assertIn("Карточки и проверку знаний добавим", dictionary)
+
+    def test_admin_creates_filters_pins_and_deletes_contact_record(self):
+        client, token = self._client_for(self.admin)
+        created = client.post(
+            "/notes?view=records",
+            data={
+                "csrf_token": token,
+                "action": "save_record",
+                "record_type": "contact",
+                "title": "Алексей Иванов",
+                "body": "Комментарий по отношениям с Японией",
+                "tags": "МИД, Япония",
+                "organization": "Министерство иностранных дел",
+                "position": "Советник",
+                "phone": "+7 999 123-45-67",
+                "email": "ivanov@example.ru",
+                "languages": "Русский, японский",
+                "last_contact_date": "2026-09-15",
+                "is_pinned": "1",
+                "return_kind": "all",
+            },
+        )
+        self.assertEqual(created.status_code, 302)
+        records = storage.list_personal_notes(self.admin["id"])
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record["record_type"], "contact")
+        self.assertEqual(record["organization"], "Министерство иностранных дел")
+        self.assertEqual(record["is_pinned"], 1)
+
+        page = client.get(
+            "/notes?view=records&kind=contact&q=Иванов&tag=Япония"
+        ).get_data(as_text=True)
+        self.assertIn("Алексей Иванов", page)
+        self.assertIn("ivanov@example.ru", page)
+        self.assertIn("ЗАКРЕПЛЁННЫЕ", page)
+
+        toggled = client.post(
+            "/notes?view=records",
+            data={
+                "csrf_token": token,
+                "action": "toggle_record_pin",
+                "record_id": record["id"],
+                "is_pinned": "0",
+                "return_kind": "all",
+            },
+        )
+        self.assertEqual(toggled.status_code, 302)
+        self.assertEqual(
+            storage.list_personal_notes(self.admin["id"])[0]["is_pinned"], 0
+        )
+
+        deleted = client.post(
+            "/notes?view=records",
+            data={
+                "csrf_token": token,
+                "action": "delete_record",
+                "record_id": record["id"],
+                "return_kind": "all",
+            },
+        )
+        self.assertEqual(deleted.status_code, 302)
+        self.assertEqual(storage.list_personal_notes(self.admin["id"]), [])
+
+    def test_record_validation_rejects_unknown_type(self):
+        client, token = self._client_for(self.admin)
+        response = client.post(
+            "/notes?view=records",
+            data={
+                "csrf_token": token,
+                "action": "save_record",
+                "record_type": "unknown",
+                "title": "Тест",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "Некорректный тип записи",
+            response.get_data(as_text=True),
+        )
 
     def test_week_without_selected_date_opens_current_week(self):
         client, _ = self._client_for(self.admin)

@@ -68,6 +68,7 @@ from utils.storage import (
     create_bookmark_folder,
     delete_collection_note,
     delete_calendar_event,
+    delete_personal_note,
     create_user,
     delete_user,
     delete_bookmark_folder,
@@ -84,6 +85,7 @@ from utils.storage import (
     list_collection_note_read_ids,
     list_collection_notes,
     list_calendar_events,
+    list_personal_notes,
     list_news_index,
     list_unread_news_index,
     list_news_page,
@@ -105,11 +107,13 @@ from utils.storage import (
     save_bookmark_folder_order,
     save_collection_note,
     save_calendar_event,
+    save_personal_note,
     save_external_bookmark,
     save_muted_sources,
     save_source_order,
     set_source_enabled,
     set_collection_note_read,
+    set_personal_note_pinned,
     mark_news_group_read,
     mark_news_read,
     set_user_active,
@@ -1250,6 +1254,40 @@ def notes_page():
                     selected=request.form.get("return_date"),
                     message="Заметка удалена",
                 )
+            if action == "save_record":
+                save_personal_note(
+                    user_id, "Записи", request.form.get("title"),
+                    request.form.get("body"), "private", (),
+                    request.form.get("record_id"),
+                    record_type=request.form.get("record_type"),
+                    tags=request.form.get("tags"),
+                    is_pinned=request.form.get("is_pinned"),
+                    is_draft=request.form.get("is_draft"),
+                    organization=request.form.get("organization"),
+                    position=request.form.get("position"),
+                    phone=request.form.get("phone"),
+                    email=request.form.get("email"),
+                    languages=request.form.get("languages"),
+                    last_contact_date=request.form.get("last_contact_date"),
+                )
+                return _notes_redirect(
+                    "records", kind=request.form.get("return_kind", "all"),
+                    message="Запись сохранена",
+                )
+            if action == "delete_record":
+                delete_personal_note(user_id, request.form.get("record_id"))
+                return _notes_redirect(
+                    "records", kind=request.form.get("return_kind", "all"),
+                    message="Запись удалена",
+                )
+            if action == "toggle_record_pin":
+                set_personal_note_pinned(
+                    user_id, request.form.get("record_id"),
+                    request.form.get("is_pinned"),
+                )
+                return _notes_redirect(
+                    "records", kind=request.form.get("return_kind", "all"),
+                )
             raise ValueError("Неизвестное действие")
         except ValueError as operation_error:
             if action == "reorder_events":
@@ -1383,6 +1421,104 @@ def notes_page():
                 )
                 for item_mode in ("month", "week", "day")
             },
+        )
+    elif view == "records":
+        record_labels = {
+            "note": "Запись",
+            "contact": "Контакт",
+            "interview": "Интервью",
+            "meeting": "Совещание",
+        }
+        record_kind = str(request.args.get("kind", "all")).strip().casefold()
+        if record_kind not in {"all", *record_labels, "draft"}:
+            record_kind = "all"
+        record_query = str(request.args.get("q", "")).strip()[:200]
+        tag_filter = str(request.args.get("tag", "")).strip()[:100]
+        sort_mode = str(request.args.get("sort", "newest")).strip().casefold()
+        if sort_mode not in {"newest", "oldest", "title"}:
+            sort_mode = "newest"
+        all_records = list_personal_notes(user_id)
+        available_tags = sorted({
+            tag.strip()
+            for item in all_records
+            for tag in re.split(r"[,;]", item.get("tags", ""))
+            if tag.strip()
+        }, key=str.casefold)
+
+        def prepare_record(item):
+            prepared = dict(item)
+            prepared["tag_list"] = [
+                tag.strip() for tag in re.split(r"[,;]", item.get("tags", ""))
+                if tag.strip()
+            ]
+            prepared["type_label"] = record_labels.get(
+                item.get("record_type"), "Запись"
+            )
+            words = item.get("title", "").split()
+            prepared["initials"] = "".join(
+                word[0].upper() for word in words[:2] if word
+            ) or "З"
+            body = " ".join(str(item.get("body", "")).split())
+            prepared["excerpt"] = body[:300] + ("…" if len(body) > 300 else "")
+            try:
+                updated = datetime.fromisoformat(item.get("updated_at", ""))
+                prepared["display_date"] = (
+                    f"{updated.day} {MONTH_NAMES_GENITIVE_RU[updated.month]} "
+                    f"{updated.year} · {updated:%H:%M}"
+                )
+            except (TypeError, ValueError):
+                prepared["display_date"] = item.get("updated_at", "")
+            return prepared
+
+        filtered_records = []
+        query_folded = record_query.casefold()
+        tag_folded = tag_filter.casefold()
+        for item in all_records:
+            if record_kind == "draft":
+                if not item.get("is_draft"):
+                    continue
+            elif record_kind != "all" and item.get("record_type") != record_kind:
+                continue
+            item_tags = [
+                tag.strip() for tag in re.split(r"[,;]", item.get("tags", ""))
+                if tag.strip()
+            ]
+            if tag_folded and all(tag.casefold() != tag_folded for tag in item_tags):
+                continue
+            searchable = " ".join(str(item.get(field, "")) for field in (
+                "title", "body", "tags", "organization", "position", "phone",
+                "email", "languages",
+            )).casefold()
+            if query_folded and query_folded not in searchable:
+                continue
+            filtered_records.append(prepare_record(item))
+        if sort_mode == "oldest":
+            filtered_records.sort(key=lambda item: (item["updated_at"], item["id"]))
+        elif sort_mode == "title":
+            filtered_records.sort(key=lambda item: item["title"].casefold())
+        pinned_records = [item for item in filtered_records if item["is_pinned"]]
+        regular_records = [item for item in filtered_records if not item["is_pinned"]]
+        selected_record = next((
+            prepare_record(item) for item in all_records
+            if str(item["id"]) == str(request.args.get("record", ""))
+        ), None)
+        record_form = selected_record or {
+            "id": "", "record_type": "note", "title": "", "body": "",
+            "tags": "", "is_pinned": 0, "is_draft": 0,
+            "organization": "", "position": "", "phone": "", "email": "",
+            "languages": "", "last_contact_date": "",
+        }
+        context.update(
+            record_kind=record_kind,
+            record_query=record_query,
+            tag_filter=tag_filter,
+            sort_mode=sort_mode,
+            available_tags=available_tags,
+            pinned_records=pinned_records,
+            regular_records=regular_records,
+            record_form=record_form,
+            open_record_dialog=bool(selected_record),
+            record_labels=record_labels,
         )
     return render_template("notes.html", **context)
 

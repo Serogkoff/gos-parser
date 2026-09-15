@@ -127,6 +127,16 @@ def create_schema(connection):
             body TEXT NOT NULL DEFAULT '',
             visibility TEXT NOT NULL DEFAULT 'private'
                 CHECK(visibility IN ('private', 'selected', 'all')),
+            record_type TEXT NOT NULL DEFAULT 'note',
+            tags TEXT NOT NULL DEFAULT '',
+            is_pinned INTEGER NOT NULL DEFAULT 0,
+            is_draft INTEGER NOT NULL DEFAULT 0,
+            organization TEXT NOT NULL DEFAULT '',
+            position TEXT NOT NULL DEFAULT '',
+            phone TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT '',
+            languages TEXT NOT NULL DEFAULT '',
+            last_contact_date TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -345,6 +355,33 @@ def create_schema(connection):
     )
     connection.execute(
         "INSERT OR IGNORE INTO metadata(key, value) VALUES ('news_revision', '0')"
+    )
+
+    personal_note_columns = {
+        row["name"] for row in connection.execute(
+            "PRAGMA table_info(personal_notes)"
+        ).fetchall()
+    }
+    personal_note_additions = {
+        "record_type": "TEXT NOT NULL DEFAULT 'note'",
+        "tags": "TEXT NOT NULL DEFAULT ''",
+        "is_pinned": "INTEGER NOT NULL DEFAULT 0",
+        "is_draft": "INTEGER NOT NULL DEFAULT 0",
+        "organization": "TEXT NOT NULL DEFAULT ''",
+        "position": "TEXT NOT NULL DEFAULT ''",
+        "phone": "TEXT NOT NULL DEFAULT ''",
+        "email": "TEXT NOT NULL DEFAULT ''",
+        "languages": "TEXT NOT NULL DEFAULT ''",
+        "last_contact_date": "TEXT NOT NULL DEFAULT ''",
+    }
+    for name, definition in personal_note_additions.items():
+        if name not in personal_note_columns:
+            connection.execute(
+                f"ALTER TABLE personal_notes ADD COLUMN {name} {definition}"
+            )
+    connection.execute(
+        """CREATE INDEX IF NOT EXISTS idx_personal_notes_type
+           ON personal_notes(user_id, record_type, is_pinned, updated_at DESC)"""
     )
 
     calendar_columns = {
