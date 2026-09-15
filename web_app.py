@@ -1530,10 +1530,17 @@ def bookmarks_page():
     search_query = str(request.args.get("q", "")).strip()[:200]
     all_bookmarks = list_bookmarks(user_id)
     selected_folder_data = None
+    child_folders = []
     notes = []
     read_note_ids = set()
     if selected_folder in folder_by_id or selected_folder in shared_by_id:
         selected_folder_data = load_collection(user_id, selected_folder)
+        if selected_folder in folder_by_id:
+            selected_folder_id = int(selected_folder)
+            child_folders = [
+                folder for folder in folders
+                if folder.get("parent_id") == selected_folder_id
+            ]
         bookmarks = list_collection_bookmarks(user_id, selected_folder)
         notes = list_collection_notes(user_id, selected_folder)
         read_note_ids = list_collection_note_read_ids(user_id, selected_folder)
@@ -1578,6 +1585,7 @@ def bookmarks_page():
         csrf_token=csrf_token(),
         folders=folders,
         folder_tree=_collection_folder_tree(folders),
+        child_folders=child_folders,
         shared_folders=shared_folders,
         bookmarks=bookmarks,
         notes=notes,

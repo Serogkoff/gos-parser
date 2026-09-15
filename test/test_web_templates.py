@@ -146,6 +146,7 @@ class WebTemplateTests(unittest.TestCase):
             'data-create-collection-open',
             'id="folder-order-toggle"',
             'id="folder-root-drop"',
+            'class="child-folders"',
             'data-composer-open',
             'class="icon-button danger"',
             'class="icon-button add-action"',
@@ -165,6 +166,8 @@ class WebTemplateTests(unittest.TestCase):
         self.assertIn(".collections-title{font-size:20px}", template)
         self.assertIn(".collections-title:after", template)
         self.assertIn("data-parent-id=", template)
+        self.assertNotIn("folder.bookmark_count + folder.note_count", template)
+        self.assertIn("search_query or not child_folders", template)
         self.assertIn(".collection-tree-list{overflow:visible}", template)
         self.assertIn(".left-rail::-webkit-scrollbar{display:none}", template)
         self.assertIn('class="search-icon"', template)

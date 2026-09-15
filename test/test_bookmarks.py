@@ -455,7 +455,7 @@ class PersonalBookmarksTests(unittest.TestCase):
         )
         page = client.get("/collections").get_data(as_text=True)
         self.assertIn('class="collection-tree-list"', page)
-        self.assertIn("материалов", page)
+        self.assertNotIn("0 материалов", page)
         self.assertNotIn("Поднять подборку", page)
 
     def test_user_can_build_nested_collection_tree(self):
@@ -491,6 +491,14 @@ class PersonalBookmarksTests(unittest.TestCase):
             'data-depth="1"',
             page,
         )
+
+        parent_page = client.get(
+            f"/collections?folder={parent['id']}"
+        ).get_data(as_text=True)
+        self.assertIn('class="child-folders"', parent_page)
+        self.assertIn(f'/collections?folder={apple["id"]}', parent_page)
+        self.assertIn(f'/collections?folder={parties["id"]}', parent_page)
+        self.assertNotIn("Здесь пока пусто", parent_page)
 
         cycle = client.post(
             "/api/collection-order",
