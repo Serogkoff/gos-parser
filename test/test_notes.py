@@ -142,6 +142,7 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn("Повторение", dictionary)
         self.assertIn("Статистика", dictionary)
         self.assertIn("Поиск по словарям", dictionary)
+        self.assertIn('data-deck-search placeholder="Поиск"', dictionary)
         self.assertNotIn("Все словари", dictionary)
         self.assertNotIn('class="decks-new"', dictionary)
         self.assertIn("Создать словарь", dictionary)
@@ -174,6 +175,8 @@ class NotesTestModeTests(unittest.TestCase):
             f"/notes?view=dictionary&mode=quiz&deck={deck['id']}"
         ).get_data(as_text=True)
         self.assertIn('class="quiz-answer" data-quiz-answer hidden', quiz)
+        self.assertNotIn('<h1>Квиз</h1>', quiz)
+        self.assertIn('class="quiz-return-inline"', quiz)
         self.assertIn('class="quiz-ratings" data-quiz-ratings hidden', quiz)
         self.assertIn('data-quiz-rating="again">Снова</button>', quiz)
         self.assertNotIn('data-quiz-rating="again">1 ', quiz)
