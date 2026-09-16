@@ -206,6 +206,14 @@ def create_dictionary_deck(user_id, name):
     return _WORKSPACE_STORAGE.create_dictionary_deck(user_id, name)
 
 
+def update_dictionary_deck(user_id, deck_id, name):
+    return _WORKSPACE_STORAGE.update_dictionary_deck(user_id, deck_id, name)
+
+
+def delete_dictionary_deck(user_id, deck_id):
+    return _WORKSPACE_STORAGE.delete_dictionary_deck(user_id, deck_id)
+
+
 def ensure_demo_dictionary(user_id):
     return _WORKSPACE_STORAGE.ensure_demo_dictionary(user_id)
 

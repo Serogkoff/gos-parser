@@ -440,6 +440,41 @@ class PersonalWorkspaceStorage:
             raise ValueError("Словарь с таким названием уже существует") from error
         return int(deck_id)
 
+    def update_dictionary_deck(self, user_id, deck_id, name):
+        user_id = self._validate_user_id(user_id)
+        name = _validated_notes_text(name, "Название словаря", 100, required=True)
+        try:
+            deck_id = int(deck_id)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Словарь не найден") from error
+        now = datetime.now().isoformat(timespec="seconds")
+        try:
+            with self._lock, self._connection_factory() as connection:
+                cursor = connection.execute(
+                    """UPDATE dictionary_decks SET name = ?, updated_at = ?
+                       WHERE id = ? AND user_id = ?""",
+                    (name, now, deck_id, user_id),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("Словарь не найден")
+        except sqlite3.IntegrityError as error:
+            raise ValueError("Словарь с таким названием уже существует") from error
+        return deck_id
+
+    def delete_dictionary_deck(self, user_id, deck_id):
+        user_id = self._validate_user_id(user_id)
+        try:
+            deck_id = int(deck_id)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Словарь не найден") from error
+        with self._lock, self._connection_factory() as connection:
+            cursor = connection.execute(
+                "DELETE FROM dictionary_decks WHERE id = ? AND user_id = ?",
+                (deck_id, user_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Словарь не найден")
+
     def list_dictionary_decks(self, user_id):
         user_id = self._validate_user_id(user_id)
         self._initialize_database()
@@ -449,7 +484,15 @@ class PersonalWorkspaceStorage:
                 """SELECT d.id, d.name, COUNT(c.id) AS card_count,
                           SUM(CASE WHEN c.id IS NOT NULL AND
                               (c.next_review = '' OR c.next_review <= ?) THEN 1 ELSE 0 END)
-                              AS due_count
+                              AS due_count,
+                          SUM(CASE WHEN c.repetitions >= 3 THEN 1 ELSE 0 END)
+                              AS mastered_count,
+                          (SELECT MAX(r.reviewed_at)
+                             FROM dictionary_reviews AS r
+                             JOIN dictionary_cards AS reviewed_card
+                               ON reviewed_card.id = r.card_id
+                            WHERE reviewed_card.deck_id = d.id)
+                              AS last_reviewed_at
                    FROM dictionary_decks AS d
                    LEFT JOIN dictionary_cards AS c ON c.deck_id = d.id
                    WHERE d.user_id = ? GROUP BY d.id
@@ -459,7 +502,9 @@ class PersonalWorkspaceStorage:
         return [
             {"id": int(row["id"]), "name": row["name"],
              "card_count": int(row["card_count"] or 0),
-             "due_count": int(row["due_count"] or 0)}
+             "due_count": int(row["due_count"] or 0),
+             "mastered_count": int(row["mastered_count"] or 0),
+             "last_reviewed_at": row["last_reviewed_at"] or ""}
             for row in rows
         ]
 

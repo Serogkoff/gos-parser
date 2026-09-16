@@ -141,11 +141,10 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn("Словарь", dictionary)
         self.assertIn("Повторение", dictionary)
         self.assertIn("Статистика", dictionary)
-        self.assertIn("政府", dictionary)
-        self.assertIn("правительство", dictionary)
-        self.assertIn('data-speak="政府"', dictionary)
-        self.assertIn("Поиск по терминам и переводам", dictionary)
-        self.assertIn("Квиз: 30", dictionary)
+        self.assertIn("Все словари", dictionary)
+        self.assertIn("Поиск по словарям", dictionary)
+        self.assertIn("Новый словарь", dictionary)
+        self.assertIn("Политика", dictionary)
         self.assertEqual(
             len(storage.list_dictionary_cards(
                 self.admin["id"],
@@ -153,6 +152,23 @@ class NotesTestModeTests(unittest.TestCase):
             )),
             30,
         )
+        deck = storage.list_dictionary_decks(self.admin["id"])[0]
+        inner = client.get(
+            f"/notes?view=dictionary&mode=dictionary&deck={deck['id']}"
+        ).get_data(as_text=True)
+        self.assertIn("政府", inner)
+        self.assertIn("правительство", inner)
+        self.assertIn('data-speak="政府"', inner)
+        self.assertIn("Поиск по терминам и переводам", inner)
+        self.assertIn("Квиз: 30", inner)
+
+        quiz = client.get(
+            f"/notes?view=dictionary&mode=quiz&deck={deck['id']}"
+        ).get_data(as_text=True)
+        self.assertIn('class="quiz-answer" data-quiz-answer hidden', quiz)
+        self.assertIn('class="quiz-ratings" data-quiz-ratings hidden', quiz)
+        self.assertIn('data-quiz-rating="again">Снова</button>', quiz)
+        self.assertNotIn('data-quiz-rating="again">1 ', quiz)
 
     def test_politics_demo_is_added_beside_an_existing_dictionary_once(self):
         storage.create_dictionary_deck(self.admin["id"], "Личный словарь")
@@ -252,6 +268,56 @@ class NotesTestModeTests(unittest.TestCase):
             card["id"],
             [item["id"] for item in storage.list_dictionary_cards(
                 self.admin["id"], deck["id"]
+            )],
+        )
+
+    def test_dictionary_deck_can_be_created_renamed_and_deleted(self):
+        client, token = self._client_for(self.admin)
+        client.get("/notes?view=dictionary")
+        created = client.post(
+            "/notes?view=dictionary",
+            data={
+                "csrf_token": token,
+                "action": "save_dictionary_deck",
+                "name": "Экономика",
+            },
+        )
+        self.assertEqual(created.status_code, 302)
+        deck = next(
+            item for item in storage.list_dictionary_decks(self.admin["id"])
+            if item["name"] == "Экономика"
+        )
+
+        renamed = client.post(
+            "/notes?view=dictionary",
+            data={
+                "csrf_token": token,
+                "action": "save_dictionary_deck",
+                "deck_id": deck["id"],
+                "name": "Мировая экономика",
+            },
+        )
+        self.assertEqual(renamed.status_code, 302)
+        self.assertIn(
+            "Мировая экономика",
+            [item["name"] for item in storage.list_dictionary_decks(
+                self.admin["id"]
+            )],
+        )
+
+        deleted = client.post(
+            "/notes?view=dictionary",
+            data={
+                "csrf_token": token,
+                "action": "delete_dictionary_deck",
+                "deck_id": deck["id"],
+            },
+        )
+        self.assertEqual(deleted.status_code, 302)
+        self.assertNotIn(
+            "Мировая экономика",
+            [item["name"] for item in storage.list_dictionary_decks(
+                self.admin["id"]
             )],
         )
 

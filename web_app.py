@@ -70,6 +70,7 @@ from utils.storage import (
     delete_collection_note,
     delete_calendar_event,
     delete_dictionary_card,
+    delete_dictionary_deck,
     delete_personal_note,
     dictionary_review_activity,
     create_user,
@@ -114,6 +115,7 @@ from utils.storage import (
     save_collection_note,
     save_calendar_event,
     save_dictionary_card,
+    update_dictionary_deck,
     save_personal_note,
     save_external_bookmark,
     save_muted_sources,
@@ -1298,10 +1300,24 @@ def notes_page():
                     "records", kind=request.form.get("return_kind", "all"),
                 )
             if action == "save_dictionary_deck":
-                deck_id = create_dictionary_deck(user_id, request.form.get("name"))
+                deck_id = request.form.get("deck_id")
+                if deck_id:
+                    update_dictionary_deck(
+                        user_id, deck_id, request.form.get("name")
+                    )
+                    message = "Словарь сохранён"
+                else:
+                    deck_id = create_dictionary_deck(
+                        user_id, request.form.get("name")
+                    )
+                    message = "Словарь создан"
                 return _notes_redirect(
-                    "dictionary", mode="dictionary", deck=deck_id,
-                    message="Словарь создан",
+                    "dictionary", mode="decks", deck=deck_id, message=message,
+                )
+            if action == "delete_dictionary_deck":
+                delete_dictionary_deck(user_id, request.form.get("deck_id"))
+                return _notes_redirect(
+                    "dictionary", mode="decks", message="Словарь удалён",
                 )
             if action == "save_dictionary_card":
                 card_id = save_dictionary_card(
@@ -1587,12 +1603,34 @@ def notes_page():
         )
     else:
         ensure_demo_dictionary(user_id)
+        default_dictionary_mode = (
+            "dictionary" if request.args.getlist("deck") else "decks"
+        )
         dictionary_mode = str(
-            request.args.get("mode", "dictionary")
+            request.args.get("mode", default_dictionary_mode)
         ).strip().casefold()
-        if dictionary_mode not in {"dictionary", "review", "quiz", "stats"}:
-            dictionary_mode = "dictionary"
+        if dictionary_mode not in {"decks", "dictionary", "review", "quiz", "stats"}:
+            dictionary_mode = "decks"
         decks = list_dictionary_decks(user_id)
+        for deck in decks:
+            deck["progress"] = (
+                round(deck["mastered_count"] * 100 / deck["card_count"])
+                if deck["card_count"] else 0
+            )
+            last_reviewed = deck.get("last_reviewed_at", "")[:10]
+            if last_reviewed == date.today().isoformat():
+                deck["last_session_label"] = "Сегодня"
+            elif last_reviewed == (date.today() - timedelta(days=1)).isoformat():
+                deck["last_session_label"] = "Вчера"
+            elif last_reviewed:
+                try:
+                    deck["last_session_label"] = datetime.strptime(
+                        last_reviewed, "%Y-%m-%d"
+                    ).strftime("%d.%m.%Y")
+                except ValueError:
+                    deck["last_session_label"] = "Ранее"
+            else:
+                deck["last_session_label"] = "Ещё не было"
         requested_deck_values = request.args.getlist("deck")
         requested_deck = str(
             requested_deck_values[-1] if requested_deck_values else ""
