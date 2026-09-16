@@ -230,6 +230,10 @@ def review_dictionary_card(user_id, card_id, rating):
     return _WORKSPACE_STORAGE.review_dictionary_card(user_id, card_id, rating)
 
 
+def dictionary_review_activity(user_id, days=7):
+    return _WORKSPACE_STORAGE.dictionary_review_activity(user_id, days)
+
+
 def delete_dictionary_card(user_id, card_id):
     return _WORKSPACE_STORAGE.delete_dictionary_card(user_id, card_id)
 

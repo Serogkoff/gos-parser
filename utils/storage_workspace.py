@@ -464,23 +464,33 @@ class PersonalWorkspaceStorage:
         ]
 
     def ensure_demo_dictionary(self, user_id):
-        """Один раз создаёт демонстрационный словарь, если у владельца нет колод."""
+        """Создаёт колоду «Политика» и добавляет только отсутствующие демо-карточки."""
         user_id = self._validate_user_id(user_id)
         self._initialize_database()
         now = datetime.now().isoformat(timespec="seconds")
         with self._lock, self._connection_factory() as connection:
             existing = connection.execute(
-                "SELECT id FROM dictionary_decks WHERE user_id = ? LIMIT 1",
+                """SELECT id FROM dictionary_decks
+                   WHERE user_id = ? AND name = 'Политика' COLLATE NOCASE""",
                 (user_id,),
             ).fetchone()
-            if existing is not None:
-                return int(existing["id"])
-            cursor = connection.execute(
-                """INSERT INTO dictionary_decks(user_id, name, created_at, updated_at)
-                   VALUES (?, 'Политика', ?, ?)""",
-                (user_id, now, now),
-            )
-            deck_id = int(cursor.lastrowid)
+            if existing is None:
+                cursor = connection.execute(
+                    """INSERT INTO dictionary_decks(
+                           user_id, name, created_at, updated_at
+                       ) VALUES (?, 'Политика', ?, ?)""",
+                    (user_id, now, now),
+                )
+                deck_id = int(cursor.lastrowid)
+            else:
+                deck_id = int(existing["id"])
+            existing_terms = {
+                row["term"] for row in connection.execute(
+                    """SELECT term FROM dictionary_cards
+                       WHERE user_id = ? AND deck_id = ?""",
+                    (user_id, deck_id),
+                ).fetchall()
+            }
             connection.executemany(
                 """INSERT INTO dictionary_cards(
                        deck_id, user_id, term, reading, translation, language,
@@ -491,6 +501,7 @@ class PersonalWorkspaceStorage:
                      example, example_translation, now, now)
                     for term, reading, translation, tag, example,
                     example_translation in POLITICS_DEMO_CARDS
+                    if term not in existing_terms
                 ),
             )
         return deck_id
@@ -659,5 +670,36 @@ class PersonalWorkspaceStorage:
                  mistake_increment, datetime.now().isoformat(timespec="seconds"),
                  card_id, user_id),
             )
+            connection.execute(
+                """INSERT INTO dictionary_reviews(
+                       user_id, card_id, rating, reviewed_at
+                   ) VALUES (?, ?, ?, ?)""",
+                (user_id, card_id, rating,
+                 datetime.now().isoformat(timespec="seconds")),
+            )
         return {"id": card_id, "interval_days": interval_days,
                 "next_review": next_review}
+
+    def dictionary_review_activity(self, user_id, days=7):
+        user_id = self._validate_user_id(user_id)
+        days = max(1, min(int(days), 31))
+        self._initialize_database()
+        date_from = (datetime.now().date() - timedelta(days=days - 1)).isoformat()
+        with self._connection_factory() as connection:
+            rows = connection.execute(
+                """SELECT substr(reviewed_at, 1, 10) AS review_date,
+                          COUNT(*) AS review_count,
+                          SUM(CASE WHEN rating IN ('good', 'easy')
+                              THEN 1 ELSE 0 END) AS correct_count
+                   FROM dictionary_reviews
+                   WHERE user_id = ? AND reviewed_at >= ?
+                   GROUP BY substr(reviewed_at, 1, 10)""",
+                (user_id, date_from),
+            ).fetchall()
+        return {
+            row["review_date"]: {
+                "count": int(row["review_count"] or 0),
+                "correct": int(row["correct_count"] or 0),
+            }
+            for row in rows
+        }

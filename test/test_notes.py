@@ -139,15 +139,32 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertNotIn('name="is_draft"', records)
         self.assertIn('data-new-record', records)
         self.assertIn("Словарь", dictionary)
-        self.assertIn("Повторение · 30", dictionary)
+        self.assertIn("Повторение", dictionary)
         self.assertIn("Статистика", dictionary)
         self.assertIn("政府", dictionary)
         self.assertIn("правительство", dictionary)
+        self.assertIn('data-speak="政府"', dictionary)
+        self.assertIn("Поиск по терминам и переводам", dictionary)
+        self.assertIn("Квиз: 30", dictionary)
         self.assertEqual(
             len(storage.list_dictionary_cards(
                 self.admin["id"],
                 storage.list_dictionary_decks(self.admin["id"])[0]["id"],
             )),
+            30,
+        )
+
+    def test_politics_demo_is_added_beside_an_existing_dictionary_once(self):
+        storage.create_dictionary_deck(self.admin["id"], "Личный словарь")
+        client, _ = self._client_for(self.admin)
+
+        client.get("/notes?view=dictionary")
+        client.get("/notes?view=dictionary")
+
+        decks = storage.list_dictionary_decks(self.admin["id"])
+        politics = next(deck for deck in decks if deck["name"] == "Политика")
+        self.assertEqual(
+            len(storage.list_dictionary_cards(self.admin["id"], politics["id"])),
             30,
         )
 

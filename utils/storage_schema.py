@@ -211,6 +211,16 @@ def create_schema(connection):
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS dictionary_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            card_id INTEGER NOT NULL,
+            rating TEXT NOT NULL,
+            reviewed_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(card_id) REFERENCES dictionary_cards(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS bookmarks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -343,6 +353,8 @@ def create_schema(connection):
             ON dictionary_decks(user_id, name);
         CREATE INDEX IF NOT EXISTS idx_dictionary_cards_due
             ON dictionary_cards(user_id, deck_id, next_review);
+        CREATE INDEX IF NOT EXISTS idx_dictionary_reviews_user_date
+            ON dictionary_reviews(user_id, reviewed_at DESC);
         CREATE INDEX IF NOT EXISTS idx_user_source_orders_user
             ON user_source_orders(user_id, source_group);
         CREATE INDEX IF NOT EXISTS idx_news_item_reads_user

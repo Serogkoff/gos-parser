@@ -71,6 +71,7 @@ from utils.storage import (
     delete_calendar_event,
     delete_dictionary_card,
     delete_personal_note,
+    dictionary_review_activity,
     create_user,
     delete_user,
     delete_bookmark_folder,
@@ -1589,10 +1590,13 @@ def notes_page():
         dictionary_mode = str(
             request.args.get("mode", "dictionary")
         ).strip().casefold()
-        if dictionary_mode not in {"dictionary", "review", "stats"}:
+        if dictionary_mode not in {"dictionary", "review", "quiz", "stats"}:
             dictionary_mode = "dictionary"
         decks = list_dictionary_decks(user_id)
-        requested_deck = str(request.args.get("deck", "")).strip()
+        requested_deck_values = request.args.getlist("deck")
+        requested_deck = str(
+            requested_deck_values[-1] if requested_deck_values else ""
+        ).strip()
         selected_deck = next(
             (deck for deck in decks if str(deck["id"]) == requested_deck),
             decks[0] if decks else None,
@@ -1621,6 +1625,24 @@ def notes_page():
             else:
                 prepared["status_label"] = "Новое"
                 prepared["status_class"] = "new"
+            mistakes = int(item.get("mistake_count") or 0)
+            repetitions = int(item.get("repetitions") or 0)
+            if mistakes >= 3:
+                prepared["difficulty_label"] = "Сложно"
+                prepared["difficulty_class"] = "hard"
+            elif repetitions >= 2 and mistakes == 0:
+                prepared["difficulty_label"] = "Легко"
+                prepared["difficulty_class"] = "easy"
+            else:
+                prepared["difficulty_label"] = "Средне"
+                prepared["difficulty_class"] = "medium"
+            next_review = item.get("next_review") or today_iso
+            try:
+                prepared["repeat_date"] = datetime.strptime(
+                    next_review, "%Y-%m-%d"
+                ).strftime("%d.%m.%Y")
+            except ValueError:
+                prepared["repeat_date"] = next_review
             return prepared
 
         prepared_cards = [prepare_dictionary_card(card) for card in cards]
@@ -1690,6 +1712,28 @@ def notes_page():
                     int(card["repetitions"] or 0) >= 3 for card in tag_cards
                 ),
             })
+        review_activity = dictionary_review_activity(user_id, 7)
+        weekday_labels = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+        weekly_review_stats = []
+        for days_ago in range(6, -1, -1):
+            activity_date = date.today() - timedelta(days=days_ago)
+            activity = review_activity.get(
+                activity_date.isoformat(), {"count": 0, "correct": 0}
+            )
+            weekly_review_stats.append({
+                "date": activity_date.strftime("%d.%m"),
+                "weekday": weekday_labels[activity_date.weekday()],
+                "count": activity["count"],
+                "height": min(100, max(4, activity["count"] * 5)),
+                "is_today": days_ago == 0,
+            })
+        today_activity = review_activity.get(
+            date.today().isoformat(), {"count": 0, "correct": 0}
+        )
+        today_accuracy = (
+            round(today_activity["correct"] * 100 / today_activity["count"])
+            if today_activity["count"] else 0
+        )
         context.update(
             dictionary_mode=dictionary_mode,
             dictionary_decks=decks,
@@ -1706,6 +1750,10 @@ def notes_page():
             difficult_cards=difficult_cards,
             dictionary_accuracy=accuracy,
             topic_stats=topic_stats,
+            weekly_review_stats=weekly_review_stats,
+            reviewed_today=today_activity["count"],
+            correct_today=today_activity["correct"],
+            today_accuracy=today_accuracy,
             dictionary_card_form=selected_card or {
                 "id": "", "term": "", "reading": "", "translation": "",
                 "language": "ja", "tags": "", "example": "",

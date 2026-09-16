@@ -129,6 +129,8 @@ class PersonalWorkspaceStorageTests(unittest.TestCase):
             self.owner["id"], card_id, "easy"
         )
         self.assertEqual(reviewed["interval_days"], 4)
+        activity = storage.dictionary_review_activity(self.owner["id"])
+        self.assertEqual(sum(day["count"] for day in activity.values()), 1)
         self.assertEqual(
             storage.list_dictionary_cards(self.reader["id"], deck_id), []
         )
