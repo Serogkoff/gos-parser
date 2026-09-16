@@ -141,9 +141,10 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn("Словарь", dictionary)
         self.assertIn("Повторение", dictionary)
         self.assertIn("Статистика", dictionary)
-        self.assertIn("Все словари", dictionary)
         self.assertIn("Поиск по словарям", dictionary)
-        self.assertIn("Новый словарь", dictionary)
+        self.assertNotIn("Все словари", dictionary)
+        self.assertNotIn('class="decks-new"', dictionary)
+        self.assertIn("Создать словарь", dictionary)
         self.assertIn("Политика", dictionary)
         self.assertEqual(
             len(storage.list_dictionary_cards(
