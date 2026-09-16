@@ -55,7 +55,7 @@ def _validated_checkbox(value):
 
 def _validated_record_type(value):
     record_type = str(value or "note").strip().casefold()
-    if record_type not in {"note", "contact", "interview", "meeting"}:
+    if record_type not in {"note", "contact", "interview"}:
         raise ValueError("Некорректный тип записи")
     return record_type
 

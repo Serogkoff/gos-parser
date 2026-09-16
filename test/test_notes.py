@@ -128,10 +128,40 @@ class NotesTestModeTests(unittest.TestCase):
         records = client.get("/notes?view=records").get_data(as_text=True)
         dictionary = client.get("/notes?view=dictionary").get_data(as_text=True)
 
+        self.assertIn('class="section-tabs"', records)
+        self.assertNotIn('class="notes-tree"', records)
         self.assertIn("Все записи", records)
         self.assertIn("Контакты", records)
+        self.assertIn("Интервью", records)
+        self.assertIn("Заметки", records)
+        self.assertNotIn(">Совещания<", records)
+        self.assertNotIn(">Черновики<", records)
+        self.assertNotIn('name="is_draft"', records)
         self.assertIn('data-new-record', records)
         self.assertIn("Карточки и проверку знаний добавим", dictionary)
+
+    def test_legacy_meetings_and_drafts_are_shown_as_notes(self):
+        client, _ = self._client_for(self.admin)
+        storage.list_personal_notes(self.admin["id"])
+        with storage._connect() as connection:
+            connection.executemany(
+                """INSERT INTO personal_notes(
+                       user_id, title, body, record_type, is_draft,
+                       created_at, updated_at
+                   ) VALUES (?, ?, '', ?, ?, '2026-09-15', '2026-09-15')""",
+                (
+                    (self.admin["id"], "Старое совещание", "meeting", 0),
+                    (self.admin["id"], "Старый черновик", "contact", 1),
+                ),
+            )
+
+        notes = client.get(
+            "/notes?view=records&kind=note"
+        ).get_data(as_text=True)
+
+        self.assertIn("Старое совещание", notes)
+        self.assertIn("Старый черновик", notes)
+        self.assertNotIn("Черновик</span>", notes)
 
     def test_admin_creates_filters_pins_and_deletes_contact_record(self):
         client, token = self._client_for(self.admin)

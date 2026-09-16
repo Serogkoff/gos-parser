@@ -1262,7 +1262,7 @@ def notes_page():
                     record_type=request.form.get("record_type"),
                     tags=request.form.get("tags"),
                     is_pinned=request.form.get("is_pinned"),
-                    is_draft=request.form.get("is_draft"),
+                    is_draft=False,
                     organization=request.form.get("organization"),
                     position=request.form.get("position"),
                     phone=request.form.get("phone"),
@@ -1424,13 +1424,12 @@ def notes_page():
         )
     elif view == "records":
         record_labels = {
-            "note": "Запись",
+            "note": "Заметка",
             "contact": "Контакт",
             "interview": "Интервью",
-            "meeting": "Совещание",
         }
         record_kind = str(request.args.get("kind", "all")).strip().casefold()
-        if record_kind not in {"all", *record_labels, "draft"}:
+        if record_kind not in {"all", *record_labels}:
             record_kind = "all"
         record_query = str(request.args.get("q", "")).strip()[:200]
         tag_filter = str(request.args.get("tag", "")).strip()[:100]
@@ -1447,12 +1446,17 @@ def notes_page():
 
         def prepare_record(item):
             prepared = dict(item)
+            stored_type = item.get("record_type")
+            prepared["record_type"] = (
+                "note" if stored_type == "meeting" or item.get("is_draft")
+                else stored_type
+            )
             prepared["tag_list"] = [
                 tag.strip() for tag in re.split(r"[,;]", item.get("tags", ""))
                 if tag.strip()
             ]
             prepared["type_label"] = record_labels.get(
-                item.get("record_type"), "Запись"
+                prepared["record_type"], "Заметка"
             )
             words = item.get("title", "").split()
             prepared["initials"] = "".join(
@@ -1474,10 +1478,12 @@ def notes_page():
         query_folded = record_query.casefold()
         tag_folded = tag_filter.casefold()
         for item in all_records:
-            if record_kind == "draft":
-                if not item.get("is_draft"):
-                    continue
-            elif record_kind != "all" and item.get("record_type") != record_kind:
+            stored_type = item.get("record_type")
+            item_kind = (
+                "note" if stored_type == "meeting" or item.get("is_draft")
+                else stored_type
+            )
+            if record_kind != "all" and item_kind != record_kind:
                 continue
             item_tags = [
                 tag.strip() for tag in re.split(r"[,;]", item.get("tags", ""))
