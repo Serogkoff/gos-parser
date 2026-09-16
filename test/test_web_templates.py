@@ -145,16 +145,15 @@ class WebTemplateTests(unittest.TestCase):
             'class="collections-title">Подборки',
             'class="clocks"',
             'class="collections-viewport"',
-            'class="collection-tree"',
-            'class="tree-copy"',
+            'class="collection-toolbar"',
+            'class="folder-browser"',
+            'class="folder-card-grid"',
             'data-create-collection-open',
-            'id="folder-order-toggle"',
-            'id="folder-root-drop"',
-            'class="child-folders"',
+            'data-manage-collection-open',
+            'data-manage-collection-panel',
             'data-composer-open',
             'class="icon-button danger"',
             'class="icon-button add-action"',
-            'class="toolbar-row"',
             "confirm('Вы уверены, что хотите удалить подборку?')",
             'class="rail-logout"',
             '>Выйти</button>',
@@ -163,16 +162,18 @@ class WebTemplateTests(unittest.TestCase):
                 self.assertIn(marker, template)
 
         self.assertNotIn('class="site-sections"', template)
+        self.assertNotIn('<div class="collection-tree">', template)
+        self.assertNotIn('aria-label="Сортировка"', template)
         self.assertNotIn("Мои подборки", template)
         self.assertNotIn('name="comment"', template)
         self.assertNotIn('class="panel"', template)
         self.assertIn(".collections-title{margin:0;padding:0 0 22px 2px", template)
         self.assertIn(".collections-title{font-size:20px}", template)
         self.assertIn(".collections-title:after", template)
-        self.assertIn("data-parent-id=", template)
         self.assertNotIn("folder.bookmark_count + folder.note_count", template)
-        self.assertIn("search_query or not child_folders", template)
-        self.assertIn(".collection-tree-list{overflow:visible}", template)
+        self.assertIn("visible_folders", template)
+        self.assertIn(".folder-card-grid{display:grid", template)
+        self.assertIn(".collection-toolbar{width:min(100%,600px)", template)
         self.assertIn(".left-rail::-webkit-scrollbar{display:none}", template)
         self.assertIn('class="search-icon"', template)
         self.assertIn('placeholder="Поиск"', template)

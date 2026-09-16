@@ -1536,10 +1536,7 @@ def bookmarks_page():
     user = current_user()
     user_id = user["id"]
     folders = list_bookmark_folders(user_id)
-    default_folder = str(folders[0]["id"]) if folders else "unfiled"
-    selected_folder = str(
-        request.args.get("folder", default_folder)
-    ).strip() or default_folder
+    selected_folder = str(request.args.get("folder", "all")).strip() or "all"
     sort_mode = str(request.args.get("sort", "newest")).strip().casefold()
     if sort_mode not in COLLECTION_SORTS:
         sort_mode = "newest"
@@ -1556,8 +1553,45 @@ def bookmarks_page():
         try:
             if action == "create_folder":
                 created = create_bookmark_folder(user_id, request.form.get("name"))
+                parent_id = str(request.form.get("parent_id", "")).strip()
+                if parent_id in folder_by_id:
+                    updated_folders = list_bookmark_folders(user_id)
+                    save_bookmark_folder_order(
+                        user_id,
+                        [folder["id"] for folder in updated_folders],
+                        [
+                            {
+                                "id": folder["id"],
+                                "parent_id": (
+                                    int(parent_id)
+                                    if folder["id"] == created["id"]
+                                    else folder.get("parent_id")
+                                ),
+                            }
+                            for folder in updated_folders
+                        ],
+                    )
                 message = f"Подборка «{created['name']}» создана"
-                selected_folder = str(created["id"])
+                selected_folder = str(parent_id or "all")
+            elif action == "manage_collection":
+                current = load_collection(user_id, request.form.get("folder_id"))
+                if current is None or not current["can_edit"]:
+                    raise ValueError("Подборка не найдена")
+                updated = update_collection(
+                    user_id,
+                    current["id"],
+                    request.form.get("name"),
+                    current["description"],
+                    request.form.get("visibility"),
+                    request.form.getlist("shared_user_ids"),
+                )
+                message = f"Подборка «{updated['name']}» обновлена"
+                return_folder = str(request.form.get("return_folder", "all")).strip()
+                selected_folder = (
+                    return_folder
+                    if return_folder in {"all", "unfiled", *folder_by_id}
+                    else "all"
+                )
             elif action == "update_collection":
                 current = load_collection(user_id, request.form.get("folder_id"))
                 if current is None or not current["can_edit"]:
@@ -1587,11 +1621,7 @@ def bookmarks_page():
             elif action == "delete_folder":
                 delete_bookmark_folder(user_id, request.form.get("folder_id"))
                 message = "Подборка удалена, её новости перенесены в «Без подборки»"
-                remaining_folders = list_bookmark_folders(user_id)
-                selected_folder = (
-                    str(remaining_folders[0]["id"])
-                    if remaining_folders else "unfiled"
-                )
+                selected_folder = "all"
             elif action == "add_external":
                 save_external_bookmark(
                     user_id, request.form.get("folder_id"), request.form.get("url"),
@@ -1688,6 +1718,29 @@ def bookmarks_page():
         read_note_ids = list_collection_note_read_ids(user_id, selected_folder)
     else:
         bookmarks = list_bookmarks(user_id, selected_folder)
+
+    root_folders = [folder for folder in folders if folder.get("parent_id") is None]
+    visible_folders = child_folders if selected_folder_data else root_folders
+    if search_query:
+        normalized_query = search_query.casefold()
+        if selected_folder == "all":
+            visible_folders = folders
+        visible_folders = [
+            folder for folder in visible_folders
+            if normalized_query in str(folder.get("name", "")).casefold()
+        ]
+    breadcrumbs = []
+    if selected_folder in folder_by_id:
+        current_folder = folder_by_id[selected_folder]
+        visited_folder_ids = set()
+        while current_folder and current_folder["id"] not in visited_folder_ids:
+            visited_folder_ids.add(current_folder["id"])
+            breadcrumbs.append(current_folder)
+            parent_id = current_folder.get("parent_id")
+            current_folder = folder_by_id.get(str(parent_id)) if parent_id else None
+        breadcrumbs.reverse()
+    if selected_folder == "all":
+        bookmarks = []
     bookmarks = [
         item for item in bookmarks
         if _matches_collection_search(
@@ -1716,7 +1769,7 @@ def bookmarks_page():
     elif selected_folder == "unfiled":
         selected_title = "Без папки"
     else:
-        selected_title = "Все сохранённые"
+        selected_title = "Все подборки"
     active_users = [
         account for account in list_users()
         if account["is_active"] and account["id"] != user_id
@@ -1728,6 +1781,14 @@ def bookmarks_page():
         folders=folders,
         folder_tree=_collection_folder_tree(folders),
         child_folders=child_folders,
+        visible_folders=visible_folders,
+        folder_child_counts={
+            folder["id"]: sum(
+                1 for child in folders if child.get("parent_id") == folder["id"]
+            )
+            for folder in folders
+        },
+        breadcrumbs=breadcrumbs,
         shared_folders=shared_folders,
         bookmarks=bookmarks,
         notes=notes,
@@ -1746,6 +1807,11 @@ def bookmarks_page():
                 selected_folder_data["shared_users"] if selected_folder_data else []
             )
         },
+        open_manage_panel=(
+            str(request.args.get("manage", "")).strip() == "1"
+            and selected_folder_data is not None
+            and selected_folder_data["can_edit"]
+        ),
         message=str(request.args.get("message", "")).strip(),
         error=str(request.args.get("error", "")).strip(),
     )

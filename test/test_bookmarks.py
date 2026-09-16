@@ -102,7 +102,12 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertEqual(saved_item["folder_id"], favorite["id"])
         self.assertEqual(favorite["name"], "Моё избранное")
         page = first_client.get("/bookmarks")
-        self.assertIn(self.item["title"], page.get_data(as_text=True))
+        self.assertIn("Все подборки", page.get_data(as_text=True))
+        self.assertIn("Моё избранное", page.get_data(as_text=True))
+        favorite_page = first_client.get(
+            f"/collections?folder={favorite['id']}"
+        ).get_data(as_text=True)
+        self.assertIn(self.item["title"], favorite_page)
 
         second_client = web_app.app.test_client()
         self._login(second_client, self.second["id"])
@@ -128,7 +133,7 @@ class PersonalBookmarksTests(unittest.TestCase):
         page = client.get(
             f"/collections?folder={favorite['id']}"
         ).get_data(as_text=True)
-        self.assertIn('data-rename-open', page)
+        self.assertIn('data-manage-collection-open', page)
         self.assertIn('aria-label="Удалить подборку"', page)
         self.assertIn('class="icon-button add-action"', page)
 
@@ -146,7 +151,7 @@ class PersonalBookmarksTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
-        self.assertIn("folder=unfiled", response.headers["Location"])
+        self.assertIn("folder=all", response.headers["Location"])
         self.assertFalse(any(
             folder["system_key"] == "favorites"
             for folder in storage.list_bookmark_folders(self.first["id"])
@@ -219,6 +224,39 @@ class PersonalBookmarksTests(unittest.TestCase):
                 self.second["id"], folder["id"], note_id,
                 "Чужая правка", "Нельзя",
             )
+
+    def test_folder_manager_renames_collection_and_updates_access(self):
+        folder = storage.create_bookmark_folder(self.first["id"], "Рабочее")
+        client = web_app.app.test_client()
+        token = self._login(client, self.first["id"])
+
+        manager = client.get(
+            f"/collections?folder={folder['id']}&manage=1"
+        ).get_data(as_text=True)
+        self.assertIn('class="manage-collection-form"', manager)
+        self.assertIn('name="visibility"', manager)
+        response = client.post(
+            f"/collections?folder={folder['id']}",
+            data={
+                "csrf_token": token,
+                "action": "manage_collection",
+                "folder_id": folder["id"],
+                "return_folder": folder["id"],
+                "name": "Общая папка",
+                "visibility": "selected",
+                "shared_user_ids": [self.second["id"]],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        updated = storage.load_collection(self.first["id"], folder["id"])
+        self.assertEqual(updated["name"], "Общая папка")
+        self.assertEqual(updated["visibility"], "selected")
+        self.assertEqual(
+            [user["id"] for user in updated["shared_users"]],
+            [self.second["id"]],
+        )
+        self.assertIsNotNone(storage.load_collection(self.second["id"], folder["id"]))
 
     def test_private_collection_is_not_visible_to_another_user(self):
         folder = storage.create_bookmark_folder(self.first["id"], "Закрыто")
@@ -454,7 +492,7 @@ class PersonalBookmarksTests(unittest.TestCase):
             [second["id"], third["id"], first["id"]],
         )
         page = client.get("/collections").get_data(as_text=True)
-        self.assertIn('class="collection-tree-list"', page)
+        self.assertIn('class="folder-card-grid"', page)
         self.assertNotIn("0 материалов", page)
         self.assertNotIn("Поднять подборку", page)
 
@@ -484,18 +522,13 @@ class PersonalBookmarksTests(unittest.TestCase):
             {"Выборы": None, "Яблоко": parent["id"], "Партии": parent["id"]},
         )
         page = client.get("/collections").get_data(as_text=True)
-        self.assertIn('id="folder-order-toggle"', page)
-        self.assertIn('id="folder-root-drop"', page)
-        self.assertIn(
-            f'data-folder-id="{apple["id"]}" data-parent-id="{parent["id"]}" '
-            'data-depth="1"',
-            page,
-        )
+        self.assertIn(f'/collections?folder={parent["id"]}', page)
+        self.assertNotIn(f'/collections?folder={apple["id"]}', page)
 
         parent_page = client.get(
             f"/collections?folder={parent['id']}"
         ).get_data(as_text=True)
-        self.assertIn('class="child-folders"', parent_page)
+        self.assertIn('class="folder-browser"', parent_page)
         self.assertIn(f'/collections?folder={apple["id"]}', parent_page)
         self.assertIn(f'/collections?folder={parties["id"]}', parent_page)
         self.assertNotIn("Здесь пока пусто", parent_page)
@@ -533,7 +566,7 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertEqual(folders[0]["name"], "Яблоко")
         self.assertIsNone(folders[0]["parent_id"])
 
-    def test_collection_tree_is_in_left_navigation_and_right_panel_is_removed(self):
+    def test_collection_folders_are_in_central_workspace(self):
         client = web_app.app.test_client()
         self._login(client, self.first["id"])
 
@@ -544,13 +577,12 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertIn('class="app-layout"', collections)
         self.assertIn('class="left-rail"', collections)
         self.assertIn('class="rail-link active" href="/collections"', collections)
-        self.assertIn('class="collection-tree"', collections)
-        self.assertIn("Создать подборку", collections)
-        self.assertIn('id="folder-order-toggle"', collections)
-        self.assertIn('id="folder-root-drop"', collections)
-        self.assertIn('id="folder-list"', collections)
-        self.assertIn('class="tree-copy"', collections)
-        self.assertIn('class="toolbar-row"', collections)
+        self.assertNotIn('<div class="collection-tree">', collections)
+        self.assertIn('class="folder-browser"', collections)
+        self.assertIn('class="folder-card-grid"', collections)
+        self.assertIn('data-create-collection-open', collections)
+        self.assertIn('data-manage-collection-open', collections)
+        self.assertNotIn('aria-label="Сортировка"', collections)
         self.assertNotIn("Мои подборки", collections)
         self.assertNotIn('class="panel"', collections)
         self.assertNotIn('class="site-sections"', collections)
@@ -583,7 +615,7 @@ class PersonalBookmarksTests(unittest.TestCase):
             sorted_page.index(older["title"]),
             sorted_page.index(newer["title"]),
         )
-        self.assertIn("Сначала старые", sorted_page)
+        self.assertNotIn("Сначала старые", sorted_page)
 
         response = client.get(
             f"/collections/export.docx?folder={folder['id']}&sort=oldest"
