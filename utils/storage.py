@@ -206,13 +206,18 @@ def create_dictionary_deck(user_id, name):
     return _WORKSPACE_STORAGE.create_dictionary_deck(user_id, name)
 
 
+def ensure_demo_dictionary(user_id):
+    return _WORKSPACE_STORAGE.ensure_demo_dictionary(user_id)
+
+
 def list_dictionary_decks(user_id):
     return _WORKSPACE_STORAGE.list_dictionary_decks(user_id)
 
 
-def save_dictionary_card(user_id, deck_id, term, reading, translation):
+def save_dictionary_card(user_id, deck_id, term, reading, translation,
+                         card_id=None, **card_fields):
     return _WORKSPACE_STORAGE.save_dictionary_card(
-        user_id, deck_id, term, reading, translation
+        user_id, deck_id, term, reading, translation, card_id, **card_fields
     )
 
 
@@ -223,6 +228,16 @@ def list_dictionary_cards(user_id, deck_id, due_only=False):
 def review_dictionary_card(user_id, card_id, rating):
     """Применяет простой интервальный повтор для ответа в квизе."""
     return _WORKSPACE_STORAGE.review_dictionary_card(user_id, card_id, rating)
+
+
+def delete_dictionary_card(user_id, card_id):
+    return _WORKSPACE_STORAGE.delete_dictionary_card(user_id, card_id)
+
+
+def set_dictionary_card_favorite(user_id, card_id, is_favorite):
+    return _WORKSPACE_STORAGE.set_dictionary_card_favorite(
+        user_id, card_id, is_favorite
+    )
 
 
 _SOURCE_CONTROL_STORAGE = SourceControlStorage(

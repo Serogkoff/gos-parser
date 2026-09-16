@@ -66,13 +66,16 @@ from utils.storage import (
     count_users,
     count_bookmarks,
     create_bookmark_folder,
+    create_dictionary_deck,
     delete_collection_note,
     delete_calendar_event,
+    delete_dictionary_card,
     delete_personal_note,
     create_user,
     delete_user,
     delete_bookmark_folder,
     enqueue_parser_job,
+    ensure_demo_dictionary,
     ensure_favorites_folder,
     find_news_by_url,
     list_users,
@@ -85,6 +88,8 @@ from utils.storage import (
     list_collection_note_read_ids,
     list_collection_notes,
     list_calendar_events,
+    list_dictionary_cards,
+    list_dictionary_decks,
     list_personal_notes,
     list_news_index,
     list_unread_news_index,
@@ -107,18 +112,21 @@ from utils.storage import (
     save_bookmark_folder_order,
     save_collection_note,
     save_calendar_event,
+    save_dictionary_card,
     save_personal_note,
     save_external_bookmark,
     save_muted_sources,
     save_source_order,
     set_source_enabled,
     set_collection_note_read,
+    set_dictionary_card_favorite,
     set_personal_note_pinned,
     mark_news_group_read,
     mark_news_read,
     set_user_active,
     set_user_password,
     set_user_role,
+    review_dictionary_card,
     update_collection,
     update_collection_note,
     news_group_counts,
@@ -1288,6 +1296,56 @@ def notes_page():
                 return _notes_redirect(
                     "records", kind=request.form.get("return_kind", "all"),
                 )
+            if action == "save_dictionary_deck":
+                deck_id = create_dictionary_deck(user_id, request.form.get("name"))
+                return _notes_redirect(
+                    "dictionary", mode="dictionary", deck=deck_id,
+                    message="Словарь создан",
+                )
+            if action == "save_dictionary_card":
+                card_id = save_dictionary_card(
+                    user_id, request.form.get("deck_id"),
+                    request.form.get("term"), request.form.get("reading"),
+                    request.form.get("translation"), request.form.get("card_id"),
+                    language=request.form.get("language"),
+                    tags=request.form.get("tags"),
+                    example=request.form.get("example"),
+                    example_translation=request.form.get("example_translation"),
+                    notes=request.form.get("notes"),
+                    source=request.form.get("source"),
+                )
+                return _notes_redirect(
+                    "dictionary", mode="dictionary",
+                    deck=request.form.get("deck_id"), card=card_id,
+                    message="Карточка сохранена",
+                )
+            if action == "delete_dictionary_card":
+                delete_dictionary_card(user_id, request.form.get("card_id"))
+                return _notes_redirect(
+                    "dictionary", mode="dictionary",
+                    deck=request.form.get("deck_id"), message="Карточка удалена",
+                )
+            if action == "toggle_dictionary_favorite":
+                set_dictionary_card_favorite(
+                    user_id, request.form.get("card_id"),
+                    request.form.get("is_favorite"),
+                )
+                return _notes_redirect(
+                    "dictionary", mode="dictionary",
+                    deck=request.form.get("deck_id"),
+                    card=request.form.get("card_id"),
+                )
+            if action == "review_dictionary_card":
+                result = review_dictionary_card(
+                    user_id, request.form.get("card_id"),
+                    request.form.get("rating"),
+                )
+                if request.headers.get("X-Requested-With") == "fetch":
+                    return jsonify(result)
+                return _notes_redirect(
+                    "dictionary", mode="review",
+                    deck=request.form.get("deck_id"),
+                )
             raise ValueError("Неизвестное действие")
         except ValueError as operation_error:
             if action == "reorder_events":
@@ -1525,6 +1583,137 @@ def notes_page():
             record_form=record_form,
             open_record_dialog=bool(selected_record),
             record_labels=record_labels,
+        )
+    else:
+        ensure_demo_dictionary(user_id)
+        dictionary_mode = str(
+            request.args.get("mode", "dictionary")
+        ).strip().casefold()
+        if dictionary_mode not in {"dictionary", "review", "stats"}:
+            dictionary_mode = "dictionary"
+        decks = list_dictionary_decks(user_id)
+        requested_deck = str(request.args.get("deck", "")).strip()
+        selected_deck = next(
+            (deck for deck in decks if str(deck["id"]) == requested_deck),
+            decks[0] if decks else None,
+        )
+        cards = (
+            list_dictionary_cards(user_id, selected_deck["id"])
+            if selected_deck else []
+        )
+        today_iso = date.today().isoformat()
+
+        def prepare_dictionary_card(item):
+            prepared = dict(item)
+            prepared["tag_list"] = [
+                tag.strip() for tag in re.split(r"[,;]", item.get("tags", ""))
+                if tag.strip()
+            ]
+            prepared["is_due"] = (
+                not item.get("next_review") or item["next_review"] <= today_iso
+            )
+            if int(item.get("repetitions") or 0) >= 3:
+                prepared["status_label"] = "Освоено"
+                prepared["status_class"] = "mastered"
+            elif int(item.get("repetitions") or 0) > 0:
+                prepared["status_label"] = "Изучается"
+                prepared["status_class"] = "learning"
+            else:
+                prepared["status_label"] = "Новое"
+                prepared["status_class"] = "new"
+            return prepared
+
+        prepared_cards = [prepare_dictionary_card(card) for card in cards]
+        dictionary_query = str(request.args.get("q", "")).strip()[:200]
+        dictionary_tag = str(request.args.get("tag", "")).strip()[:100]
+        dictionary_filter = str(
+            request.args.get("filter", "all")
+        ).strip().casefold()
+        if dictionary_filter not in {"all", "due", "difficult", "favorite"}:
+            dictionary_filter = "all"
+        query_folded = dictionary_query.casefold()
+        tag_folded = dictionary_tag.casefold()
+        filtered_cards = []
+        for card in prepared_cards:
+            if dictionary_filter == "due" and not card["is_due"]:
+                continue
+            if dictionary_filter == "difficult" and card["mistake_count"] < 2:
+                continue
+            if dictionary_filter == "favorite" and not card["is_favorite"]:
+                continue
+            if tag_folded and all(
+                tag.casefold() != tag_folded for tag in card["tag_list"]
+            ):
+                continue
+            searchable = " ".join(str(card.get(field, "")) for field in (
+                "term", "reading", "translation", "tags", "example",
+                "example_translation", "notes", "source",
+            )).casefold()
+            if query_folded and query_folded not in searchable:
+                continue
+            filtered_cards.append(card)
+        requested_card = str(request.args.get("card", "")).strip()
+        selected_card = next(
+            (card for card in prepared_cards if str(card["id"]) == requested_card),
+            filtered_cards[0] if filtered_cards else None,
+        )
+        available_dictionary_tags = sorted({
+            tag for card in prepared_cards for tag in card["tag_list"]
+        }, key=str.casefold)
+        due_cards = [card for card in prepared_cards if card["is_due"]]
+        new_count = sum(not card["repetitions"] for card in prepared_cards)
+        mastered_count = sum(
+            int(card["repetitions"] or 0) >= 3 for card in prepared_cards
+        )
+        difficult_cards = sorted(
+            (card for card in prepared_cards if card["mistake_count"]),
+            key=lambda card: (-card["mistake_count"], card["term"]),
+        )[:8]
+        review_attempts = sum(
+            int(card["repetitions"] or 0) + int(card["mistake_count"] or 0)
+            for card in prepared_cards
+        )
+        correct_attempts = sum(
+            int(card["repetitions"] or 0) for card in prepared_cards
+        )
+        accuracy = (
+            round(correct_attempts * 100 / review_attempts)
+            if review_attempts else 0
+        )
+        topic_stats = []
+        for tag in available_dictionary_tags:
+            tag_cards = [card for card in prepared_cards if tag in card["tag_list"]]
+            topic_stats.append({
+                "name": tag,
+                "count": len(tag_cards),
+                "mastered": sum(
+                    int(card["repetitions"] or 0) >= 3 for card in tag_cards
+                ),
+            })
+        context.update(
+            dictionary_mode=dictionary_mode,
+            dictionary_decks=decks,
+            selected_deck=selected_deck,
+            dictionary_cards=filtered_cards,
+            selected_dictionary_card=selected_card,
+            dictionary_query=dictionary_query,
+            dictionary_tag=dictionary_tag,
+            dictionary_filter=dictionary_filter,
+            available_dictionary_tags=available_dictionary_tags,
+            due_cards=due_cards,
+            new_card_count=new_count,
+            mastered_card_count=mastered_count,
+            difficult_cards=difficult_cards,
+            dictionary_accuracy=accuracy,
+            topic_stats=topic_stats,
+            dictionary_card_form=selected_card or {
+                "id": "", "term": "", "reading": "", "translation": "",
+                "language": "ja", "tags": "", "example": "",
+                "example_translation": "", "notes": "", "source": "",
+            },
+            open_dictionary_dialog=(
+                request.args.get("edit") == "1" and bool(selected_card)
+            ),
         )
     return render_template("notes.html", **context)
 

@@ -123,7 +123,7 @@ class NotesTestModeTests(unittest.TestCase):
             self.assertIn('aria-label="Новая заметка"', html)
             self.assertNotIn('</svg>Новая заметка</button>', html)
 
-    def test_records_workspace_and_dictionary_placeholder_are_visible(self):
+    def test_records_workspace_and_dictionary_are_visible(self):
         client, _ = self._client_for(self.admin)
         records = client.get("/notes?view=records").get_data(as_text=True)
         dictionary = client.get("/notes?view=dictionary").get_data(as_text=True)
@@ -138,7 +138,105 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertNotIn(">Черновики<", records)
         self.assertNotIn('name="is_draft"', records)
         self.assertIn('data-new-record', records)
-        self.assertIn("Карточки и проверку знаний добавим", dictionary)
+        self.assertIn("Словарь", dictionary)
+        self.assertIn("Повторение · 30", dictionary)
+        self.assertIn("Статистика", dictionary)
+        self.assertIn("政府", dictionary)
+        self.assertIn("правительство", dictionary)
+        self.assertEqual(
+            len(storage.list_dictionary_cards(
+                self.admin["id"],
+                storage.list_dictionary_decks(self.admin["id"])[0]["id"],
+            )),
+            30,
+        )
+
+    def test_dictionary_search_card_actions_and_review(self):
+        client, token = self._client_for(self.admin)
+        client.get("/notes?view=dictionary")
+        deck = storage.list_dictionary_decks(self.admin["id"])[0]
+        cards = storage.list_dictionary_cards(self.admin["id"], deck["id"])
+        card = next(item for item in cards if item["term"] == "選挙")
+
+        search = client.get(
+            f"/notes?view=dictionary&deck={deck['id']}&q=выборы"
+        ).get_data(as_text=True)
+        self.assertIn("選挙", search)
+        self.assertNotIn("政府</span>", search)
+
+        favorite = client.post(
+            "/notes?view=dictionary",
+            data={
+                "csrf_token": token,
+                "action": "toggle_dictionary_favorite",
+                "deck_id": deck["id"],
+                "card_id": card["id"],
+                "is_favorite": "1",
+            },
+        )
+        self.assertEqual(favorite.status_code, 302)
+        updated = storage.list_dictionary_cards(self.admin["id"], deck["id"])
+        self.assertEqual(
+            next(item for item in updated if item["id"] == card["id"])[
+                "is_favorite"
+            ],
+            1,
+        )
+
+        reviewed = client.post(
+            "/notes?view=dictionary",
+            data={
+                "csrf_token": token,
+                "action": "review_dictionary_card",
+                "deck_id": deck["id"],
+                "card_id": card["id"],
+                "rating": "easy",
+            },
+            headers={"X-Requested-With": "fetch"},
+        )
+        self.assertEqual(reviewed.status_code, 200)
+        self.assertEqual(reviewed.get_json()["interval_days"], 4)
+
+    def test_dictionary_card_can_be_created_updated_and_deleted(self):
+        client, token = self._client_for(self.admin)
+        client.get("/notes?view=dictionary")
+        deck = storage.list_dictionary_decks(self.admin["id"])[0]
+        created = client.post(
+            "/notes?view=dictionary",
+            data={
+                "csrf_token": token,
+                "action": "save_dictionary_card",
+                "deck_id": deck["id"],
+                "term": "条約",
+                "reading": "じょうやく",
+                "translation": "договор",
+                "language": "ja",
+                "tags": "Дипломатия",
+                "example": "両国は条約に署名した。",
+                "example_translation": "Две страны подписали договор.",
+            },
+        )
+        self.assertEqual(created.status_code, 302)
+        cards = storage.list_dictionary_cards(self.admin["id"], deck["id"])
+        card = next(item for item in cards if item["term"] == "条約")
+        self.assertEqual(card["tags"], "Дипломатия")
+
+        deleted = client.post(
+            "/notes?view=dictionary",
+            data={
+                "csrf_token": token,
+                "action": "delete_dictionary_card",
+                "deck_id": deck["id"],
+                "card_id": card["id"],
+            },
+        )
+        self.assertEqual(deleted.status_code, 302)
+        self.assertNotIn(
+            card["id"],
+            [item["id"] for item in storage.list_dictionary_cards(
+                self.admin["id"], deck["id"]
+            )],
+        )
 
     def test_legacy_meetings_and_drafts_are_shown_as_notes(self):
         client, _ = self._client_for(self.admin)

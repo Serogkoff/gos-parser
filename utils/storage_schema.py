@@ -194,6 +194,14 @@ def create_schema(connection):
             term TEXT NOT NULL,
             reading TEXT NOT NULL DEFAULT '',
             translation TEXT NOT NULL,
+            language TEXT NOT NULL DEFAULT 'ja',
+            tags TEXT NOT NULL DEFAULT '',
+            example TEXT NOT NULL DEFAULT '',
+            example_translation TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT '',
+            is_favorite INTEGER NOT NULL DEFAULT 0 CHECK(is_favorite IN (0, 1)),
+            mistake_count INTEGER NOT NULL DEFAULT 0,
             repetitions INTEGER NOT NULL DEFAULT 0,
             interval_days INTEGER NOT NULL DEFAULT 0,
             next_review TEXT NOT NULL DEFAULT '',
@@ -383,6 +391,27 @@ def create_schema(connection):
         """CREATE INDEX IF NOT EXISTS idx_personal_notes_type
            ON personal_notes(user_id, record_type, is_pinned, updated_at DESC)"""
     )
+
+    dictionary_card_columns = {
+        row["name"] for row in connection.execute(
+            "PRAGMA table_info(dictionary_cards)"
+        ).fetchall()
+    }
+    dictionary_card_additions = {
+        "language": "TEXT NOT NULL DEFAULT 'ja'",
+        "tags": "TEXT NOT NULL DEFAULT ''",
+        "example": "TEXT NOT NULL DEFAULT ''",
+        "example_translation": "TEXT NOT NULL DEFAULT ''",
+        "notes": "TEXT NOT NULL DEFAULT ''",
+        "source": "TEXT NOT NULL DEFAULT ''",
+        "is_favorite": "INTEGER NOT NULL DEFAULT 0",
+        "mistake_count": "INTEGER NOT NULL DEFAULT 0",
+    }
+    for name, definition in dictionary_card_additions.items():
+        if name not in dictionary_card_columns:
+            connection.execute(
+                f"ALTER TABLE dictionary_cards ADD COLUMN {name} {definition}"
+            )
 
     calendar_columns = {
         row["name"] for row in connection.execute(

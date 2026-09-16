@@ -4,6 +4,40 @@ import sqlite3
 from datetime import datetime, timedelta
 
 
+POLITICS_DEMO_CARDS = (
+    ("政府", "せいふ", "правительство", "Государство", "政府は新しい経済政策を発表した。", "Правительство объявило новую экономическую политику."),
+    ("国会", "こっかい", "парламент Японии", "Государство", "法案は国会で審議される。", "Законопроект будет рассмотрен в парламенте."),
+    ("衆議院", "しゅうぎいん", "Палата представителей", "Государство", "衆議院で予算案が可決された。", "Проект бюджета был одобрен Палатой представителей."),
+    ("参議院", "さんぎいん", "Палата советников", "Государство", "参議院は法案の審議を始めた。", "Палата советников начала рассмотрение законопроекта."),
+    ("内閣", "ないかく", "кабинет министров", "Правительство", "内閣は総辞職を決めた。", "Кабинет министров решил уйти в отставку в полном составе."),
+    ("首相", "しゅしょう", "премьер-министр", "Правительство", "首相は記者会見を開いた。", "Премьер-министр провёл пресс-конференцию."),
+    ("大統領", "だいとうりょう", "президент", "Государство", "両国の大統領が電話会談を行った。", "Президенты двух стран провели телефонные переговоры."),
+    ("外務省", "がいむしょう", "министерство иностранных дел", "Дипломатия", "外務省は声明を発表した。", "Министерство иностранных дел опубликовало заявление."),
+    ("与党", "よとう", "правящая партия", "Партии", "与党は法案への支持を呼びかけた。", "Правящая партия призвала поддержать законопроект."),
+    ("野党", "やとう", "оппозиционная партия; оппозиция", "Партии", "野党は政府の対応を批判した。", "Оппозиция раскритиковала действия правительства."),
+    ("連立政権", "れんりつせいけん", "коалиционное правительство", "Партии", "二つの政党が連立政権を樹立した。", "Две партии сформировали коалиционное правительство."),
+    ("選挙", "せんきょ", "выборы", "Выборы", "来月、地方選挙が行われる。", "В следующем месяце пройдут местные выборы."),
+    ("総選挙", "そうせんきょ", "всеобщие выборы", "Выборы", "政府は秋の総選挙を検討している。", "Правительство рассматривает проведение всеобщих выборов осенью."),
+    ("投票", "とうひょう", "голосование; подача голоса", "Выборы", "投票は午後八時に締め切られた。", "Голосование завершилось в восемь часов вечера."),
+    ("有権者", "ゆうけんしゃ", "избиратель; лицо с правом голоса", "Выборы", "候補者は有権者に支持を訴えた。", "Кандидат обратился к избирателям за поддержкой."),
+    ("候補者", "こうほしゃ", "кандидат", "Выборы", "三人の候補者が選挙に立候補した。", "Три кандидата выдвинулись на выборы."),
+    ("議席", "ぎせき", "депутатское место; мандат", "Выборы", "与党は過半数の議席を維持した。", "Правящая партия сохранила большинство мест."),
+    ("法案", "ほうあん", "законопроект", "Законодательство", "政府は国会に法案を提出した。", "Правительство внесло законопроект в парламент."),
+    ("予算案", "よさんあん", "проект бюджета", "Законодательство", "来年度の予算案が閣議決定された。", "Проект бюджета на следующий финансовый год был утверждён кабинетом."),
+    ("政策", "せいさく", "политика; политический курс", "Правительство", "新しい政策の効果が議論されている。", "Обсуждается эффективность нового политического курса."),
+    ("外交", "がいこう", "дипломатия; внешняя политика", "Дипломатия", "経済協力は外交の重要な柱だ。", "Экономическое сотрудничество — важная опора дипломатии."),
+    ("安全保障", "あんぜんほしょう", "национальная безопасность", "Дипломатия", "両国は安全保障問題を協議した。", "Две страны обсудили вопросы безопасности."),
+    ("制裁", "せいさい", "санкции", "Дипломатия", "政府は追加制裁を発表した。", "Правительство объявило дополнительные санкции."),
+    ("首脳会談", "しゅのうかいだん", "саммит; встреча лидеров", "Дипломатия", "首脳会談は二時間にわたって行われた。", "Встреча лидеров продолжалась два часа."),
+    ("記者会見", "きしゃかいけん", "пресс-конференция", "СМИ", "官房長官は記者会見で説明した。", "Генеральный секретарь кабинета дал пояснения на пресс-конференции."),
+    ("世論調査", "よろんちょうさ", "опрос общественного мнения", "Общество", "最新の世論調査の結果が公表された。", "Опубликованы результаты последнего опроса общественного мнения."),
+    ("支持率", "しじりつ", "рейтинг поддержки", "Общество", "内閣支持率は前月より低下した。", "Рейтинг поддержки кабинета снизился по сравнению с прошлым месяцем."),
+    ("解散", "かいさん", "роспуск (парламента, палаты)", "Выборы", "首相は衆議院を解散した。", "Премьер-министр распустил Палату представителей."),
+    ("辞任", "じにん", "отставка; уход с должности", "Правительство", "大臣は責任を取って辞任した。", "Министр взял на себя ответственность и ушёл в отставку."),
+    ("就任", "しゅうにん", "вступление в должность", "Правительство", "新しい大臣が正式に就任した。", "Новый министр официально вступил в должность."),
+)
+
+
 def _validated_notes_text(value, field, maximum, required=False):
     text = str(value or "").strip()
     if required and not text:
@@ -429,7 +463,40 @@ class PersonalWorkspaceStorage:
             for row in rows
         ]
 
-    def save_dictionary_card(self, user_id, deck_id, term, reading, translation):
+    def ensure_demo_dictionary(self, user_id):
+        """Один раз создаёт демонстрационный словарь, если у владельца нет колод."""
+        user_id = self._validate_user_id(user_id)
+        self._initialize_database()
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._lock, self._connection_factory() as connection:
+            existing = connection.execute(
+                "SELECT id FROM dictionary_decks WHERE user_id = ? LIMIT 1",
+                (user_id,),
+            ).fetchone()
+            if existing is not None:
+                return int(existing["id"])
+            cursor = connection.execute(
+                """INSERT INTO dictionary_decks(user_id, name, created_at, updated_at)
+                   VALUES (?, 'Политика', ?, ?)""",
+                (user_id, now, now),
+            )
+            deck_id = int(cursor.lastrowid)
+            connection.executemany(
+                """INSERT INTO dictionary_cards(
+                       deck_id, user_id, term, reading, translation, language,
+                       tags, example, example_translation, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, 'ja', ?, ?, ?, ?, ?)""",
+                (
+                    (deck_id, user_id, term, reading, translation, tag,
+                     example, example_translation, now, now)
+                    for term, reading, translation, tag, example,
+                    example_translation in POLITICS_DEMO_CARDS
+                ),
+            )
+        return deck_id
+
+    def save_dictionary_card(self, user_id, deck_id, term, reading, translation,
+                             card_id=None, **card_fields):
         user_id = self._validate_user_id(user_id)
         try:
             deck_id = int(deck_id)
@@ -440,6 +507,22 @@ class PersonalWorkspaceStorage:
         translation = _validated_notes_text(
             translation, "Перевод", 1000, required=True
         )
+        language = _validated_notes_text(
+            card_fields.get("language", "ja"), "Язык", 20
+        ) or "ja"
+        tags = _validated_notes_text(card_fields.get("tags"), "Теги", 500)
+        example = _validated_notes_text(
+            card_fields.get("example"), "Пример", 2000
+        )
+        example_translation = _validated_notes_text(
+            card_fields.get("example_translation"), "Перевод примера", 2000
+        )
+        notes = _validated_notes_text(
+            card_fields.get("notes"), "Заметка", 5000
+        )
+        source = _validated_notes_text(
+            card_fields.get("source"), "Источник", 1000
+        )
         now = datetime.now().isoformat(timespec="seconds")
         with self._lock, self._connection_factory() as connection:
             if connection.execute(
@@ -447,16 +530,36 @@ class PersonalWorkspaceStorage:
                 (deck_id, user_id),
             ).fetchone() is None:
                 raise ValueError("Словарь не найден")
-            cursor = connection.execute(
-                """INSERT INTO dictionary_cards(
-                       deck_id, user_id, term, reading, translation, created_at, updated_at
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (deck_id, user_id, term, reading, translation, now, now),
-            )
+            if card_id:
+                try:
+                    card_id = int(card_id)
+                except (TypeError, ValueError) as error:
+                    raise ValueError("Карточка не найдена") from error
+                cursor = connection.execute(
+                    """UPDATE dictionary_cards SET deck_id = ?, term = ?, reading = ?,
+                           translation = ?, language = ?, tags = ?, example = ?,
+                           example_translation = ?, notes = ?, source = ?, updated_at = ?
+                       WHERE id = ? AND user_id = ?""",
+                    (deck_id, term, reading, translation, language, tags, example,
+                     example_translation, notes, source, now, card_id, user_id),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("Карточка не найдена")
+            else:
+                cursor = connection.execute(
+                    """INSERT INTO dictionary_cards(
+                           deck_id, user_id, term, reading, translation, language,
+                           tags, example, example_translation, notes, source,
+                           created_at, updated_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (deck_id, user_id, term, reading, translation, language, tags,
+                     example, example_translation, notes, source, now, now),
+                )
+                card_id = int(cursor.lastrowid)
             connection.execute(
                 "UPDATE dictionary_decks SET updated_at = ? WHERE id = ?", (now, deck_id)
             )
-        return int(cursor.lastrowid)
+        return int(card_id)
 
     def list_dictionary_cards(self, user_id, deck_id, due_only=False):
         user_id = self._validate_user_id(user_id)
@@ -467,6 +570,8 @@ class PersonalWorkspaceStorage:
         today = datetime.now().date().isoformat()
         self._initialize_database()
         query = """SELECT c.id, c.deck_id, c.term, c.reading, c.translation,
+                          c.language, c.tags, c.example, c.example_translation,
+                          c.notes, c.source, c.is_favorite, c.mistake_count,
                           c.repetitions, c.interval_days, c.next_review
                    FROM dictionary_cards AS c
                    JOIN dictionary_decks AS d ON d.id = c.deck_id
@@ -479,6 +584,38 @@ class PersonalWorkspaceStorage:
         with self._connection_factory() as connection:
             rows = connection.execute(query, parameters).fetchall()
         return [dict(row) for row in rows]
+
+    def delete_dictionary_card(self, user_id, card_id):
+        user_id = self._validate_user_id(user_id)
+        try:
+            card_id = int(card_id)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Карточка не найдена") from error
+        with self._lock, self._connection_factory() as connection:
+            cursor = connection.execute(
+                "DELETE FROM dictionary_cards WHERE id = ? AND user_id = ?",
+                (card_id, user_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Карточка не найдена")
+
+    def set_dictionary_card_favorite(self, user_id, card_id, is_favorite):
+        user_id = self._validate_user_id(user_id)
+        try:
+            card_id = int(card_id)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Карточка не найдена") from error
+        favorite = 1 if str(is_favorite or "").casefold() in {
+            "1", "true", "yes", "on"
+        } else 0
+        with self._lock, self._connection_factory() as connection:
+            cursor = connection.execute(
+                """UPDATE dictionary_cards SET is_favorite = ?
+                   WHERE id = ? AND user_id = ?""",
+                (favorite, card_id, user_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Карточка не найдена")
 
     def review_dictionary_card(self, user_id, card_id, rating):
         """Применяет простой интервальный повтор для ответа в квизе."""
@@ -513,11 +650,14 @@ class PersonalWorkspaceStorage:
             next_review = (
                 datetime.now().date() + timedelta(days=interval_days)
             ).isoformat()
+            mistake_increment = 1 if rating in {"again", "hard"} else 0
             connection.execute(
                 """UPDATE dictionary_cards SET repetitions = ?, interval_days = ?,
-                       next_review = ?, updated_at = ? WHERE id = ? AND user_id = ?""",
+                       next_review = ?, mistake_count = mistake_count + ?, updated_at = ?
+                   WHERE id = ? AND user_id = ?""",
                 (repetitions, interval_days, next_review,
-                 datetime.now().isoformat(timespec="seconds"), card_id, user_id),
+                 mistake_increment, datetime.now().isoformat(timespec="seconds"),
+                 card_id, user_id),
             )
         return {"id": card_id, "interval_days": interval_days,
                 "next_review": next_review}
