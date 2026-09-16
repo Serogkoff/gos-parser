@@ -176,6 +176,7 @@ class WebTemplateTests(unittest.TestCase):
         self.assertIn(".collection-toolbar{width:min(100%,600px)", template)
         self.assertIn("grid-template-rows:48px 48px", template)
         self.assertIn(".collection-detail-actions{position:absolute;top:28px", template)
+        self.assertIn(".collection-detail-actions .icon-button{color:var(--coral);border-color:var(--coral)}", template)
         self.assertNotIn("Вложенных папок пока нет", template)
         self.assertIn(".left-rail::-webkit-scrollbar{display:none}", template)
         self.assertIn('class="search-icon"', template)
