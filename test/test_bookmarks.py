@@ -547,6 +547,20 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertEqual(cycle.status_code, 400)
         self.assertIn("круг", cycle.get_json()["error"])
 
+    def test_collection_without_children_has_no_empty_folder_section(self):
+        folder = storage.create_bookmark_folder(self.first["id"], "Без вложений")
+        client = web_app.app.test_client()
+        self._login(client, self.first["id"])
+
+        page = client.get(
+            f"/collections?folder={folder['id']}"
+        ).get_data(as_text=True)
+
+        self.assertNotIn('class="folder-browser"', page)
+        self.assertNotIn("Вложенных папок пока нет", page)
+        self.assertIn('class="collection-detail-actions"', page)
+        self.assertIn('class="search" method="get"', page)
+
     def test_deleting_parent_promotes_child_collection(self):
         parent = storage.create_bookmark_folder(self.first["id"], "Выборы")
         child = storage.create_bookmark_folder(self.first["id"], "Яблоко")
