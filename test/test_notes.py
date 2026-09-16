@@ -160,8 +160,15 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn("政府", inner)
         self.assertIn("правительство", inner)
         self.assertIn('data-speak="政府"', inner)
-        self.assertIn("Поиск по терминам и переводам", inner)
-        self.assertIn("Квиз: 30", inner)
+        self.assertIn('placeholder="Поиск"', inner)
+        self.assertNotIn("<h1>Словарь</h1>", inner)
+        self.assertNotIn('class="dictionary-page-head"', inner)
+        self.assertIn('<summary aria-label="Фильтры" title="Фильтры">', inner)
+        self.assertNotIn(">Фильтры</summary>", inner)
+        self.assertIn('aria-label="Добавить термин"', inner)
+        self.assertNotIn(">Добавить</button>", inner)
+        self.assertIn('aria-label="Начать квиз"', inner)
+        self.assertIn('class="dictionary-quiz-count">30</span>', inner)
 
         quiz = client.get(
             f"/notes?view=dictionary&mode=quiz&deck={deck['id']}"
