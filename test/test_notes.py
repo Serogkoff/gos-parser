@@ -167,6 +167,16 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn('<summary aria-label="Фильтры" title="Фильтры">', inner)
         self.assertNotIn(">Фильтры</summary>", inner)
         self.assertIn('aria-label="Добавить термин"', inner)
+        self.assertIn('class="dictionary-list-tools"', inner)
+        self.assertIn('aria-label="Изменить выбранный термин"', inner)
+        self.assertIn('aria-label="Удалить выбранный термин"', inner)
+        self.assertNotIn("30 терминов", inner)
+        self.assertNotIn(
+            'class="dictionary-icon-action" type="button" '
+            'data-new-dictionary-card',
+            inner,
+        )
+        self.assertNotIn('class="detail-button delete-detail"', inner)
         self.assertNotIn(">Добавить</button>", inner)
         self.assertIn('aria-label="Начать квиз"', inner)
         self.assertIn('class="dictionary-quiz-count">30</span>', inner)
