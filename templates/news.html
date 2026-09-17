@@ -365,6 +365,7 @@
         }
         .rail-brand .brand-easter-logo{left:-4px;width:190px}
         .mobile-brand{display:none}
+        .mobile-bottom-nav,.mobile-mark-all-read{display:none}
         .site-sections{
             grid-column:1;grid-row:2;height:44px;justify-content:flex-start;
             gap:32px;overflow:visible
@@ -589,17 +590,94 @@
             .sidebar{grid-template-columns:1fr;grid-row:auto;margin-top:14px}
         }
         @media(max-width:680px){
-            .shell{width:100%;padding:0 14px 36px}
-            .clock-copy{display:block}.clock-card{min-width:110px;padding:0 12px}
+            body{padding-bottom:calc(68px + env(safe-area-inset-bottom))}
+            .shell{width:100%;padding:0 18px 28px}
+            .topbar{
+                min-height:0;padding-top:18px;display:grid;
+                grid-template-columns:minmax(0,1fr);
+                grid-template-rows:auto auto auto auto;gap:0
+            }
+            .mobile-brand{
+                grid-column:1;grid-row:1;font-size:45px;line-height:1;
+                align-self:center
+            }
+            .topbar-tools{grid-column:1/-1;grid-row:2;padding:10px 0 12px}
+            .clocks{gap:0}.clock-copy{display:block;text-align:left}
+            .clock-card{min-width:0;padding:0 15px;border-left:1px solid var(--line)}
+            .clock-card:first-child{padding-left:0;border-left:0}
+            .clock-city,.clock-time{font-size:16px}.clock-time{margin-left:5px}
             .clock-date{display:none}
-            .toolbar{justify-content:stretch}.search{max-width:none;flex:1}
-            .news-card{display:block;padding:18px 48px 18px 16px}
+            .site-sections{
+                grid-column:1/-1;grid-row:3;height:53px;gap:31px;
+                overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+                border-bottom:1px solid var(--line)
+            }
+            .site-sections::-webkit-scrollbar{display:none}
+            .site-section{padding-bottom:17px;font-size:18px}
+            .toolbar{
+                grid-column:1/-1;grid-row:4;position:static;width:100%;
+                min-height:48px;margin:15px 0 0;display:grid;
+                grid-template-columns:minmax(0,1fr) 48px 48px 48px;gap:8px
+            }
+            .search-tools{display:contents}
+            .toolbar .search{
+                width:100%;max-width:none;height:48px;padding:0 13px;
+                border:1px solid var(--line);border-radius:4px
+            }
+            .search-icon{font-size:22px}.search input{font-size:16px}
+            .toolbar .search-range{position:relative;width:48px;height:48px}
+            .toolbar .search-range summary,.toolbar .tool-button,.mobile-mark-all-read{
+                width:48px;min-width:48px;max-width:48px;height:48px;
+                border:1px solid var(--line);border-radius:4px;background:#fff
+            }
+            .mobile-mark-all-read{padding:0;place-items:center;color:var(--muted)}
+            .toolbar .search-range summary:hover,.toolbar .tool-button:hover,.mobile-mark-all-read:hover{color:#343430;background:#f6f5f1}
+            .calendar-icon,.toolbar .tool-button svg,.mobile-mark-all-read svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+            .toolbar .search-range-panel{
+                position:fixed;top:auto;right:18px;left:18px;width:auto
+            }
+            .content-grid{display:block}
+            .feed{margin-top:0}
+            .feed-heading{min-height:54px;padding:0 1px}
+            .feed-heading h2{font-size:13px}
+            #news-list{overflow:visible;border:0;background:transparent}
+            .news-card{
+                min-height:0;margin-bottom:10px;padding:13px 46px 15px 14px;
+                display:block;border:1px solid var(--line);border-radius:5px
+            }
             .news-card.match{padding-left:16px}
-            .meta{min-height:48px;padding-left:54px;margin-bottom:10px}
-            .source-mark{left:0;width:40px;height:40px;font-size:18px}
-            .source-emblem-main{left:0}
-            .unread-label{top:14px;right:10px}
-            .save{top:49px;right:23px}
+            .news-card:last-child{border-bottom:1px solid var(--line)}
+            .meta{
+                min-height:50px;padding:1px 0 0 60px;margin-bottom:10px;
+                gap:3px;font-size:12px
+            }
+            .source-name{font-size:14px}.meta time{font-size:11px}
+            .source-mark{left:0;top:0;width:48px;height:48px;font-size:19px}
+            .source-emblem-main{left:0;top:0;width:48px;height:48px}
+            .news-card h3{font-size:22px;line-height:1.08;letter-spacing:-.02em}
+            .news-summary{margin-top:7px;font-size:14px;line-height:1.28;-webkit-line-clamp:2}
+            .unread-label{top:10px;right:9px;padding:5px 9px}
+            .save{top:45px;right:14px;width:24px;height:30px}
+            .save svg{width:17px;height:21px}
+            .chips{margin-top:9px}
+            .pagination{padding-bottom:6px}
+            .sidebar{display:none}
+            .mobile-bottom-nav{
+                position:fixed;z-index:50;right:0;bottom:0;left:0;
+                min-height:68px;padding:7px 8px calc(6px + env(safe-area-inset-bottom));
+                display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+                border-top:1px solid var(--line);background:rgba(255,255,255,.96);
+                backdrop-filter:blur(12px)
+            }
+            .mobile-bottom-link{
+                min-width:0;display:grid;justify-items:center;align-content:center;
+                gap:3px;color:#737774;font-size:10px;line-height:1
+            }
+            .mobile-bottom-link svg{
+                width:24px;height:24px;fill:none;stroke:currentColor;
+                stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round
+            }
+            .mobile-bottom-link.active{color:var(--coral-dark)}
         }
     </style>
 </head>
@@ -710,6 +788,7 @@
             </form>
             {% if source_filters %}<div class="source-summary"><span>Выбрано: {{source_filters|length}}</span><a href="{{clear_sources_url}}">Сбросить</a></div>{% endif %}
             <button class="tool-button {{'active' if keyword_filter else ''}}" id="keywords-open" type="button" aria-label="Фильтры" title="Фильтры"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7v6l-4 2v-8z"/></svg></button>
+            <button class="mobile-mark-all-read" type="button" data-mark-all-read aria-label="Прочитать все новости" title="Прочитать все новости"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 13h18M3 19h18"/></svg></button>
         </section>
     </header>
 
@@ -803,7 +882,7 @@
                             <svg class="panel-action-icon order-done" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
                             <span class="visually-hidden">Изменить порядок источников</span>
                         </button>
-                        <button class="mark-all-read" id="mark-all-read" type="button" aria-label="Прочитать все новости" title="Прочитать все новости">
+                        <button class="mark-all-read" id="mark-all-read" type="button" data-mark-all-read aria-label="Прочитать все новости" title="Прочитать все новости">
                             <svg class="panel-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 13h18M3 19h18"/></svg>
                             <span class="visually-hidden">Прочитать все новости</span>
                         </button>
@@ -898,6 +977,13 @@
         </aside>
     </div>
 </main>
+<nav class="mobile-bottom-nav" aria-label="Мобильное меню">
+    <a class="mobile-bottom-link {{'active' if mode == 'all' else ''}}" href="{{group_home_url}}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Лента</span></a>
+    <a class="mobile-bottom-link {{'active' if mode == 'found' else ''}}" href="{{group_found_url}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 13.5 13.5 10.5M8 16l-1.5 1.5a3.2 3.2 0 0 1-4.5-4.5L6.5 8.5A3.2 3.2 0 0 1 11 8M16 8l1.5-1.5A3.2 3.2 0 0 1 22 11l-4.5 4.5A3.2 3.2 0 0 1 13 16"/></svg><span>Совпадения</span></a>
+    <a class="mobile-bottom-link" href="/collections"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2-2h3l2 2h4v10.75A1.75 1.75 0 0 1 18.75 20H5.25a1.75 1.75 0 0 1-1.75-1.75Z"/><path d="M3.5 10h17"/></svg><span>Подборки</span></a>
+    {% if current_user.role == 'admin' %}<a class="mobile-bottom-link" href="/notes"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span>Заметки</span></a>{% else %}<span class="mobile-bottom-link" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span>Заметки</span></span>{% endif %}
+    <a class="mobile-bottom-link" href="/account"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 21v-2a7.5 7.5 0 0 1 15 0v2"/></svg><span>Профиль</span></a>
+</nav>
 </div>
 <div class="keyword-backdrop hidden" id="keyword-modal" role="dialog" aria-modal="true" aria-labelledby="keyword-title">
     <section class="keyword-dialog">
@@ -1153,7 +1239,7 @@
     document.querySelectorAll('[data-mark-read]').forEach(button => {
         button.addEventListener('click', () => markRead(button.dataset.markRead));
     });
-    document.getElementById('mark-all-read').addEventListener('click', async () => {
+    async function markAllRead(){
         const previousUnread = new Set(unread);
         const previousUnreadCounts = {...unreadCounts};
         const previousGroupUnreadCount = groupUnreadCount;
@@ -1181,7 +1267,8 @@
             yahooUnreadCount = previousYahooUnreadCount;
             refreshUnread();
         }
-    });
+    }
+    document.querySelectorAll('[data-mark-all-read]').forEach(button => button.addEventListener('click', markAllRead));
     initializeUnread();
     const searchForm = search.closest('form');
     let searchTimer = null;
