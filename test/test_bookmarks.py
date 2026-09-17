@@ -371,7 +371,8 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertNotIn("Абзац 2", prepared["body_preview"])
         self.assertIn("Абзац 2", prepared["body_remainder"])
         page = client.get(f"/collections?folder={folder['id']}").get_data(as_text=True)
-        self.assertIn("Читать полностью", page)
+        self.assertIn(">Читать</button>", page)
+        self.assertNotIn("Читать полностью", page)
         self.assertIn("data-note-toggle", page)
         self.assertIn("Свернуть", page)
         self.assertNotIn("<details", page)
@@ -558,7 +559,8 @@ class PersonalBookmarksTests(unittest.TestCase):
 
         self.assertNotIn('class="folder-browser"', page)
         self.assertNotIn("Вложенных папок пока нет", page)
-        self.assertIn('class="collection-detail-actions"', page)
+        self.assertNotIn('class="collection-detail-actions"', page)
+        self.assertIn('class="collection-toolbar-actions"', page)
         self.assertIn('class="search" method="get"', page)
 
     def test_deleting_parent_promotes_child_collection(self):
