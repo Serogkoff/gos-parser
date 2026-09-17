@@ -177,6 +177,13 @@ class NotesTestModeTests(unittest.TestCase):
             inner,
         )
         self.assertNotIn('class="detail-button delete-detail"', inner)
+        self.assertIn('.dictionary-bookmark-form{display:none}', inner)
+        self.assertIn(
+            "['term','reading','translation','tags','example',"
+            "'example_translation','notes','source'].forEach",
+            inner,
+        )
+        self.assertIn("form.elements.language.value='ja'", inner)
         self.assertNotIn(">Добавить</button>", inner)
         self.assertIn('aria-label="Начать квиз"', inner)
         self.assertIn('class="dictionary-quiz-count">30</span>', inner)

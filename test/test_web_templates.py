@@ -60,7 +60,7 @@ class WebTemplateTests(unittest.TestCase):
             '<circle cx="10.5" cy="10.5" r="6.5"/>',
             'M3.5 7.5h6l2-2h3l2 2h4',
             'class="rail-logout"',
-            '>Выйти</button>',
+            'aria-label="Выйти" title="Выйти"',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)
@@ -121,7 +121,7 @@ class WebTemplateTests(unittest.TestCase):
             'class="article-viewport"',
             'article-viewport::-webkit-scrollbar{display:none}',
             'class="rail-logout"',
-            '>Выйти</button>',
+            'aria-label="Выйти" title="Выйти"',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)
@@ -156,7 +156,7 @@ class WebTemplateTests(unittest.TestCase):
             'class="icon-button add-action"',
             "confirm('Вы уверены, что хотите удалить подборку?')",
             'class="rail-logout"',
-            '>Выйти</button>',
+            'aria-label="Выйти" title="Выйти"',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)

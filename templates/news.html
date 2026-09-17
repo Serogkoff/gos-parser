@@ -346,9 +346,9 @@
         .profile-arrow{color:var(--muted);font-size:15px}
         .rail-logout-form{margin:0 8px}
         .rail-logout{
-            width:100%;min-height:34px;padding:0 10px;display:flex;align-items:center;
-            justify-content:center;gap:8px;border:1px solid var(--line);border-radius:3px;
-            color:var(--muted);background:#fff;font-size:11px;cursor:pointer
+            width:34px;min-height:34px;padding:0;display:flex;align-items:center;
+            justify-content:center;border:1px solid var(--line);border-radius:3px;
+            color:var(--muted);background:#fff;cursor:pointer
         }
         .rail-logout:hover{color:var(--coral-dark);border-color:#efb6b0;background:#fff7f5}
         .rail-logout svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -639,7 +639,7 @@
         </a>
         <form class="rail-logout-form" method="post" action="/logout">
             <input type="hidden" name="csrf_token" value="{{csrf_token}}">
-            <button class="rail-logout" type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H10M14 8l4 4-4 4M18 12H9"/></svg>Выйти</button>
+            <button class="rail-logout" type="submit" aria-label="Выйти" title="Выйти"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H10M14 8l4 4-4 4M18 12H9"/></svg></button>
         </form>
     </div>
 </aside>
