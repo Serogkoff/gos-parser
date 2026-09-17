@@ -61,6 +61,8 @@ class WebTemplateTests(unittest.TestCase):
             'M3.5 7.5h6l2-2h3l2 2h4',
             'class="rail-logout"',
             'aria-label="Выйти" title="Выйти"',
+            'class="rail-profile-link"',
+            'class="search-tools"',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)
@@ -70,6 +72,8 @@ class WebTemplateTests(unittest.TestCase):
             template.index('</aside>', template.index('<aside class="left-rail"'))
         ]
         self.assertNotIn('<span>Настройки</span>', rail)
+        self.assertNotIn('class="profile-arrow"', rail)
+        self.assertNotIn('id="collapse-sources"', template)
 
     def test_auth_template_uses_blurred_static_product_preview(self):
         template_path = Path(web_app.app.template_folder) / "auth.html"

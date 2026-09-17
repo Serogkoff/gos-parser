@@ -352,6 +352,7 @@
         }
         .rail-logout:hover{color:var(--coral-dark);border-color:#efb6b0;background:#fff7f5}
         .rail-logout svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+        .rail-profile{grid-template-columns:minmax(0,1fr) 28px}.rail-profile-link{min-width:0;display:grid;grid-template-columns:40px minmax(0,1fr);align-items:center;gap:10px}.rail-logout-form{margin:0}.rail-logout{width:28px;min-height:28px;border:0;border-radius:50%;background:transparent}.rail-logout:hover{color:#343430;border-color:transparent;background:#f2f1ed}
         .shell{
             width:auto;min-width:0;margin:0;padding:0 22px 48px;
             background:var(--paper)
@@ -413,6 +414,7 @@
         .search-range summary{width:28px;height:32px;padding:0;display:grid;place-items:center}
         .calendar-icon{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
         .tool-button{min-width:105px;max-width:105px;padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+        .search-tools{display:contents}.toolbar .search{width:170px;max-width:170px;flex:0 0 170px}.toolbar .search-range{position:relative;flex:0 0 32px}.toolbar .search-range summary,.toolbar .tool-button{width:32px;min-width:32px;max-width:32px;height:42px;padding:0;display:grid;place-items:center;border:0;border-radius:3px;color:var(--muted);background:transparent}.toolbar .search-range summary:hover,.toolbar .tool-button:hover{color:#343430;background:#f2f1ed}.toolbar .search-range[open] summary,.toolbar .search-range.active summary,.toolbar .tool-button.active{color:var(--coral);background:#fff7f5}.toolbar .tool-button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.toolbar .search-range-panel{top:48px;right:0}.toolbar{gap:6px}
         .source-summary{display:none}
         .content-grid{
             min-width:0;
@@ -629,18 +631,13 @@
         </a>{% endif %}
     </nav>
     <div class="rail-bottom">
-        <a class="rail-profile" href="/account">
-            <span class="profile-avatar">●</span>
-            <span class="profile-copy">
-                <strong>{{current_user.username}}</strong>
-                <small>{{'Администратор' if current_user.role == 'admin' else 'Пользователь'}}</small>
-            </span>
-            <span class="profile-arrow">⌄</span>
-        </a>
+        <div class="rail-profile">
+            <a class="rail-profile-link" href="/account"><span class="profile-avatar">●</span><span class="profile-copy"><strong>{{current_user.username}}</strong><small>{{'Администратор' if current_user.role == 'admin' else 'Пользователь'}}</small></span></a>
         <form class="rail-logout-form" method="post" action="/logout">
             <input type="hidden" name="csrf_token" value="{{csrf_token}}">
             <button class="rail-logout" type="submit" aria-label="Выйти" title="Выйти"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H10M14 8l4 4-4 4M18 12H9"/></svg></button>
         </form>
+        </div>
     </div>
 </aside>
 <main class="shell">
@@ -695,12 +692,10 @@
             </div>
         </div>
         <section class="toolbar">
-            <form class="search" method="get" action="{{current_path}}">
-                <span class="search-icon">⌕</span>
+            <form class="search-tools" method="get" action="{{current_path}}">
                 {% for src in source_filters %}<input type="hidden" name="source" value="{{src}}">{% endfor %}
                 {% if keyword_filter %}<input type="hidden" name="keyword" value="{{keyword_filter}}">{% endif %}
-                <input id="news-search" name="q" value="{{search_query}}"
-                       placeholder="Поиск" autocomplete="off">
+                <label class="search"><span class="search-icon">⌕</span><input id="news-search" name="q" value="{{search_query}}" placeholder="Поиск" autocomplete="off"></label>
                 <details class="search-range {{'active' if search_date_from or search_date_to else ''}}">
                     <summary title="Диапазон поиска" aria-label="Выбрать диапазон поиска"><svg class="calendar-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="15" rx="2"/><path d="M8 3.5v4M16 3.5v4M3.5 10h17"/></svg></summary>
                     <div class="search-range-panel">
@@ -714,7 +709,7 @@
                 </details>
             </form>
             {% if source_filters %}<div class="source-summary"><span>Выбрано: {{source_filters|length}}</span><a href="{{clear_sources_url}}">Сбросить</a></div>{% endif %}
-            <button class="tool-button {{'active' if keyword_filter else ''}}" id="keywords-open" type="button">☷ {{keyword_filter or 'Фильтры'}}</button>
+            <button class="tool-button {{'active' if keyword_filter else ''}}" id="keywords-open" type="button" aria-label="Фильтры" title="Фильтры"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7v6l-4 2v-8z"/></svg></button>
         </section>
     </header>
 
@@ -812,7 +807,6 @@
                             <svg class="panel-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 13h18M3 19h18"/></svg>
                             <span class="visually-hidden">Прочитать все новости</span>
                         </button>
-                        <button class="collapse-button" id="collapse-sources" type="button" aria-label="Свернуть список">−</button>
                     </div>
                 </header>
                 <div class="source-list {{'yahoo-expanded' if yahoo_expanded else ''}}" id="source-list">
@@ -1201,11 +1195,6 @@
             input.value = '';
         });
         searchForm.requestSubmit();
-    });
-    document.getElementById('collapse-sources').addEventListener('click', event => {
-        const list = document.getElementById('source-list');
-        list.classList.toggle('hidden');
-        event.currentTarget.textContent = list.classList.contains('hidden') ? '+' : '−';
     });
     const sourceList = document.getElementById('source-list');
     const yahooSourceToggle = document.getElementById('yahoo-source-toggle');

@@ -122,6 +122,7 @@ class NotesTestModeTests(unittest.TestCase):
             self.assertIn('class="icon-button new-event-button"', html)
             self.assertIn('aria-label="Новая заметка"', html)
             self.assertNotIn('</svg>Новая заметка</button>', html)
+            self.assertIn('.new-event-button,.record-add', html)
 
     def test_records_workspace_and_dictionary_are_visible(self):
         client, _ = self._client_for(self.admin)
