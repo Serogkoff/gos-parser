@@ -24,6 +24,37 @@ class WebTemplateTests(unittest.TestCase):
                 template = web_app.app.jinja_env.get_template(template_name)
                 self.assertEqual(template.name, template_name)
 
+    def test_all_pages_load_desktop_islands_without_changing_mobile_css(self):
+        template_dir = Path(web_app.app.template_folder)
+        template_names = (
+            "admin_incidents.html",
+            "admin_reliability.html",
+            "admin_sources.html",
+            "admin_system.html",
+            "article.html",
+            "auth.html",
+            "bookmarks.html",
+            "news.html",
+            "notes.html",
+            "settings.html",
+        )
+
+        for template_name in template_names:
+            with self.subTest(template=template_name):
+                template = (template_dir / template_name).read_text(encoding="utf-8")
+                self.assertIn("desktop-islands.css", template)
+                self.assertIn("2026.08.17.17.10", template)
+
+        stylesheet = (
+            template_dir.parent / "static" / "desktop-islands.css"
+        ).read_text(encoding="utf-8")
+        self.assertIn("@media (min-width: 921px)", stylesheet)
+        self.assertIn("--island-canvas: #f4f4f3", stylesheet)
+        self.assertIn(".page-news #news-list", stylesheet)
+        self.assertIn(".page-article .article-card", stylesheet)
+        self.assertIn(".page-bookmarks .folder-card", stylesheet)
+        self.assertIn(".page-notes .record-card", stylesheet)
+
     def test_news_template_keeps_editorial_desktop_layout(self):
         template_path = Path(web_app.app.template_folder) / "news.html"
         template = template_path.read_text(encoding="utf-8")
