@@ -69,7 +69,7 @@ class WebTemplateTests(unittest.TestCase):
             'class="mobile-source-open"',
             'aria-label="Управление источниками"',
             '.news-card h3{font-size:15px',
-            '.panel-title-actions{width:70px;flex:0 0 70px;display:grid;grid-template-columns:32px 32px;gap:6px}',
+            '.panel-title-actions{position:absolute;right:0;top:50%;width:70px;display:grid;grid-template-columns:32px 32px;gap:6px;transform:translateY(-50%)}',
             'min-height:52px;padding:0 0 0 8px',
             'grid-row:3;height:53px;gap:18px',
             '.site-section{padding-bottom:17px;font-size:16px}',

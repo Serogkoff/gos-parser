@@ -492,12 +492,12 @@
         .sidebar{min-width:0;margin-top:56px;gap:14px}
         .panel{overflow:visible;border:0;background:transparent}
         .panel-title{
-            min-height:52px;padding:0 0 0 8px;border:0;background:var(--paper)
+            position:relative;min-height:52px;padding:0 0 0 8px;border:0;background:var(--paper)
         }
         .panel-title h2,.coverage>h2{
             font-family:Georgia,"Times New Roman",serif;font-size:18px;font-weight:400
         }
-        .panel-title-actions{width:70px;flex:0 0 70px;display:grid;grid-template-columns:32px 32px;gap:6px}
+        .panel-title-actions{position:absolute;right:0;top:50%;width:70px;display:grid;grid-template-columns:32px 32px;gap:6px;transform:translateY(-50%)}
         .panel-title-actions button{
             width:32px;height:32px;padding:0!important;display:grid;place-items:center;
             border-radius:50%!important;font-size:0
@@ -676,7 +676,7 @@
             .sidebar.mobile-open .panel{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);background:#fff}
             .sidebar.mobile-open .panel-title{position:sticky;z-index:2;top:0;padding:0 14px;background:#fff;border-bottom:1px solid var(--line)}
             .sidebar.mobile-open .panel-title h2{font-size:20px}
-            .sidebar.mobile-open .panel-title-actions{width:auto;display:flex;flex:0 0 auto}
+            .sidebar.mobile-open .panel-title-actions{position:static;width:auto;display:flex;flex:0 0 auto;transform:none}
             .sidebar.mobile-open .panel-title-actions>button:not(.mobile-source-close){display:none}
             .mobile-source-close{width:34px!important;height:34px!important;padding:0!important;display:grid!important;place-items:center;border:0!important;color:var(--muted);background:transparent!important;font-size:25px!important}
             .sidebar.mobile-open .source-list{height:100%;overflow-y:auto;border:0;border-radius:0}
