@@ -402,9 +402,10 @@
         .clock-date{display:block;margin-top:7px;color:var(--muted);font-size:12px}
         .intro{display:none}
         .toolbar{
-            position:absolute;z-index:10;top:102px;right:0;min-height:42px;
-            width:250px;padding:0;display:flex;justify-content:flex-end;
-            gap:10px;border:0
+            position:absolute;z-index:10;top:102px;right:0;min-height:70px;
+            width:250px;padding:0;display:grid;
+            grid-template-columns:minmax(0,1fr) 32px 32px;
+            grid-template-rows:32px 32px;gap:6px;border:0
         }
         .search,.source-select,.tool-button{
             height:42px;border-color:var(--line);border-radius:4px;background:#fff
@@ -415,7 +416,7 @@
         .search-range summary{width:28px;height:32px;padding:0;display:grid;place-items:center}
         .calendar-icon{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
         .tool-button{min-width:105px;max-width:105px;padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
-        .search-tools{display:contents}.toolbar .search{width:170px;max-width:170px;flex:0 0 170px}.toolbar .search-range{position:relative;flex:0 0 32px}.toolbar .search-range summary,.toolbar .tool-button{width:32px;min-width:32px;max-width:32px;height:42px;padding:0;display:grid;place-items:center;border:0;border-radius:3px;color:var(--muted);background:transparent}.toolbar .search-range summary:hover,.toolbar .tool-button:hover{color:#343430;background:#f2f1ed}.toolbar .search-range[open] summary,.toolbar .search-range.active summary,.toolbar .tool-button.active{color:var(--coral);background:#fff7f5}.toolbar .tool-button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.toolbar .search-range-panel{top:48px;right:0}.toolbar{gap:6px}
+        .search-tools{display:contents}.toolbar .search{grid-column:1;grid-row:1/3;align-self:center;width:100%;max-width:none;height:42px}.toolbar .search-range{grid-column:2;grid-row:1;position:relative;width:32px;height:32px}.toolbar .tool-button{grid-column:3;grid-row:1}.toolbar>.source-order-toggle{grid-column:2;grid-row:2}.toolbar>.mark-all-read{grid-column:3;grid-row:2}.toolbar .search-range summary,.toolbar .tool-button,.toolbar>.source-order-toggle,.toolbar>.mark-all-read{width:32px;min-width:32px;max-width:32px;height:32px;padding:0!important;display:grid;place-items:center;border:0;border-radius:3px!important;color:var(--muted);background:transparent;font-size:0}.toolbar .search-range summary:hover,.toolbar .tool-button:hover,.toolbar>.source-order-toggle:hover,.toolbar>.source-order-toggle[aria-pressed="true"],.toolbar>.mark-all-read:hover{color:#343430;background:#f2f1ed}.toolbar .search-range[open] summary,.toolbar .search-range.active summary,.toolbar .tool-button.active{color:var(--coral);background:#fff7f5}.toolbar .tool-button svg,.toolbar>.source-order-toggle svg,.toolbar>.mark-all-read svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.toolbar .search-range-panel{top:38px;right:0}
         .source-summary{display:none}
         .content-grid{
             min-width:0;
@@ -629,6 +630,7 @@
             .search-icon{font-size:22px}.search input{font-size:16px}
             .toolbar .search-range{grid-column:2;grid-row:1;position:relative;width:36px;height:32px}
             .toolbar .tool-button{grid-column:3;grid-row:1}
+            .toolbar>.source-order-toggle,.toolbar>.mark-all-read{display:none}
             .mobile-mark-all-read{grid-column:2;grid-row:2}
             .mobile-source-open{grid-column:3;grid-row:2}
             .toolbar .search-range summary,.toolbar .tool-button,.mobile-mark-all-read{
@@ -810,6 +812,15 @@
             </form>
             {% if source_filters %}<div class="source-summary"><span>Выбрано: {{source_filters|length}}</span><a href="{{clear_sources_url}}">Сбросить</a></div>{% endif %}
             <button class="tool-button {{'active' if keyword_filter else ''}}" id="keywords-open" type="button" aria-label="Фильтры" title="Фильтры"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7v6l-4 2v-8z"/></svg></button>
+            <button class="source-order-toggle" id="source-order-toggle" type="button" aria-pressed="false" aria-label="Изменить порядок источников" title="Изменить порядок источников">
+                <svg class="panel-action-icon order-settings" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5 5L4 17v3h3l5.7-5.7a4 4 0 0 0 5-5l-2.5 2.5-3-3Z"/></svg>
+                <svg class="panel-action-icon order-done" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
+                <span class="visually-hidden">Изменить порядок источников</span>
+            </button>
+            <button class="mark-all-read" id="mark-all-read" type="button" data-mark-all-read aria-label="Прочитать все новости" title="Прочитать все новости">
+                <svg class="panel-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 13h18M3 19h18"/></svg>
+                <span class="visually-hidden">Прочитать все новости</span>
+            </button>
             <button class="mobile-mark-all-read" type="button" data-mark-all-read aria-label="Прочитать все новости" title="Прочитать все новости"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 13h18M3 19h18"/></svg></button>
             <button class="mobile-source-open" type="button" aria-expanded="false" aria-controls="sidebar" aria-label="Управление источниками" title="Управление источниками"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5 5L4 17v3h3l5.7-5.7a4 4 0 0 0 5-5l-2.5 2.5-3-3Z"/></svg></button>
         </section>
@@ -900,15 +911,6 @@
                 <header class="panel-title">
                     <h2>Источники</h2>
                     <div class="panel-title-actions">
-                        <button class="source-order-toggle" id="source-order-toggle" type="button" aria-pressed="false" aria-label="Изменить порядок источников" title="Изменить порядок источников">
-                            <svg class="panel-action-icon order-settings" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5 5L4 17v3h3l5.7-5.7a4 4 0 0 0 5-5l-2.5 2.5-3-3Z"/></svg>
-                            <svg class="panel-action-icon order-done" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
-                            <span class="visually-hidden">Изменить порядок источников</span>
-                        </button>
-                        <button class="mark-all-read" id="mark-all-read" type="button" data-mark-all-read aria-label="Прочитать все новости" title="Прочитать все новости">
-                            <svg class="panel-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 13h18M3 19h18"/></svg>
-                            <span class="visually-hidden">Прочитать все новости</span>
-                        </button>
                         <button class="mobile-source-close" type="button" aria-label="Закрыть источники" title="Закрыть">×</button>
                     </div>
                 </header>
