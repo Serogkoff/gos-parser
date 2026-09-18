@@ -690,8 +690,8 @@
                 width:100%;min-height:68px;padding:7px 8px calc(6px + env(safe-area-inset-bottom));
                 display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
                 border-top:1px solid var(--line);background:#fff;
-                -webkit-transform:translate3d(0,var(--mobile-nav-shift,0px),0);
-                transform:translate3d(0,var(--mobile-nav-shift,0px),0);
+                -webkit-transform:translate3d(0,calc(100dvh - 100svh),0);
+                transform:translate3d(0,calc(100dvh - 100svh),0);
                 -webkit-backface-visibility:hidden;backface-visibility:hidden;
                 will-change:transform;isolation:isolate
             }
@@ -1045,34 +1045,6 @@
     let brandClicks = 0;
     let brandClickTimer = null;
     let brandHideTimer = null;
-    const mobileBottomNav = document.querySelector('.mobile-bottom-nav');
-    let mobileNavShift = 0;
-    let mobileNavFrame = 0;
-
-    function syncMobileBottomNav(){
-        if(!mobileBottomNav || window.matchMedia('(min-width:681px)').matches){
-            mobileNavShift = 0;
-            mobileBottomNav?.style.setProperty('--mobile-nav-shift', '0px');
-            return;
-        }
-        cancelAnimationFrame(mobileNavFrame);
-        mobileNavFrame = requestAnimationFrame(() => {
-            const viewport = window.visualViewport;
-            const targetBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
-            const currentBottom = mobileBottomNav.getBoundingClientRect().bottom;
-            const unshiftedBottom = currentBottom - mobileNavShift;
-            mobileNavShift = Math.round(targetBottom - unshiftedBottom);
-            mobileBottomNav.style.setProperty('--mobile-nav-shift', `${mobileNavShift}px`);
-        });
-    }
-
-    window.addEventListener('resize', syncMobileBottomNav, {passive:true});
-    window.addEventListener('orientationchange', syncMobileBottomNav, {passive:true});
-    window.addEventListener('scroll', syncMobileBottomNav, {passive:true});
-    window.visualViewport?.addEventListener('resize', syncMobileBottomNav, {passive:true});
-    window.visualViewport?.addEventListener('scroll', syncMobileBottomNav, {passive:true});
-    syncMobileBottomNav();
-
     brandHome.addEventListener('click', event => {
         if(
             event.detail === 0 || event.button !== 0 ||
