@@ -365,7 +365,7 @@
         }
         .rail-brand .brand-easter-logo{left:-4px;width:190px}
         .mobile-brand{display:none}
-        .mobile-bottom-nav,.mobile-mark-all-read{display:none}
+        .mobile-bottom-nav,.mobile-mark-all-read,.mobile-source-open,.mobile-source-close,.mobile-source-backdrop{display:none}
         .site-sections{
             grid-column:1;grid-row:2;height:44px;justify-content:flex-start;
             gap:32px;overflow:visible
@@ -616,23 +616,28 @@
             .site-section{padding-bottom:17px;font-size:18px}
             .toolbar{
                 grid-column:1/-1;grid-row:4;position:static;width:100%;
-                min-height:48px;margin:15px 0 0;display:grid;
-                grid-template-columns:minmax(0,1fr) 48px 48px 48px;gap:8px
+                min-height:66px;margin:15px 0 0;display:grid;
+                grid-template-columns:minmax(0,1fr) 36px 36px;
+                grid-template-rows:32px 32px;gap:2px 7px
             }
             .search-tools{display:contents}
             .toolbar .search{
-                width:100%;max-width:none;height:48px;padding:0 13px;
+                grid-column:1;grid-row:1/3;align-self:center;width:100%;max-width:none;
+                height:48px;padding:0 13px;
                 border:1px solid var(--line);border-radius:4px
             }
             .search-icon{font-size:22px}.search input{font-size:16px}
-            .toolbar .search-range{position:relative;width:48px;height:48px}
+            .toolbar .search-range{grid-column:2;grid-row:1;position:relative;width:36px;height:32px}
+            .toolbar .tool-button{grid-column:3;grid-row:1}
+            .mobile-mark-all-read{grid-column:2;grid-row:2}
+            .mobile-source-open{grid-column:3;grid-row:2}
             .toolbar .search-range summary,.toolbar .tool-button,.mobile-mark-all-read{
-                width:48px;min-width:48px;max-width:48px;height:48px;
-                border:1px solid var(--line);border-radius:4px;background:#fff
+                width:36px;min-width:36px;max-width:36px;height:32px;
+                border:0;border-radius:3px;background:transparent
             }
-            .mobile-mark-all-read{padding:0;place-items:center;color:var(--muted)}
-            .toolbar .search-range summary:hover,.toolbar .tool-button:hover,.mobile-mark-all-read:hover{color:#343430;background:#f6f5f1}
-            .calendar-icon,.toolbar .tool-button svg,.mobile-mark-all-read svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+            .mobile-mark-all-read,.mobile-source-open{padding:0;display:grid;place-items:center;border:0;border-radius:3px;color:var(--muted);background:transparent}
+            .toolbar .search-range summary:hover,.toolbar .tool-button:hover,.mobile-mark-all-read:hover,.mobile-source-open:hover,.mobile-source-open[aria-expanded="true"]{color:#343430;background:#f2f1ed}
+            .calendar-icon,.toolbar .tool-button svg,.mobile-mark-all-read svg,.mobile-source-open svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
             .toolbar .search-range-panel{
                 position:fixed;top:auto;right:18px;left:18px;width:auto
             }
@@ -654,14 +659,31 @@
             .source-name{font-size:14px}.meta time{font-size:11px}
             .source-mark{left:0;top:0;width:48px;height:48px;font-size:19px}
             .source-emblem-main{left:0;top:0;width:48px;height:48px}
-            .news-card h3{font-size:22px;line-height:1.08;letter-spacing:-.02em}
-            .news-summary{margin-top:7px;font-size:14px;line-height:1.28;-webkit-line-clamp:2}
+            .news-card h3{font-size:15px;line-height:1.18;letter-spacing:-.01em}
+            .news-card h3 a{-webkit-line-clamp:4}
+            .news-summary{margin-top:6px;font-size:12px;line-height:1.32;-webkit-line-clamp:3}
             .unread-label{top:10px;right:9px;padding:5px 9px}
             .save{top:45px;right:14px;width:24px;height:30px}
             .save svg{width:17px;height:21px}
             .chips{margin-top:9px}
             .pagination{padding-bottom:6px}
             .sidebar{display:none}
+            .sidebar.mobile-open{
+                position:fixed;z-index:70;top:0;right:0;bottom:calc(68px + env(safe-area-inset-bottom));
+                width:min(360px,calc(100% - 30px));margin:0;padding:0;display:block;
+                overflow:auto;background:#fff;box-shadow:-12px 0 34px rgba(25,25,22,.18)
+            }
+            .sidebar.mobile-open .panel{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);background:#fff}
+            .sidebar.mobile-open .panel-title{position:sticky;z-index:2;top:0;padding:0 14px;background:#fff;border-bottom:1px solid var(--line)}
+            .sidebar.mobile-open .panel-title h2{font-size:20px}
+            .sidebar.mobile-open .panel-title-actions>button:not(.mobile-source-close){display:none}
+            .mobile-source-close{width:34px!important;height:34px!important;padding:0!important;display:grid!important;place-items:center;border:0!important;color:var(--muted);background:transparent!important;font-size:25px!important}
+            .sidebar.mobile-open .source-list{height:100%;overflow-y:auto;border:0;border-radius:0}
+            .sidebar.mobile-open .source-mute-toggle{display:grid}
+            .sidebar.mobile-open .source-link{padding-left:14px;pointer-events:none}
+            .sidebar.mobile-open .yahoo-source-row{max-height:50px;min-height:50px;opacity:1}
+            .sidebar.mobile-open .coverage{display:none}
+            .mobile-source-backdrop.mobile-open{position:fixed;z-index:65;inset:0 0 calc(68px + env(safe-area-inset-bottom));display:block;border:0;background:rgba(17,17,15,.28)}
             .mobile-bottom-nav{
                 position:fixed;z-index:50;right:0;bottom:0;left:0;
                 min-height:68px;padding:7px 8px calc(6px + env(safe-area-inset-bottom));
@@ -789,6 +811,7 @@
             {% if source_filters %}<div class="source-summary"><span>Выбрано: {{source_filters|length}}</span><a href="{{clear_sources_url}}">Сбросить</a></div>{% endif %}
             <button class="tool-button {{'active' if keyword_filter else ''}}" id="keywords-open" type="button" aria-label="Фильтры" title="Фильтры"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7v6l-4 2v-8z"/></svg></button>
             <button class="mobile-mark-all-read" type="button" data-mark-all-read aria-label="Прочитать все новости" title="Прочитать все новости"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 13h18M3 19h18"/></svg></button>
+            <button class="mobile-source-open" type="button" aria-expanded="false" aria-controls="sidebar" aria-label="Управление источниками" title="Управление источниками"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5 5L4 17v3h3l5.7-5.7a4 4 0 0 0 5-5l-2.5 2.5-3-3Z"/></svg></button>
         </section>
     </header>
 
@@ -886,6 +909,7 @@
                             <svg class="panel-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 13h18M3 19h18"/></svg>
                             <span class="visually-hidden">Прочитать все новости</span>
                         </button>
+                        <button class="mobile-source-close" type="button" aria-label="Закрыть источники" title="Закрыть">×</button>
                     </div>
                 </header>
                 <div class="source-list {{'yahoo-expanded' if yahoo_expanded else ''}}" id="source-list">
@@ -975,6 +999,7 @@
             </section>
             {% endif %}
         </aside>
+        <button class="mobile-source-backdrop" type="button" aria-label="Закрыть источники"></button>
     </div>
 </main>
 <nav class="mobile-bottom-nav" aria-label="Мобильное меню">
@@ -1356,6 +1381,9 @@
         }
     }
     const sourceOrderToggle = document.getElementById('source-order-toggle');
+    const mobileSourceOpen = document.querySelector('.mobile-source-open');
+    const mobileSourceClose = document.querySelector('.mobile-source-close');
+    const mobileSourceBackdrop = document.querySelector('.mobile-source-backdrop');
     let draggedSourceRow = null;
     let sourceOrderChanged = false;
     let sourceMutesChanged = false;
@@ -1407,6 +1435,33 @@
             sourceMutesChanged = true;
         });
     }
+    function setMobileSourcesOpen(open){
+        document.getElementById('sidebar').classList.toggle('mobile-open', open);
+        mobileSourceBackdrop.classList.toggle('mobile-open', open);
+        mobileSourceOpen.setAttribute('aria-expanded', String(open));
+        document.body.style.overflow = open ? 'hidden' : '';
+    }
+    async function closeMobileSources(){
+        if(sourceMutesChanged){
+            mobileSourceClose.disabled = true;
+            try{
+                await saveSourceMutes();
+                window.location.reload();
+                return;
+            }catch(error){
+                window.alert(error.message);
+            }finally{
+                mobileSourceClose.disabled = false;
+            }
+        }
+        setMobileSourcesOpen(false);
+    }
+    mobileSourceOpen.addEventListener('click', () => {
+        sourceMutesChanged = false;
+        setMobileSourcesOpen(true);
+    });
+    mobileSourceClose.addEventListener('click', closeMobileSources);
+    mobileSourceBackdrop.addEventListener('click', closeMobileSources);
     function setSourceOrderEditing(editing){
         sourceList.classList.toggle('order-editing', editing);
         if(editing && yahooSourceToggle){

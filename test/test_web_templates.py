@@ -66,6 +66,10 @@ class WebTemplateTests(unittest.TestCase):
             'class="mobile-bottom-nav"',
             'aria-label="Мобильное меню"',
             'grid-template-columns:repeat(5,minmax(0,1fr))',
+            'class="mobile-source-open"',
+            'aria-label="Управление источниками"',
+            '.news-card h3{font-size:15px',
+            'document.querySelectorAll(\'[data-mark-all-read]\')',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)
