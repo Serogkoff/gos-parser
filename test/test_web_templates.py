@@ -69,6 +69,8 @@ class WebTemplateTests(unittest.TestCase):
             'class="mobile-source-open"',
             'aria-label="Управление источниками"',
             '.news-card h3{font-size:15px',
+            'grid-row:3;height:53px;gap:18px',
+            '.site-section{padding-bottom:17px;font-size:16px}',
             'document.querySelectorAll(\'[data-mark-all-read]\')',
         ):
             with self.subTest(marker=marker):
