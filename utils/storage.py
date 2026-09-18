@@ -229,6 +229,10 @@ def save_dictionary_card(user_id, deck_id, term, reading, translation,
     )
 
 
+def import_dictionary_cards(user_id, deck_id, cards):
+    return _WORKSPACE_STORAGE.import_dictionary_cards(user_id, deck_id, cards)
+
+
 def list_dictionary_cards(user_id, deck_id, due_only=False):
     return _WORKSPACE_STORAGE.list_dictionary_cards(user_id, deck_id, due_only)
 

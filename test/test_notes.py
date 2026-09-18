@@ -1,7 +1,9 @@
 import gc
+import json
 import tempfile
 import unittest
 from datetime import date, timedelta
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -168,6 +170,9 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn('<summary aria-label="Фильтры" title="Фильтры">', inner)
         self.assertNotIn(">Фильтры</summary>", inner)
         self.assertIn('aria-label="Добавить термин"', inner)
+        self.assertIn('aria-label="Импортировать JSON"', inner)
+        self.assertIn('id="dictionary-import-dialog"', inner)
+        self.assertIn('name="dictionary_file"', inner)
         self.assertIn('class="dictionary-list-tools"', inner)
         self.assertIn('aria-label="Изменить выбранный термин"', inner)
         self.assertIn('aria-label="Удалить выбранный термин"', inner)
@@ -198,6 +203,62 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn('class="quiz-ratings" data-quiz-ratings hidden', quiz)
         self.assertIn('data-quiz-rating="again">Снова</button>', quiz)
         self.assertNotIn('data-quiz-rating="again">1 ', quiz)
+
+    def test_dictionary_cards_can_be_imported_from_json(self):
+        client, token = self._client_for(self.admin)
+        deck_id = storage.create_dictionary_deck(self.admin["id"], "Выборы")
+        payload = {
+            "source": "共同通信・選挙記事",
+            "cards": [
+                {
+                    "term": "下院選", "reading": "かいんせん",
+                    "translation": "выборы в нижнюю палату",
+                    "tags": ["Выборы", "Политика"],
+                },
+                {
+                    "term": "議席", "reading": "ぎせき",
+                    "translation": "депутатское место",
+                },
+            ],
+        }
+        response = client.post(
+            "/notes?view=dictionary&mode=dictionary",
+            data={
+                "csrf_token": token,
+                "action": "import_dictionary_cards",
+                "deck_id": str(deck_id),
+                "dictionary_file": (
+                    BytesIO(json.dumps(payload, ensure_ascii=False).encode("utf-8")),
+                    "elections.json",
+                ),
+            },
+            content_type="multipart/form-data",
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("Импортировано карточек: 2", html)
+        cards = storage.list_dictionary_cards(self.admin["id"], deck_id)
+        self.assertEqual({card["term"] for card in cards}, {"下院選", "議席"})
+        self.assertTrue(all(card["source"] == "共同通信・選挙記事" for card in cards))
+
+        duplicate = client.post(
+            "/notes?view=dictionary&mode=dictionary",
+            data={
+                "csrf_token": token,
+                "action": "import_dictionary_cards",
+                "deck_id": str(deck_id),
+                "dictionary_file": (
+                    BytesIO(json.dumps(payload, ensure_ascii=False).encode("utf-8")),
+                    "elections.json",
+                ),
+            },
+            content_type="multipart/form-data",
+            follow_redirects=True,
+        )
+        self.assertIn(
+            "дубликатов пропущено: 2", duplicate.get_data(as_text=True)
+        )
 
     def test_politics_demo_is_added_beside_an_existing_dictionary_once(self):
         storage.create_dictionary_deck(self.admin["id"], "Личный словарь")

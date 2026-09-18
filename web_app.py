@@ -92,6 +92,7 @@ from utils.storage import (
     list_calendar_events,
     list_dictionary_cards,
     list_dictionary_decks,
+    import_dictionary_cards,
     list_personal_notes,
     list_news_index,
     list_unread_news_index,
@@ -1335,6 +1336,42 @@ def notes_page():
                     "dictionary", mode="dictionary",
                     deck=request.form.get("deck_id"), card=card_id,
                     message="Карточка сохранена",
+                )
+            if action == "import_dictionary_cards":
+                upload = request.files.get("dictionary_file")
+                if upload is None or not upload.filename:
+                    raise ValueError("Выберите JSON-файл с карточками")
+                raw = upload.read(1_000_001)
+                if len(raw) > 1_000_000:
+                    raise ValueError("JSON-файл не должен превышать 1 МБ")
+                try:
+                    payload = json.loads(raw.decode("utf-8-sig"))
+                except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                    raise ValueError("Не удалось прочитать JSON-файл") from error
+                if isinstance(payload, list):
+                    payload = {"cards": payload}
+                if not isinstance(payload, dict):
+                    raise ValueError("Корневой элемент JSON должен быть объектом")
+                cards = payload.get("cards")
+                package_source = str(payload.get("source") or "").strip()
+                if isinstance(cards, list) and package_source:
+                    cards = [
+                        {**card, "source": card.get("source") or package_source}
+                        if isinstance(card, dict) else card
+                        for card in cards
+                    ]
+                result = import_dictionary_cards(
+                    user_id, request.form.get("deck_id"), cards,
+                )
+                message = (
+                    f"Импортировано карточек: {result['added']}; "
+                    f"дубликатов пропущено: {result['skipped']}"
+                )
+                return _notes_redirect(
+                    "dictionary", mode="dictionary",
+                    deck=request.form.get("deck_id"),
+                    card=result["card_ids"][0] if result["card_ids"] else None,
+                    message=message,
                 )
             if action == "delete_dictionary_card":
                 delete_dictionary_card(user_id, request.form.get("card_id"))

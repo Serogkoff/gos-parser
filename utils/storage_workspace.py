@@ -617,6 +617,105 @@ class PersonalWorkspaceStorage:
             )
         return int(card_id)
 
+    def import_dictionary_cards(self, user_id, deck_id, cards):
+        """Atomically imports validated cards and skips exact term/reading pairs."""
+        user_id = self._validate_user_id(user_id)
+        try:
+            deck_id = int(deck_id)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Словарь не найден") from error
+        if not isinstance(cards, list) or not cards:
+            raise ValueError("В JSON нет карточек для импорта")
+        if len(cards) > 200:
+            raise ValueError("За один раз можно импортировать не больше 200 карточек")
+
+        prepared = []
+        package_keys = set()
+        skipped_in_file = 0
+        for index, card in enumerate(cards, start=1):
+            if not isinstance(card, dict):
+                raise ValueError(f"Карточка {index}: ожидался объект")
+            try:
+                term = _validated_notes_text(
+                    card.get("term"), "Слово", 200, required=True
+                )
+                reading = _validated_notes_text(
+                    card.get("reading"), "Чтение", 300
+                )
+                translation = _validated_notes_text(
+                    card.get("translation"), "Перевод", 1000, required=True
+                )
+                language = _validated_notes_text(
+                    card.get("language", "ja"), "Язык", 20
+                ) or "ja"
+                tags = card.get("tags", "")
+                if isinstance(tags, list):
+                    tags = ", ".join(str(tag).strip() for tag in tags if str(tag).strip())
+                tags = _validated_notes_text(tags, "Теги", 500)
+                example = _validated_notes_text(
+                    card.get("example"), "Пример", 2000
+                )
+                example_translation = _validated_notes_text(
+                    card.get("example_translation"), "Перевод примера", 2000
+                )
+                notes = _validated_notes_text(card.get("notes"), "Заметка", 5000)
+                source = _validated_notes_text(card.get("source"), "Источник", 1000)
+            except ValueError as error:
+                raise ValueError(f"Карточка {index}: {error}") from error
+
+            key = (term.casefold(), reading.casefold())
+            if key in package_keys:
+                skipped_in_file += 1
+                continue
+            package_keys.add(key)
+            prepared.append((
+                term, reading, translation, language, tags, example,
+                example_translation, notes, source,
+            ))
+
+        now = datetime.now().isoformat(timespec="seconds")
+        added_ids = []
+        skipped_existing = 0
+        with self._lock, self._connection_factory() as connection:
+            if connection.execute(
+                "SELECT 1 FROM dictionary_decks WHERE id = ? AND user_id = ?",
+                (deck_id, user_id),
+            ).fetchone() is None:
+                raise ValueError("Словарь не найден")
+            existing_keys = {
+                (row["term"].casefold(), row["reading"].casefold())
+                for row in connection.execute(
+                    """SELECT term, reading FROM dictionary_cards
+                       WHERE deck_id = ? AND user_id = ?""",
+                    (deck_id, user_id),
+                ).fetchall()
+            }
+            for card in prepared:
+                key = (card[0].casefold(), card[1].casefold())
+                if key in existing_keys:
+                    skipped_existing += 1
+                    continue
+                cursor = connection.execute(
+                    """INSERT INTO dictionary_cards(
+                           deck_id, user_id, term, reading, translation, language,
+                           tags, example, example_translation, notes, source,
+                           created_at, updated_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (deck_id, user_id, *card, now, now),
+                )
+                added_ids.append(int(cursor.lastrowid))
+                existing_keys.add(key)
+            if added_ids:
+                connection.execute(
+                    "UPDATE dictionary_decks SET updated_at = ? WHERE id = ?",
+                    (now, deck_id),
+                )
+        return {
+            "added": len(added_ids),
+            "skipped": skipped_in_file + skipped_existing,
+            "card_ids": added_ids,
+        }
+
     def list_dictionary_cards(self, user_id, deck_id, due_only=False):
         user_id = self._validate_user_id(user_id)
         try:

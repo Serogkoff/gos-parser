@@ -135,6 +135,40 @@ class PersonalWorkspaceStorageTests(unittest.TestCase):
             storage.list_dictionary_cards(self.reader["id"], deck_id), []
         )
 
+    def test_dictionary_import_is_atomic_and_skips_duplicates(self):
+        deck_id = storage.create_dictionary_deck(self.owner["id"], "Выборы")
+        storage.save_dictionary_card(
+            self.owner["id"], deck_id, "議席", "ぎせき", "мандат"
+        )
+        result = storage.import_dictionary_cards(self.owner["id"], deck_id, [
+            {"term": "議席", "reading": "ぎせき", "translation": "место"},
+            {
+                "term": "投票", "reading": "とうひょう",
+                "translation": "голосование", "tags": ["Выборы", "N2"],
+            },
+            {"term": "投票", "reading": "とうひょう", "translation": "голос"},
+        ])
+        self.assertEqual(result["added"], 1)
+        self.assertEqual(result["skipped"], 2)
+        cards = storage.list_dictionary_cards(self.owner["id"], deck_id)
+        self.assertEqual({card["term"] for card in cards}, {"議席", "投票"})
+        self.assertEqual(
+            next(card for card in cards if card["term"] == "投票")["tags"],
+            "Выборы, N2",
+        )
+
+        with self.assertRaisesRegex(ValueError, "Карточка 2"):
+            storage.import_dictionary_cards(self.owner["id"], deck_id, [
+                {"term": "政党", "reading": "せいとう", "translation": "партия"},
+                {"term": "候補者", "reading": "こうほしゃ"},
+            ])
+        self.assertNotIn(
+            "政党",
+            {card["term"] for card in storage.list_dictionary_cards(
+                self.owner["id"], deck_id
+            )},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
