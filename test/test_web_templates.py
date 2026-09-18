@@ -71,8 +71,10 @@ class WebTemplateTests(unittest.TestCase):
             '.news-card h3{font-size:15px',
             '.panel-title-actions{position:absolute;right:0;top:50%;width:70px;display:grid;grid-template-columns:32px 32px;gap:6px;transform:translateY(-50%)}',
             'min-height:52px;padding:0 0 0 8px',
-            'grid-row:3;height:53px;gap:18px',
-            '.site-section{padding-bottom:17px;font-size:16px}',
+            'grid-row:3;height:53px;gap:10px',
+            '.site-section{padding:0 1px 17px;font-size:14px}',
+            '-webkit-transform:translate3d(0,0,0);transform:translate3d(0,0,0)',
+            '-webkit-backface-visibility:hidden;backface-visibility:hidden',
             'document.querySelectorAll(\'[data-mark-all-read]\')',
         ):
             with self.subTest(marker=marker):
