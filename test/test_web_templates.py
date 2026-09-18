@@ -73,7 +73,9 @@ class WebTemplateTests(unittest.TestCase):
             'min-height:52px;padding:0 0 0 8px',
             'grid-row:3;height:53px;gap:12px',
             '.site-section{padding:0 1px 17px;font-size:15px}',
-            'transform:translate3d(0,calc(100dvh - 100svh),0)',
+            'top:calc(100dvh - 68px - env(safe-area-inset-bottom))',
+            'height:calc(68px + env(safe-area-inset-bottom))',
+            'transform:translate3d(0,0,0)',
             '-webkit-backface-visibility:hidden;backface-visibility:hidden',
             'document.querySelectorAll(\'[data-mark-all-read]\')',
         ):
