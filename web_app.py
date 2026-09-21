@@ -397,7 +397,10 @@ def add_security_headers(response):
     )
     if request.endpoint == "static":
         static_filename = str((request.view_args or {}).get("filename", ""))
-        if static_filename.startswith("source-logos/"):
+        if (
+            static_filename.startswith("source-logos/")
+            or static_filename == "news.css"
+        ):
             response.headers["Cache-Control"] = (
                 "public, max-age=31536000, immutable"
             )
@@ -2497,6 +2500,7 @@ def render_news_page(
         },
         defense_source=DEFENSE_SOURCE,
         asset_version=SOURCE_LOGO_VERSION,
+        feed_asset_version=PROJECT_VERSION,
         group_title=group_title,
         group_eyebrow=group_eyebrow,
         group_home=group_home,

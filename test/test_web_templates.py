@@ -27,6 +27,17 @@ class WebTemplateTests(unittest.TestCase):
     def test_news_template_keeps_editorial_desktop_layout(self):
         template_path = Path(web_app.app.template_folder) / "news.html"
         template = template_path.read_text(encoding="utf-8")
+        stylesheet = (
+            Path(web_app.app.static_folder) / "news.css"
+        ).read_text(encoding="utf-8")
+        page_source = template + stylesheet
+
+        self.assertIn(
+            "filename='news.css'",
+            template,
+        )
+        self.assertIn("feed_asset_version|urlencode", template)
+        self.assertNotIn("<style>", template)
 
         for marker in (
             'class="app-layout"',
@@ -83,7 +94,7 @@ class WebTemplateTests(unittest.TestCase):
             'document.querySelectorAll(\'[data-mark-all-read]\')',
         ):
             with self.subTest(marker=marker):
-                self.assertIn(marker, template)
+                self.assertIn(marker, page_source)
 
         rail = template[
             template.index('<aside class="left-rail"'):
@@ -93,8 +104,8 @@ class WebTemplateTests(unittest.TestCase):
         self.assertNotIn('class="profile-arrow"', rail)
         self.assertNotIn('id="collapse-sources"', template)
         self.assertNotIn('class="mobile-search-jump"', template)
-        self.assertIn('.rail-icon{margin-left:4px}', template)
-        self.assertIn('align-self:start;transform:translateY(-5px)', template)
+        self.assertIn('.rail-icon{margin-left:4px}', stylesheet)
+        self.assertIn('align-self:start;transform:translateY(-5px)', stylesheet)
 
     def test_auth_template_uses_blurred_static_product_preview(self):
         template_path = Path(web_app.app.template_folder) / "auth.html"

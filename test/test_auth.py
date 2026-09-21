@@ -133,6 +133,17 @@ class AuthenticationTests(unittest.TestCase):
         finally:
             response.close()
 
+    def test_versioned_feed_styles_use_long_public_cache(self):
+        response = self.client.get("/static/news.css")
+        try:
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.headers["Cache-Control"],
+                "public, max-age=31536000, immutable",
+            )
+        finally:
+            response.close()
+
     def test_public_mode_rejects_unknown_host_and_remote_setup(self):
         web_app.app.config["ALLOWED_HOSTS"] = {"news-monitor.ru"}
 

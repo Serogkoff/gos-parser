@@ -187,11 +187,14 @@ class PersonalSourceOrderTests(unittest.TestCase):
         self.assertIn('data-source-mute="МЧС"', source_row)
         self.assertIn('aria-pressed="true"', source_row)
         self.assertNotIn("Материал МЧС", html)
-        self.assertIn(".source-mute-toggle{", html)
-        self.assertIn("display:none", html)
+        stylesheet = (
+            Path(web_app.app.static_folder) / "news.css"
+        ).read_text(encoding="utf-8")
+        self.assertIn(".source-mute-toggle{", stylesheet)
+        self.assertIn("display:none", stylesheet)
         self.assertIn(
             ".source-list.order-editing .source-mute-toggle{display:grid}",
-            html,
+            stylesheet,
         )
 
         with patch.object(web_app, "load_json", side_effect=self._app_data):

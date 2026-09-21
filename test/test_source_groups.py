@@ -1,5 +1,6 @@
 import unittest
 from datetime import date
+from pathlib import Path
 from unittest.mock import patch
 
 import config
@@ -424,9 +425,15 @@ class SourceGroupPageTests(unittest.TestCase):
             response = web_app.app.test_client().get("/found")
 
         html = response.get_data(as_text=True)
+        stylesheet = (
+            Path(web_app.app.static_folder) / "news.css"
+        ).read_text(encoding="utf-8")
         self.assertEqual(response.status_code, 200)
         self.assertIn('<body class="mode-found">', html)
-        self.assertIn('.mode-found .unread-count{color:var(--coral-dark)}', html)
+        self.assertIn(
+            '.mode-found .unread-count{color:var(--coral-dark)}',
+            stylesheet,
+        )
         self.assertIn('data-unread-source="МЧС">+1</span>', html)
         self.assertIn('data-mark-read="https://mchs.gov.ru/news/1">Новая</button>', html)
         self.assertNotIn("Совпадение с ключевыми словами", html)
