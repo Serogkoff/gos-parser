@@ -46,6 +46,22 @@ class WebTemplateTests(unittest.TestCase):
         self.assertNotIn("const cards =", template)
 
         for marker in (
+            "async function navigateToFeed(value, options = {})",
+            "headers:{'X-Requested-With':'feed-navigation'}",
+            "currentShell.replaceWith(nextShell)",
+            "currentMobileNav.replaceWith(nextMobileNav)",
+            "window.history.pushState({feedNavigation:true}",
+            "window.addEventListener('popstate'",
+            "if(navigationRequest) navigationRequest.abort()",
+            "initializeNewsPage();",
+        ):
+            with self.subTest(partial_navigation_marker=marker):
+                self.assertIn(marker, javascript)
+
+        self.assertNotIn("document.startViewTransition", javascript)
+        self.assertNotIn("applyFilters()", javascript)
+
+        for marker in (
             'class="app-layout"',
             'class="left-rail"',
             'class="content-grid"',

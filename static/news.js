@@ -1,4 +1,14 @@
+(function(){
 'use strict';
+
+let clockTimer = null;
+let navigationRequest = null;
+let pageGeneration = 0;
+let pendingSearchTimer = null;
+
+function initializeNewsPage(){
+const generation = ++pageGeneration;
+if(pendingSearchTimer) window.clearTimeout(pendingSearchTimer);
 
 const pageConfigElement = document.getElementById('news-page-config');
 const pageConfig = JSON.parse(pageConfigElement.textContent);
@@ -16,6 +26,8 @@ const cards = [...document.querySelectorAll('.news-card')];
     let saved = new Set(pageConfig.savedUrls);
     const legacySavedStorageKey = 'monitor-saved';
     const legacyUnreadStorageKey = 'monitor-unread-v1';
+    if(brandHome.dataset.feedBrandReady !== 'true'){
+    brandHome.dataset.feedBrandReady = 'true';
     let brandClicks = 0;
     let brandClickTimer = null;
     let brandHideTimer = null;
@@ -46,11 +58,12 @@ const cards = [...document.querySelectorAll('.news-card')];
 
         brandClickTimer = setTimeout(() => {
             if(brandClicks === 1){
-                window.location.assign(brandHome.href);
+                navigateToFeed(brandHome.href);
             }
             brandClicks = 0;
         }, 650);
     });
+    }
 
     let unread = new Set(pageConfig.unreadUrls);
     let unreadCounts = pageConfig.unreadCounts;
@@ -124,6 +137,7 @@ const cards = [...document.querySelectorAll('.news-card')];
     }
 
     function refreshUnread(){
+        if(generation !== pageGeneration) return;
         document.querySelectorAll('[data-unread-source]').forEach(badge => {
             const source = badge.dataset.unreadSource;
             const count = source === '__all__'
@@ -172,6 +186,7 @@ const cards = [...document.querySelectorAll('.news-card')];
     }
 
     function refreshSavedIcons(){
+        if(generation !== pageGeneration) return;
         document.querySelectorAll('[data-save]').forEach(button => {
             const active = saved.has(button.dataset.save);
             button.classList.toggle('active', active);
@@ -273,10 +288,17 @@ const cards = [...document.querySelectorAll('.news-card')];
     document.querySelectorAll('[data-mark-all-read]').forEach(button => button.addEventListener('click', markAllRead));
     initializeUnread();
     const searchForm = search.closest('form');
-    let searchTimer = null;
+    searchForm.addEventListener('submit', event => {
+        event.preventDefault();
+        const target = new URL(searchForm.action, window.location.origin);
+        new FormData(searchForm).forEach((value, key) => {
+            if(value !== '') target.searchParams.append(key, value);
+        });
+        navigateToFeed(target.href);
+    });
     search.addEventListener('input', () => {
-        window.clearTimeout(searchTimer);
-        searchTimer = window.setTimeout(() => searchForm.requestSubmit(), 450);
+        window.clearTimeout(pendingSearchTimer);
+        pendingSearchTimer = window.setTimeout(() => searchForm.requestSubmit(), 450);
     });
     const clearDates = searchForm.querySelector('[data-clear-dates]');
     clearDates.addEventListener('click', () => {
@@ -297,7 +319,7 @@ const cards = [...document.querySelectorAll('.news-card')];
             yahooSources.forEach(source => {
                 allSelected ? selectedSources.delete(source) : selectedSources.add(source);
             });
-            window.location.href = filteredSourceUrl([...selectedSources]);
+            navigateToFeed(filteredSourceUrl([...selectedSources]));
         });
     }
     function filteredSourceUrl(sources){
@@ -310,7 +332,7 @@ const cards = [...document.querySelectorAll('.news-card')];
         return target.pathname + target.search;
     }
     document.querySelector('[data-source-clear]').addEventListener('click', () => {
-        window.location.href = filteredSourceUrl([]);
+        navigateToFeed(filteredSourceUrl([]));
     });
     document.querySelectorAll('[data-source-filter]').forEach(button => {
         button.addEventListener('click', () => {
@@ -319,7 +341,7 @@ const cards = [...document.querySelectorAll('.news-card')];
             selectedSources.has(source)
                 ? selectedSources.delete(source)
                 : selectedSources.add(source);
-            window.location.href = filteredSourceUrl([...selectedSources]);
+            navigateToFeed(filteredSourceUrl([...selectedSources]));
         });
     });
     function orderedSourceRows(){
@@ -423,7 +445,7 @@ const cards = [...document.querySelectorAll('.news-card')];
             mobileSourceClose.disabled = true;
             try{
                 await saveSourceMutes();
-                window.location.reload();
+                navigateToFeed(window.location.href, {historyMode:'replace'});
                 return;
             }catch(error){
                 window.alert(error.message);
@@ -465,13 +487,13 @@ const cards = [...document.querySelectorAll('.news-card')];
             if(sourceOrderChanged) await saveSourceOrder();
             if(sourceMutesChanged){
                 await saveSourceMutes();
-                window.location.reload();
+                navigateToFeed(window.location.href, {historyMode:'replace'});
                 return;
             }
             setSourceOrderEditing(false);
         }catch(error){
             window.alert(error.message);
-            window.location.reload();
+            navigateToFeed(window.location.href, {historyMode:'replace'});
         }finally{
             sourceOrderToggle.disabled = false;
         }
@@ -537,7 +559,9 @@ const cards = [...document.querySelectorAll('.news-card')];
             clock.querySelector('.clock-date').textContent = formatters.date.format(now);
         });
     }
-    updateClocks(); setInterval(updateClocks, 30000);
+    updateClocks();
+    if(clockTimer) window.clearInterval(clockTimer);
+    clockTimer = window.setInterval(updateClocks, 30000);
 
     const keywordModal = document.getElementById('keyword-modal');
     const keywordList = document.getElementById('keyword-list');
@@ -556,7 +580,7 @@ const cards = [...document.querySelectorAll('.news-card')];
         reset.type = 'button';
         reset.className = 'keyword-reset' + (selectedKeyword ? '' : ' active');
         reset.textContent = 'Все ключевые слова';
-        reset.addEventListener('click', () => { window.location.href = keywordUrl(''); });
+        reset.addEventListener('click', () => navigateToFeed(keywordUrl('')));
         const chips = words.map(word => {
             const chip = document.createElement('span'); chip.className = 'keyword-chip';
             const active = word.localeCompare(selectedKeyword, undefined, {sensitivity:'accent'}) === 0;
@@ -565,7 +589,7 @@ const cards = [...document.querySelectorAll('.news-card')];
             label.type = 'button'; label.className = 'keyword-filter'; label.textContent = word;
             label.setAttribute('aria-pressed', String(active));
             label.addEventListener('click', () => {
-                window.location.href = keywordUrl(active ? '' : word);
+                navigateToFeed(keywordUrl(active ? '' : word));
             });
             const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'keyword-remove'; remove.textContent = '×';
             remove.setAttribute('aria-label', 'Удалить ' + word);
@@ -591,7 +615,7 @@ const cards = [...document.querySelectorAll('.news-card')];
         const data = await response.json();
         if(!response.ok){ keywordMessage.textContent = data.error || 'Не удалось сохранить'; return; }
         if(method === 'DELETE' && keyword.localeCompare(selectedKeyword, undefined, {sensitivity:'accent'}) === 0){
-            window.location.href = keywordUrl('');
+            navigateToFeed(keywordUrl(''));
             return;
         }
         renderKeywords(data.keywords);
@@ -610,5 +634,106 @@ const cards = [...document.querySelectorAll('.news-card')];
     });
     refreshSavedIcons();
     refreshUnread();
-    applyFilters();
     migrateLegacySaved();
+}
+
+function isFeedUrl(value){
+    const url = new URL(value, window.location.origin);
+    if(url.origin !== window.location.origin) return false;
+    return /^(?:\/(?:all|found|agencies|newspapers)(?:\/found)?|\/)$/.test(url.pathname)
+        || /^\/(?:all\/|agencies\/|newspapers\/)?filter\//.test(url.pathname);
+}
+
+async function navigateToFeed(value, options = {}){
+    const target = new URL(value, window.location.origin);
+    if(!isFeedUrl(target.href)){
+        window.location.assign(target.href);
+        return;
+    }
+
+    if(navigationRequest) navigationRequest.abort();
+    const requestController = new AbortController();
+    navigationRequest = requestController;
+    const currentLayout = document.querySelector('.app-layout');
+    currentLayout?.setAttribute('aria-busy', 'true');
+
+    try{
+        const response = await fetch(target.href, {
+            credentials:'same-origin',
+            headers:{'X-Requested-With':'feed-navigation'},
+            signal:requestController.signal
+        });
+        if(!response.ok) throw new Error('Не удалось загрузить раздел');
+
+        const nextDocument = new DOMParser().parseFromString(
+            await response.text(),
+            'text/html'
+        );
+        const nextLayout = nextDocument.querySelector('.app-layout');
+        const currentShell = currentLayout?.querySelector('.shell');
+        const nextShell = nextLayout?.querySelector('.shell');
+        const currentMobileNav = currentLayout?.querySelector('.mobile-bottom-nav');
+        const nextMobileNav = nextLayout?.querySelector('.mobile-bottom-nav');
+        const nextModal = nextDocument.getElementById('keyword-modal');
+        const nextConfig = nextDocument.getElementById('news-page-config');
+        const currentModal = document.getElementById('keyword-modal');
+        const currentConfig = document.getElementById('news-page-config');
+        if(
+            !nextLayout || !currentLayout || !currentShell || !nextShell ||
+            !currentMobileNav || !nextMobileNav || !nextModal || !nextConfig ||
+            !currentModal || !currentConfig
+        ){
+            throw new Error('Получена несовместимая страница');
+        }
+
+        const currentModeLinks = currentLayout.querySelectorAll('.rail-nav .rail-link:nth-child(-n+2)');
+        const nextModeLinks = nextLayout.querySelectorAll('.rail-nav .rail-link:nth-child(-n+2)');
+        currentModeLinks.forEach((link, index) => {
+            const nextLink = nextModeLinks[index];
+            if(!nextLink) return;
+            link.className = nextLink.className;
+            link.setAttribute('href', nextLink.getAttribute('href'));
+        });
+        currentShell.replaceWith(nextShell);
+        currentMobileNav.replaceWith(nextMobileNav);
+        currentModal.replaceWith(nextModal);
+        currentConfig.textContent = nextConfig.textContent;
+        document.body.className = nextDocument.body.className;
+        document.title = nextDocument.title;
+
+        if(options.historyMode === 'replace'){
+            window.history.replaceState({feedNavigation:true}, '', target.href);
+        }else if(options.historyMode !== 'none'){
+            window.history.pushState({feedNavigation:true}, '', target.href);
+        }
+        initializeNewsPage();
+    }catch(error){
+        if(error.name === 'AbortError') return;
+        window.location.assign(target.href);
+    }finally{
+        if(navigationRequest === requestController){
+            navigationRequest = null;
+            document.querySelector('.app-layout')?.removeAttribute('aria-busy');
+        }
+    }
+}
+
+document.addEventListener('click', event => {
+    if(
+        event.defaultPrevented || event.button !== 0 ||
+        event.ctrlKey || event.metaKey || event.shiftKey || event.altKey
+    ) return;
+    const link = event.target.closest('a[href]');
+    if(!link || link.target || link.hasAttribute('download') || !isFeedUrl(link.href)) return;
+    event.preventDefault();
+    navigateToFeed(link.href);
+});
+
+window.addEventListener('popstate', () => {
+    if(isFeedUrl(window.location.href)){
+        navigateToFeed(window.location.href, {historyMode:'none'});
+    }
+});
+
+initializeNewsPage();
+})();
