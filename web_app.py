@@ -61,7 +61,6 @@ from utils.source_icons import (
 )
 from utils.storage import (
     authenticate_user,
-    bookmark_counts,
     create_manual_backup,
     bookmarked_urls,
     count_users,
@@ -2017,7 +2016,7 @@ def bookmarks_page():
         ))
 
     search_query = str(request.args.get("q", "")).strip()[:200]
-    saved_counts = bookmark_counts(user_id)
+    all_bookmarks = list_bookmarks(user_id)
     selected_folder_data = None
     child_folders = []
     notes = []
@@ -2033,10 +2032,8 @@ def bookmarks_page():
         bookmarks = list_collection_bookmarks(user_id, selected_folder)
         notes = list_collection_notes(user_id, selected_folder)
         read_note_ids = list_collection_note_read_ids(user_id, selected_folder)
-    elif selected_folder == "unfiled":
-        bookmarks = list_bookmarks(user_id, selected_folder)
     else:
-        bookmarks = []
+        bookmarks = list_bookmarks(user_id, selected_folder)
 
     root_folders = [folder for folder in folders if folder.get("parent_id") is None]
     visible_folders = child_folders if selected_folder_data else root_folders
@@ -2058,6 +2055,8 @@ def bookmarks_page():
             parent_id = current_folder.get("parent_id")
             current_folder = folder_by_id.get(str(parent_id)) if parent_id else None
         breadcrumbs.reverse()
+    if selected_folder == "all":
+        bookmarks = []
     bookmarks = [
         item for item in bookmarks
         if _matches_collection_search(
@@ -2116,8 +2115,8 @@ def bookmarks_page():
         search_query=search_query,
         sort_mode=sort_mode,
         sort_options=COLLECTION_SORTS,
-        total_count=saved_counts["total"],
-        unfiled_count=saved_counts["unfiled"],
+        total_count=len(all_bookmarks),
+        unfiled_count=sum(item["folder_id"] is None for item in all_bookmarks),
         available_users=active_users,
         selected_shared_ids={
             account["id"] for account in (
@@ -2175,6 +2174,12 @@ def render_news_page(
         last_checkpoint = now
 
     user = current_user()
+    if user["id"]:
+        user_saved_urls = bookmarked_urls(user["id"])
+        user_bookmark_count = count_bookmarks(user["id"])
+    else:
+        user_saved_urls = []
+        user_bookmark_count = 0
     checkpoint("account")
     status = load_json("parser_status.json", {})
     total, found_count = news_group_counts(source_group)
@@ -2382,14 +2387,6 @@ def render_news_page(
         page_news, page_total = list_news_page(
             source_group, **news_page_options
         )
-    user_saved_urls = (
-        bookmarked_urls(
-            user["id"],
-            [item.get("url", "") for item in page_news],
-        )
-        if user["id"] else []
-    )
-    checkpoint("saved")
     page_start = page_offset + 1 if page_news else 0
     page_end = page_offset + len(page_news)
     page_label = (
@@ -2536,6 +2533,7 @@ def render_news_page(
         current_user=user,
         csrf_token=csrf_token(),
         saved_urls=user_saved_urls,
+        bookmark_count=user_bookmark_count,
     )
     checkpoint("template")
     timings["total"] = round((perf_counter() - request_started) * 1000, 1)

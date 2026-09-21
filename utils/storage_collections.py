@@ -672,63 +672,9 @@ class CollectionStorage:
             ).fetchall()
         return [self._bookmark_from_row(row) for row in rows]
 
-    def bookmarked_urls(self, user_id, visible_urls=None):
-        """Возвращает сохранённые URL, при необходимости только из видимой страницы."""
-        user_id = self._validate_user_id(user_id)
-        self._initialize_database()
-        if visible_urls is None:
-            with self._connection_factory() as connection:
-                rows = connection.execute(
-                    """SELECT url FROM bookmarks
-                       WHERE user_id = ? ORDER BY updated_at DESC, id DESC""",
-                    (user_id,),
-                ).fetchall()
-            return [row["url"] for row in rows]
-
-        visible_by_normalized = {}
-        for value in visible_urls:
-            original = str(value or "").strip()
-            normalized = self._normalize_url(original)
-            if normalized and normalized not in visible_by_normalized:
-                visible_by_normalized[normalized] = original
-        if not visible_by_normalized:
-            return []
-
-        matched = set()
-        normalized_urls = list(visible_by_normalized)
-        with self._connection_factory() as connection:
-            for start in range(0, len(normalized_urls), 500):
-                chunk = normalized_urls[start:start + 500]
-                placeholders = ", ".join("?" for _ in chunk)
-                rows = connection.execute(
-                    f"""SELECT normalized_url FROM bookmarks
-                        WHERE user_id = ?
-                          AND normalized_url IN ({placeholders})""",
-                    [user_id, *chunk],
-                ).fetchall()
-                matched.update(row["normalized_url"] for row in rows)
-        return [
-            original
-            for normalized, original in visible_by_normalized.items()
-            if normalized in matched
-        ]
-
-    def bookmark_counts(self, user_id):
-        """Считает все закладки и материалы без папки без загрузки карточек."""
-        user_id = self._validate_user_id(user_id)
-        self._initialize_database()
-        with self._connection_factory() as connection:
-            row = connection.execute(
-                """SELECT COUNT(*) AS total,
-                          SUM(CASE WHEN folder_id IS NULL THEN 1 ELSE 0 END)
-                              AS unfiled
-                   FROM bookmarks WHERE user_id = ?""",
-                (user_id,),
-            ).fetchone()
-        return {
-            "total": int(row["total"] or 0),
-            "unfiled": int(row["unfiled"] or 0),
-        }
+    def bookmarked_urls(self, user_id):
+        """Возвращает URL личных закладок для подсветки сердечек в ленте."""
+        return [item["url"] for item in self.list_bookmarks(user_id)]
 
     def count_bookmarks(self, user_id):
         user_id = self._validate_user_id(user_id)

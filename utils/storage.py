@@ -606,14 +606,9 @@ def list_bookmarks(user_id, folder_id="all"):
     return _COLLECTION_STORAGE.list_bookmarks(user_id, folder_id)
 
 
-def bookmarked_urls(user_id, visible_urls=None):
+def bookmarked_urls(user_id):
     """Возвращает URL личных закладок для подсветки сердечек в ленте."""
-    return _COLLECTION_STORAGE.bookmarked_urls(user_id, visible_urls)
-
-
-def bookmark_counts(user_id):
-    """Возвращает общее число закладок и число материалов без папки."""
-    return _COLLECTION_STORAGE.bookmark_counts(user_id)
+    return _COLLECTION_STORAGE.bookmarked_urls(user_id)
 
 
 def count_bookmarks(user_id):
