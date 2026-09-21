@@ -30,14 +30,20 @@ class WebTemplateTests(unittest.TestCase):
         stylesheet = (
             Path(web_app.app.static_folder) / "news.css"
         ).read_text(encoding="utf-8")
-        page_source = template + stylesheet
+        javascript = (
+            Path(web_app.app.static_folder) / "news.js"
+        ).read_text(encoding="utf-8")
+        page_source = template + stylesheet + javascript
 
         self.assertIn(
             "filename='news.css'",
             template,
         )
         self.assertIn("feed_asset_version|urlencode", template)
+        self.assertIn("filename='news.js'", template)
+        self.assertIn('id="news-page-config" type="application/json"', template)
         self.assertNotIn("<style>", template)
+        self.assertNotIn("const cards =", template)
 
         for marker in (
             'class="app-layout"',

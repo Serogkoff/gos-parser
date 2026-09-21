@@ -392,13 +392,16 @@ class SourceGroupPageTests(unittest.TestCase):
 
         filtered_html = filtered.get_data(as_text=True)
         unfiltered_html = unfiltered.get_data(as_text=True)
+        javascript = (
+            Path(web_app.app.static_folder) / "news.js"
+        ).read_text(encoding="utf-8")
         self.assertIn("Точное совпадение далеко в ленте", filtered_html)
         self.assertNotIn("Похожее, но другое слово", filtered_html)
         self.assertNotIn("Другое совпадение", filtered_html)
         self.assertIn("Совпадения: курил", filtered_html)
         self.assertIn("Похожее, но другое слово", unfiltered_html)
         self.assertIn("Другое совпадение", unfiltered_html)
-        self.assertIn("Все ключевые слова", filtered_html)
+        self.assertIn("Все ключевые слова", javascript)
 
     def test_source_sidebar_hides_archive_counts_but_keeps_unread_counters(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
@@ -444,17 +447,20 @@ class SourceGroupPageTests(unittest.TestCase):
             response = web_app.app.test_client().get("/")
 
         html = response.get_data(as_text=True)
+        javascript = (
+            Path(web_app.app.static_folder) / "news.js"
+        ).read_text(encoding="utf-8")
         self.assertIn(
             'type="button" data-mark-read="https://mchs.gov.ru/news/1">Новая</button>',
             html,
         )
         self.assertIn(
             "button.addEventListener('click', () => markRead(button.dataset.markRead))",
-            html,
+            javascript,
         )
         self.assertNotIn('title="Отметить прочитанной"', html)
-        self.assertIn("fetch('/api/news-read'", html)
-        self.assertNotIn("localStorage.setItem(unreadStorageKey", html)
+        self.assertIn("fetch('/api/news-read'", javascript)
+        self.assertNotIn("localStorage.setItem(unreadStorageKey", javascript)
 
     def test_feed_shows_publication_date_and_parser_time_in_one_line(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
@@ -472,6 +478,9 @@ class SourceGroupPageTests(unittest.TestCase):
             )
 
         html = response.get_data(as_text=True)
+        javascript = (
+            Path(web_app.app.static_folder) / "news.js"
+        ).read_text(encoding="utf-8")
         self.assertEqual(response.status_code, 200)
         self.assertIn("Материал ТАСС", html)
         self.assertIn("Материал Интерфакса", html)
@@ -482,7 +491,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn('name="source" value="Интерфакс"', html)
         self.assertIn('data-source-filter="ТАСС"', html)
         self.assertIn('data-source-filter="Интерфакс"', html)
-        self.assertIn("selectedSources.add(source)", html)
+        self.assertIn("selectedSources.add(source)", javascript)
         self.assertIn("data-source-clear", html)
 
     def test_selected_yahoo_subsection_is_expanded(self):
@@ -499,14 +508,17 @@ class SourceGroupPageTests(unittest.TestCase):
     def test_yahoo_header_selects_or_clears_all_subsections(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
             html = web_app.app.test_client().get("/agencies").get_data(as_text=True)
+        javascript = (
+            Path(web_app.app.static_folder) / "news.js"
+        ).read_text(encoding="utf-8")
 
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn("yahooSources.every(source => selectedSources.has(source))", html)
-        self.assertIn("allSelected ? selectedSources.delete(source) : selectedSources.add(source)", html)
+        self.assertIn("yahooSources.every(source => selectedSources.has(source))", javascript)
+        self.assertIn("allSelected ? selectedSources.delete(source) : selectedSources.add(source)", javascript)
         self.assertIn("data-source-mute-yahoo", html)
         self.assertIn("Скрыть все источники Yahoo! JAPAN", html)
-        self.assertIn("refreshYahooMuteState()", html)
-        self.assertIn("buttons.forEach(button => setSourceMuted(", html)
+        self.assertIn("refreshYahooMuteState()", javascript)
+        self.assertIn("buttons.forEach(button => setSourceMuted(", javascript)
 
     def test_main_sections_are_rendered_inside_header(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
@@ -651,16 +663,22 @@ class SourceGroupPageTests(unittest.TestCase):
             response = web_app.app.test_client().get("/")
 
         html = response.get_data(as_text=True)
+        javascript = (
+            Path(web_app.app.static_folder) / "news.js"
+        ).read_text(encoding="utf-8")
         self.assertIn('id="brand-home"', html)
         self.assertIn("kyodo-easter-egg.webp", html)
-        self.assertIn("if(brandClicks >= 5)", html)
+        self.assertIn("if(brandClicks >= 5)", javascript)
 
     def test_feed_does_not_prefetch_and_opens_articles_in_new_tab(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
             response = web_app.app.test_client().get("/agencies?page=2")
 
         html = response.get_data(as_text=True)
-        self.assertNotIn("function prefetchPage(link)", html)
+        javascript = (
+            Path(web_app.app.static_folder) / "news.js"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("function prefetchPage(link)", javascript)
         self.assertIn('target="_blank" rel="noopener"', html)
         self.assertIn("back_url=%2Fagencies%3Fpage%3D2", html)
 
