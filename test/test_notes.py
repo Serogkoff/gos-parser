@@ -174,6 +174,15 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn('id="dictionary-import-dialog"', inner)
         self.assertIn('name="dictionary_file"', inner)
         self.assertIn('class="dictionary-list-tools"', inner)
+        self.assertIn('data-mobile-dictionary-card', inner)
+        self.assertIn('data-mobile-open="false"', inner)
+        self.assertIn('data-dictionary-card-link', inner)
+        self.assertIn('data-mobile-dictionary-position', inner)
+        self.assertIn('data-mobile-dictionary-previous', inner)
+        self.assertIn('data-mobile-dictionary-next', inner)
+        self.assertIn('Свайпните влево или вправо', inner)
+        self.assertIn("Math.abs(dx)<60", inner)
+        self.assertIn('body.mobile-dictionary-card-open{overflow:hidden}', inner)
         self.assertIn('aria-label="Изменить выбранный термин"', inner)
         self.assertIn('aria-label="Удалить выбранный термин"', inner)
         self.assertNotIn("30 терминов", inner)
@@ -193,6 +202,17 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertNotIn(">Добавить</button>", inner)
         self.assertIn('aria-label="Начать квиз"', inner)
         self.assertIn('class="dictionary-quiz-count">30</span>', inner)
+
+        first_card = storage.list_dictionary_cards(
+            self.admin["id"], deck["id"]
+        )[0]
+        mobile_card = client.get(
+            f"/notes?view=dictionary&mode=dictionary&deck={deck['id']}"
+            f"&card={first_card['id']}"
+        ).get_data(as_text=True)
+        self.assertIn('data-mobile-open="true"', mobile_card)
+        self.assertIn('class="mobile-dictionary-card-open"', mobile_card)
+        self.assertNotIn('class="mobile-dictionary-card-open"', inner)
 
         quiz = client.get(
             f"/notes?view=dictionary&mode=quiz&deck={deck['id']}"

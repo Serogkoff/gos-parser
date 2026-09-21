@@ -1750,9 +1750,12 @@ def notes_page():
                 continue
             filtered_cards.append(card)
         requested_card = str(request.args.get("card", "")).strip()
-        selected_card = next(
+        requested_card_match = next(
             (card for card in prepared_cards if str(card["id"]) == requested_card),
-            filtered_cards[0] if filtered_cards else None,
+            None,
+        )
+        selected_card = (
+            requested_card_match or (filtered_cards[0] if filtered_cards else None)
         )
         available_dictionary_tags = sorted({
             tag for card in prepared_cards for tag in card["tag_list"]
@@ -1815,6 +1818,7 @@ def notes_page():
             selected_deck=selected_deck,
             dictionary_cards=filtered_cards,
             selected_dictionary_card=selected_card,
+            dictionary_card_explicit=bool(requested_card_match),
             dictionary_query=dictionary_query,
             dictionary_tag=dictionary_tag,
             dictionary_filter=dictionary_filter,
