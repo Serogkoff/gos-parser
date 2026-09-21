@@ -147,6 +147,16 @@ class WebTemplateTests(unittest.TestCase):
         self.assertNotIn("load_all_news", template)
         self.assertNotIn("Забыли пароль", template)
 
+    def test_notes_template_uses_versioned_cached_styles(self):
+        template_path = Path(web_app.app.template_folder) / "notes.html"
+        template = template_path.read_text(encoding="utf-8")
+        stylesheet = Path(web_app.app.static_folder) / "notes.css"
+
+        self.assertTrue(stylesheet.is_file())
+        self.assertIn("filename='notes.css'", template)
+        self.assertIn("asset_version|urlencode", template)
+        self.assertNotIn("<style>", template)
+
     def test_system_template_keeps_storage_controls_explicit(self):
         template_path = Path(web_app.app.template_folder) / "admin_system.html"
         template = template_path.read_text(encoding="utf-8")

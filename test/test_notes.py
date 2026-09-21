@@ -107,6 +107,9 @@ class NotesTestModeTests(unittest.TestCase):
 
     def test_calendar_supports_month_week_and_day_views(self):
         client, _ = self._client_for(self.admin)
+        stylesheet = (
+            Path(web_app.app.static_folder) / "notes.css"
+        ).read_text(encoding="utf-8")
         for mode, label, view_label in (
             ("month", "Август 2026", "Месяц"),
             ("week", "24–30 августа 2026", "Неделя"),
@@ -124,10 +127,13 @@ class NotesTestModeTests(unittest.TestCase):
             self.assertIn('class="icon-button new-event-button"', html)
             self.assertIn('aria-label="Новая заметка"', html)
             self.assertNotIn('</svg>Новая заметка</button>', html)
-            self.assertIn('.new-event-button,.record-add', html)
+            self.assertIn('.new-event-button,.record-add', stylesheet)
 
     def test_records_workspace_and_dictionary_are_visible(self):
         client, _ = self._client_for(self.admin)
+        stylesheet = (
+            Path(web_app.app.static_folder) / "notes.css"
+        ).read_text(encoding="utf-8")
         records = client.get("/notes?view=records").get_data(as_text=True)
         dictionary = client.get("/notes?view=dictionary").get_data(as_text=True)
 
@@ -182,7 +188,7 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn('data-mobile-dictionary-next', inner)
         self.assertIn('Свайпните влево или вправо', inner)
         self.assertIn("Math.abs(dx)<60", inner)
-        self.assertIn('body.mobile-dictionary-card-open{overflow:hidden}', inner)
+        self.assertIn('body.mobile-dictionary-card-open{overflow:hidden}', stylesheet)
         self.assertIn("const preloadCard=index=>", inner)
         self.assertIn("preloadCard(current+1)", inner)
         self.assertIn("preloadCard(current+2)", inner)
@@ -191,8 +197,8 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn("event.preventDefault();openSibling(index)", inner)
         self.assertIn("const syncSelectedActions=data=>", inner)
         self.assertNotIn("if(!target||!mobileMedia.matches)", inner)
-        self.assertNotIn('transition:opacity', inner)
-        self.assertNotIn('translateX(', inner)
+        self.assertNotIn('transition:opacity', stylesheet)
+        self.assertNotIn('translateX(', stylesheet)
         self.assertIn('aria-label="Изменить выбранный термин"', inner)
         self.assertIn('aria-label="Удалить выбранный термин"', inner)
         self.assertNotIn("30 терминов", inner)
@@ -202,7 +208,7 @@ class NotesTestModeTests(unittest.TestCase):
             inner,
         )
         self.assertNotIn('class="detail-button delete-detail"', inner)
-        self.assertIn('.dictionary-bookmark-form{display:none}', inner)
+        self.assertIn('.dictionary-bookmark-form{display:none}', stylesheet)
         self.assertIn(
             "['term','reading','translation','tags','example',"
             "'example_translation','notes','source'].forEach",
