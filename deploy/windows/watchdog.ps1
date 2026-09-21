@@ -2,16 +2,27 @@ param(
     [string]$ProjectDir = (Resolve-Path (Join-Path $PSScriptRoot "..\..")),
     [string]$LocalHealthUrl = "http://127.0.0.1:5000/healthz",
     [string]$ExternalHealthUrl = "https://ria.tail196372.ts.net/healthz",
+    [string]$ExternalProbeUrl = "",
     [int]$ExternalFailureThreshold = 2,
-    [int]$CooldownMinutes = 15,
+    [int]$ExternalSlowThreshold = 3,
+    [double]$SlowResponseSeconds = 5,
+    [int]$CooldownMinutes = 20,
     [int]$RequestTimeoutSeconds = 15
 )
 
 $ErrorActionPreference = "Stop"
 $ProjectDir = (Resolve-Path $ProjectDir).Path
 $ExternalFailureThreshold = [Math]::Max(2, $ExternalFailureThreshold)
+$ExternalSlowThreshold = [Math]::Max(2, $ExternalSlowThreshold)
+$SlowResponseSeconds = [Math]::Max(2, $SlowResponseSeconds)
 $CooldownMinutes = [Math]::Max(5, $CooldownMinutes)
 $RequestTimeoutSeconds = [Math]::Max(3, $RequestTimeoutSeconds)
+if (-not $ExternalProbeUrl) {
+    $externalOrigin = ([Uri]$ExternalHealthUrl).GetLeftPart(
+        [UriPartial]::Authority
+    )
+    $ExternalProbeUrl = "$externalOrigin/static/news.css"
+}
 
 $logDir = Join-Path $ProjectDir "runtime_logs"
 $logFile = Join-Path $logDir "watchdog.log"
@@ -48,6 +59,7 @@ if (Test-Path -LiteralPath $maintenanceFile -PathType Leaf) {
 function New-WatchdogState {
     return [ordered]@{
         ExternalFailures = 0
+        ExternalSlowChecks = 0
         LastTailscaleRestartUtc = ""
         LastWebRestartUtc = ""
     }
@@ -63,6 +75,7 @@ function Read-WatchdogState {
             ConvertFrom-Json
         foreach ($name in @(
             "ExternalFailures",
+            "ExternalSlowChecks",
             "LastTailscaleRestartUtc",
             "LastWebRestartUtc"
         )) {
@@ -96,6 +109,39 @@ function Test-HealthEndpoint {
     }
 }
 
+function Measure-ExternalTransfer {
+    param([string]$Url)
+    $separator = "?"
+    if ($Url.Contains("?")) {
+        $separator = "&"
+    }
+    $probeUrl = "$Url$separator`_watchdog=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
+    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $response = Invoke-WebRequest `
+            -Uri $probeUrl `
+            -UseBasicParsing `
+            -Headers @{ "Cache-Control" = "no-cache" } `
+            -TimeoutSec $RequestTimeoutSeconds
+        $stopwatch.Stop()
+        $byteCount = [Text.Encoding]::UTF8.GetByteCount(
+            [string]$response.Content
+        )
+        return [pscustomobject]@{
+            Ok = ($response.StatusCode -eq 200 -and $byteCount -ge 1024)
+            Seconds = $stopwatch.Elapsed.TotalSeconds
+            Bytes = $byteCount
+        }
+    } catch {
+        $stopwatch.Stop()
+        return [pscustomobject]@{
+            Ok = $false
+            Seconds = $stopwatch.Elapsed.TotalSeconds
+            Bytes = 0
+        }
+    }
+}
+
 function Test-RestartCooldown {
     param([string]$LastRestartUtc)
     if (-not $LastRestartUtc) {
@@ -116,6 +162,7 @@ $localOk = Test-HealthEndpoint $LocalHealthUrl
 
 if (-not $localOk) {
     $state.ExternalFailures = 0
+    $state.ExternalSlowChecks = 0
     if (Test-RestartCooldown $state.LastWebRestartUtc) {
         Write-WatchdogLog "WARNING" "Local site is unavailable; web restart cooldown is active."
         Save-WatchdogState $state
@@ -141,26 +188,52 @@ if (-not $localOk) {
 }
 
 $externalOk = Test-HealthEndpoint $ExternalHealthUrl
-if ($externalOk) {
+$restartReason = ""
+if (-not $externalOk) {
+    $state.ExternalSlowChecks = 0
+    $state.ExternalFailures = [Math]::Min(
+        $ExternalFailureThreshold,
+        [int]$state.ExternalFailures + 1
+    )
+    Write-WatchdogLog `
+        "WARNING" `
+        "Local site is healthy but external Funnel failed: attempt $($state.ExternalFailures) of $ExternalFailureThreshold."
+    if ([int]$state.ExternalFailures -lt $ExternalFailureThreshold) {
+        Save-WatchdogState $state
+        exit 0
+    }
+    $restartReason = "External health check failed $ExternalFailureThreshold times"
+} else {
     if ([int]$state.ExternalFailures -gt 0) {
-        Write-WatchdogLog "RECOVER" "External Funnel recovered without restart."
+        Write-WatchdogLog "RECOVER" "External health check recovered."
     }
     $state.ExternalFailures = 0
-    Save-WatchdogState $state
-    exit 0
-}
+    $probe = Measure-ExternalTransfer $ExternalProbeUrl
+    $probeSeconds = [Math]::Round($probe.Seconds, 2)
+    $probeKilobytes = [Math]::Round($probe.Bytes / 1KB, 1)
+    if ($probe.Ok -and $probe.Seconds -le $SlowResponseSeconds) {
+        if ([int]$state.ExternalSlowChecks -gt 0) {
+            Write-WatchdogLog `
+                "RECOVER" `
+                "External transfer recovered: ${probeKilobytes}KB in ${probeSeconds}s."
+        }
+        $state.ExternalSlowChecks = 0
+        Save-WatchdogState $state
+        exit 0
+    }
 
-$state.ExternalFailures = [Math]::Min(
-    $ExternalFailureThreshold,
-    [int]$state.ExternalFailures + 1
-)
-Write-WatchdogLog `
-    "WARNING" `
-    "Local site is healthy but external Funnel failed: attempt $($state.ExternalFailures) of $ExternalFailureThreshold."
-
-if ([int]$state.ExternalFailures -lt $ExternalFailureThreshold) {
-    Save-WatchdogState $state
-    exit 0
+    $state.ExternalSlowChecks = [Math]::Min(
+        $ExternalSlowThreshold,
+        [int]$state.ExternalSlowChecks + 1
+    )
+    Write-WatchdogLog `
+        "WARNING" `
+        "External transfer is slow or incomplete: ${probeKilobytes}KB in ${probeSeconds}s; attempt $($state.ExternalSlowChecks) of $ExternalSlowThreshold."
+    if ([int]$state.ExternalSlowChecks -lt $ExternalSlowThreshold) {
+        Save-WatchdogState $state
+        exit 0
+    }
+    $restartReason = "External transfer exceeded ${SlowResponseSeconds}s for $ExternalSlowThreshold checks"
 }
 
 if (Test-RestartCooldown $state.LastTailscaleRestartUtc) {
@@ -172,13 +245,22 @@ if (Test-RestartCooldown $state.LastTailscaleRestartUtc) {
 try {
     Restart-Service -Name "Tailscale" -Force
     $state.LastTailscaleRestartUtc = [DateTimeOffset]::UtcNow.ToString("o")
-    Write-WatchdogLog "RESTART" "External check failed twice; restarted the Tailscale service."
+    Write-WatchdogLog "RESTART" "$restartReason; restarted the Tailscale service."
     Start-Sleep -Seconds 20
-    if (Test-HealthEndpoint $ExternalHealthUrl) {
+    $recovered = Test-HealthEndpoint $ExternalHealthUrl
+    if ($recovered) {
+        $recoveryProbe = Measure-ExternalTransfer $ExternalProbeUrl
+        $recovered = (
+            $recoveryProbe.Ok -and
+            $recoveryProbe.Seconds -le $SlowResponseSeconds
+        )
+    }
+    if ($recovered) {
         $state.ExternalFailures = 0
-        Write-WatchdogLog "RECOVER" "External Funnel is healthy again."
+        $state.ExternalSlowChecks = 0
+        Write-WatchdogLog "RECOVER" "External Funnel is healthy and fast again."
     } else {
-        Write-WatchdogLog "ERROR" "External Funnel is still unavailable after Tailscale restart."
+        Write-WatchdogLog "ERROR" "External Funnel is still unavailable or slow after Tailscale restart."
     }
 } catch {
     Write-WatchdogLog "ERROR" "Failed to restart Tailscale: $($_.Exception.Message)"
