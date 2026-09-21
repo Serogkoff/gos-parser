@@ -321,8 +321,16 @@ def create_schema(connection):
             ON news_items(source);
         CREATE INDEX IF NOT EXISTS idx_news_publication_date
             ON news_items(publication_date DESC, parsed_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_news_publication_order
+            ON news_items(
+                publication_date DESC, parsed_date DESC, news_key DESC
+            );
         CREATE INDEX IF NOT EXISTS idx_news_source_publication
             ON news_items(source, publication_date DESC, parsed_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_news_source_publication_order
+            ON news_items(
+                source, publication_date DESC, parsed_date DESC, news_key DESC
+            );
         CREATE INDEX IF NOT EXISTS idx_news_normalized_url
             ON news_items(normalized_url);
         CREATE INDEX IF NOT EXISTS idx_found_keywords_lookup

@@ -23,6 +23,12 @@ class StorageSchemaTests(unittest.TestCase):
                         "SELECT name FROM sqlite_master WHERE type = 'table'"
                     ).fetchall()
                 }
+                indexes = {
+                    row["name"]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'index'"
+                    ).fetchall()
+                }
             finally:
                 connection.close()
 
@@ -38,6 +44,10 @@ class StorageSchemaTests(unittest.TestCase):
             "source_incidents",
             "users",
         }.issubset(tables))
+        self.assertTrue({
+            "idx_news_publication_order",
+            "idx_news_source_publication_order",
+        }.issubset(indexes))
 
     def test_schema_adds_default_color_to_existing_calendar(self):
         with tempfile.TemporaryDirectory() as temporary:

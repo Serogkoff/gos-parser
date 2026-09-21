@@ -190,6 +190,82 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertEqual(response.get_json()["count"], 1)
         self.assertEqual(storage.count_bookmarks(self.first["id"]), 1)
 
+    def test_feed_can_request_only_visible_bookmark_urls(self):
+        second_item = {
+            "source": "ТАСС",
+            "title": "Второй сохранённый материал",
+            "url": "https://tass.ru/politika/999002",
+            "date": "2026-08-13",
+        }
+        storage.save_bookmark(self.first["id"], self.item)
+        storage.save_bookmark(self.first["id"], second_item)
+
+        self.assertCountEqual(
+            storage.bookmarked_urls(self.first["id"]),
+            [self.item["url"], second_item["url"]],
+        )
+        self.assertEqual(
+            storage.bookmarked_urls(
+                self.first["id"],
+                [second_item["url"], "https://example.invalid/not-saved"],
+            ),
+            [second_item["url"]],
+        )
+
+    def test_bookmark_counts_do_not_load_cards(self):
+        folder = storage.create_bookmark_folder(self.first["id"], "Рабочее")
+        storage.save_bookmark(self.first["id"], self.item)
+        storage.save_bookmark(
+            self.first["id"],
+            {
+                "source": "РИА Новости",
+                "title": "Материал в папке",
+                "url": "https://ria.ru/20260813/999003.html",
+                "date": "2026-08-13",
+            },
+            folder["id"],
+        )
+
+        self.assertEqual(
+            storage.bookmark_counts(self.first["id"]),
+            {"total": 2, "unfiled": 1},
+        )
+
+    def test_collections_root_does_not_load_every_bookmark(self):
+        client = web_app.app.test_client()
+        self._login(client, self.first["id"])
+        storage.save_bookmark(self.first["id"], self.item)
+
+        with patch.object(
+            web_app,
+            "list_bookmarks",
+            side_effect=AssertionError("Полный список не должен загружаться"),
+        ):
+            response = client.get("/collections")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Все подборки", response.get_data(as_text=True))
+
+    def test_feed_checks_bookmarks_only_for_visible_news(self):
+        client = web_app.app.test_client()
+        self._login(client, self.first["id"])
+
+        with (
+            patch.object(web_app, "bookmarked_urls", return_value=[]) as visible,
+            patch.object(
+                web_app,
+                "count_bookmarks",
+                side_effect=AssertionError("Лишний счётчик закладок"),
+            ),
+        ):
+            response = client.get("/newspapers")
+
+        self.assertEqual(response.status_code, 200)
+        visible.assert_called_once()
+        self.assertEqual(visible.call_args.args[0], self.first["id"])
+        self.assertLessEqual(len(visible.call_args.args[1]), web_app.NEWS_PER_PAGE)
+        self.assertIn(self.item["url"], visible.call_args.args[1])
+
     def test_collection_access_is_inherited_and_read_only(self):
         folder = storage.create_bookmark_folder(self.first["id"], "Выборы")
         storage.save_bookmark(self.first["id"], self.item, folder["id"])
