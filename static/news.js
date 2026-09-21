@@ -5,6 +5,48 @@ let clockTimer = null;
 let navigationRequest = null;
 let pageGeneration = 0;
 let pendingSearchTimer = null;
+const preparedFeedEmblems = new Map();
+
+function prepareFeedEmblem(source){
+    if(!source) return Promise.resolve();
+    const normalizedSource = new URL(source, window.location.origin).href;
+    if(preparedFeedEmblems.has(normalizedSource)){
+        return preparedFeedEmblems.get(normalizedSource);
+    }
+
+    const request = new Promise(resolve => {
+        const image = new Image();
+        let finished = false;
+        const finish = async () => {
+            if(finished) return;
+            finished = true;
+            image.onload = null;
+            image.onerror = null;
+            if(image.naturalWidth && typeof image.decode === 'function'){
+                try{ await image.decode(); }catch(error){}
+            }
+            resolve();
+        };
+        image.onload = finish;
+        image.onerror = finish;
+        image.decoding = 'sync';
+        image.src = normalizedSource;
+        if(image.complete) finish();
+    });
+    preparedFeedEmblems.set(normalizedSource, request);
+    return request;
+}
+
+async function prepareVisibleFeedEmblems(shell){
+    const limit = window.matchMedia('(max-width:920px)').matches ? 6 : 10;
+    const sources = [...new Set(
+        [...shell.querySelectorAll('.source-emblem-main')]
+            .slice(0, limit)
+            .map(image => image.getAttribute('src'))
+            .filter(Boolean)
+    )];
+    await Promise.all(sources.map(prepareFeedEmblem));
+}
 
 function initializeNewsPage(){
 const generation = ++pageGeneration;
@@ -684,6 +726,11 @@ async function navigateToFeed(value, options = {}){
             !currentModal || !currentConfig
         ){
             throw new Error('Получена несовместимая страница');
+        }
+
+        await prepareVisibleFeedEmblems(nextShell);
+        if(requestController.signal.aborted){
+            throw new DOMException('Навигация отменена', 'AbortError');
         }
 
         const currentModeLinks = currentLayout.querySelectorAll('.rail-nav .rail-link:nth-child(-n+2)');

@@ -53,6 +53,10 @@ class WebTemplateTests(unittest.TestCase):
             "window.history.pushState({feedNavigation:true}",
             "window.addEventListener('popstate'",
             "if(navigationRequest) navigationRequest.abort()",
+            "async function prepareVisibleFeedEmblems(shell)",
+            "await prepareVisibleFeedEmblems(nextShell)",
+            ".slice(0, limit)",
+            "image.decoding = 'sync'",
             "initializeNewsPage();",
         ):
             with self.subTest(partial_navigation_marker=marker):
