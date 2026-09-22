@@ -143,6 +143,7 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn("Контакты", records)
         self.assertIn("Интервью", records)
         self.assertIn("Заметки", records)
+        self.assertIn('</svg></span>Записи</a>', records)
         self.assertNotIn(">Совещания<", records)
         self.assertNotIn(">Черновики<", records)
         self.assertNotIn('name="is_draft"', records)
@@ -210,10 +211,14 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertNotIn('class="detail-button delete-detail"', inner)
         self.assertIn('.dictionary-bookmark-form{display:none}', stylesheet)
         self.assertIn(
-            "['term','reading','translation','tags','example',"
-            "'example_translation','notes','source'].forEach",
-            inner,
+            "['term','reading','translation','tags','notes'].forEach", inner
         )
+        self.assertIn('name="example_text"', inner)
+        self.assertIn('name="example_translation"', inner)
+        self.assertIn('data-add-example', inner)
+        self.assertIn('data-remove-example', inner)
+        self.assertNotIn('name="source"', inner)
+        self.assertNotIn("<h2>Источник</h2>", inner)
         self.assertIn("form.elements.language.value='ja'", inner)
         self.assertNotIn(">Добавить</button>", inner)
         self.assertIn('aria-label="Начать квиз"', inner)
@@ -250,6 +255,10 @@ class NotesTestModeTests(unittest.TestCase):
                     "term": "下院選", "reading": "かいんせん",
                     "translation": "выборы в нижнюю палату",
                     "tags": ["Выборы", "Политика"],
+                    "examples": [
+                        {"text": "下院選が始まる。", "translation": "Начинаются выборы."},
+                        {"text": "下院選を報じる。", "translation": "Сообщать о выборах."},
+                    ],
                 },
                 {
                     "term": "議席", "reading": "ぎせき",
@@ -277,6 +286,9 @@ class NotesTestModeTests(unittest.TestCase):
         cards = storage.list_dictionary_cards(self.admin["id"], deck_id)
         self.assertEqual({card["term"] for card in cards}, {"下院選", "議席"})
         self.assertTrue(all(card["source"] == "共同通信・選挙記事" for card in cards))
+        imported = next(card for card in cards if card["term"] == "下院選")
+        self.assertEqual(len(imported["examples"]), 2)
+        self.assertEqual(imported["examples"][1]["translation"], "Сообщать о выборах.")
 
         duplicate = client.post(
             "/notes?view=dictionary&mode=dictionary",
@@ -371,14 +383,51 @@ class NotesTestModeTests(unittest.TestCase):
                 "translation": "договор",
                 "language": "ja",
                 "tags": "Дипломатия",
-                "example": "両国は条約に署名した。",
-                "example_translation": "Две страны подписали договор.",
+                "example_text": ["両国は条約に署名した。", "条約が発効した。"],
+                "example_translation": [
+                    "Две страны подписали договор.", "Договор вступил в силу.",
+                ],
             },
         )
         self.assertEqual(created.status_code, 302)
         cards = storage.list_dictionary_cards(self.admin["id"], deck["id"])
         card = next(item for item in cards if item["term"] == "条約")
         self.assertEqual(card["tags"], "Дипломатия")
+        self.assertEqual(card["examples"], [
+            {"text": "両国は条約に署名した。", "translation": "Две страны подписали договор."},
+            {"text": "条約が発効した。", "translation": "Договор вступил в силу."},
+        ])
+        detail = client.get(
+            f"/notes?view=dictionary&mode=dictionary&deck={deck['id']}&card={card['id']}"
+        ).get_data(as_text=True)
+        self.assertIn("両国は条約に署名した。", detail)
+        self.assertIn("条約が発効した。", detail)
+        self.assertNotIn("<h2>Источник</h2>", detail)
+
+        updated = client.post(
+            "/notes?view=dictionary",
+            data={
+                "csrf_token": token,
+                "action": "save_dictionary_card",
+                "deck_id": deck["id"],
+                "card_id": card["id"],
+                "term": "条約",
+                "reading": "じょうやく",
+                "translation": "договор",
+                "language": "ja",
+                "tags": "Дипломатия",
+                "example_text": ["新しい例。"],
+                "example_translation": ["Новый пример."],
+            },
+        )
+        self.assertEqual(updated.status_code, 302)
+        card = next(
+            item for item in storage.list_dictionary_cards(self.admin["id"], deck["id"])
+            if item["id"] == card["id"]
+        )
+        self.assertEqual(
+            card["examples"], [{"text": "新しい例。", "translation": "Новый пример."}]
+        )
 
         deleted = client.post(
             "/notes?view=dictionary",
@@ -532,6 +581,28 @@ class NotesTestModeTests(unittest.TestCase):
         )
         self.assertEqual(deleted.status_code, 302)
         self.assertEqual(storage.list_personal_notes(self.admin["id"]), [])
+
+    def test_long_record_expands_inline_without_reloading(self):
+        client, token = self._client_for(self.admin)
+        body = "Начало " + ("подробный текст " * 30) + "конец записи"
+        response = client.post(
+            "/notes?view=records",
+            data={
+                "csrf_token": token,
+                "action": "save_record",
+                "record_type": "note",
+                "title": "Длинная запись",
+                "body": body,
+                "return_kind": "all",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        page = client.get("/notes?view=records").get_data(as_text=True)
+        self.assertIn('data-record-toggle aria-expanded="false">Развернуть</button>', page)
+        self.assertIn('data-record-full hidden', page)
+        self.assertIn("конец записи", page)
+        self.assertIn("button.textContent=expanded?'Развернуть':'Свернуть'", page)
 
     def test_record_validation_rejects_unknown_type(self):
         client, token = self._client_for(self.admin)

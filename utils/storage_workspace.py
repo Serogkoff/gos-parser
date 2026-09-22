@@ -99,6 +99,47 @@ def _validated_optional_date(value, field):
     return _validated_date(text, field) if text else ""
 
 
+def _validated_dictionary_examples(examples):
+    if examples is None:
+        return []
+    if not isinstance(examples, list):
+        raise ValueError("Примеры должны быть списком")
+    if len(examples) > 20:
+        raise ValueError("В одной карточке может быть не больше 20 примеров")
+    prepared = []
+    for index, example in enumerate(examples, start=1):
+        if not isinstance(example, dict):
+            raise ValueError(f"Пример {index}: ожидался объект")
+        text = _validated_notes_text(
+            example.get("text", example.get("example")), "Пример", 2000
+        )
+        translation = _validated_notes_text(
+            example.get("translation", example.get("example_translation")),
+            "Перевод примера", 2000,
+        )
+        if not text and not translation:
+            continue
+        if not text:
+            raise ValueError(f"Пример {index}: заполните текст примера")
+        prepared.append({"text": text, "translation": translation})
+    return prepared
+
+
+def _replace_dictionary_examples(connection, card_id, examples):
+    connection.execute(
+        "DELETE FROM dictionary_examples WHERE card_id = ?", (card_id,)
+    )
+    connection.executemany(
+        """INSERT INTO dictionary_examples(
+               card_id, sort_order, example_text, translation
+           ) VALUES (?, ?, ?, ?)""",
+        (
+            (card_id, sort_order, example["text"], example["translation"])
+            for sort_order, example in enumerate(examples)
+        ),
+    )
+
+
 def _replace_notes_shares(connection, table, owner_id, item_id, visibility,
                           shared_user_ids):
     id_column = "note_id" if table == "personal_note_shares" else "event_id"
@@ -549,6 +590,27 @@ class PersonalWorkspaceStorage:
                     if term not in existing_terms
                 ),
             )
+            connection.execute(
+                """INSERT INTO dictionary_examples(
+                       card_id, sort_order, example_text, translation
+                   )
+                   SELECT c.id, 0, c.example, c.example_translation
+                   FROM dictionary_cards AS c
+                   WHERE c.user_id = ? AND c.deck_id = ?
+                     AND (TRIM(c.example) != '' OR TRIM(c.example_translation) != '')
+                     AND NOT EXISTS (
+                         SELECT 1 FROM dictionary_examples AS e
+                         WHERE e.card_id = c.id
+                     )""",
+                (user_id, deck_id),
+            )
+            connection.execute(
+                """UPDATE dictionary_cards
+                   SET example = '', example_translation = ''
+                   WHERE user_id = ? AND deck_id = ?
+                     AND id IN (SELECT card_id FROM dictionary_examples)""",
+                (user_id, deck_id),
+            )
         return deck_id
 
     def save_dictionary_card(self, user_id, deck_id, term, reading, translation,
@@ -567,17 +629,17 @@ class PersonalWorkspaceStorage:
             card_fields.get("language", "ja"), "Язык", 20
         ) or "ja"
         tags = _validated_notes_text(card_fields.get("tags"), "Теги", 500)
-        example = _validated_notes_text(
-            card_fields.get("example"), "Пример", 2000
-        )
-        example_translation = _validated_notes_text(
-            card_fields.get("example_translation"), "Перевод примера", 2000
-        )
+        raw_examples = card_fields.get("examples")
+        if raw_examples is None and (
+            card_fields.get("example") or card_fields.get("example_translation")
+        ):
+            raw_examples = [{
+                "text": card_fields.get("example"),
+                "translation": card_fields.get("example_translation"),
+            }]
+        examples = _validated_dictionary_examples(raw_examples)
         notes = _validated_notes_text(
             card_fields.get("notes"), "Заметка", 5000
-        )
-        source = _validated_notes_text(
-            card_fields.get("source"), "Источник", 1000
         )
         now = datetime.now().isoformat(timespec="seconds")
         with self._lock, self._connection_factory() as connection:
@@ -593,11 +655,11 @@ class PersonalWorkspaceStorage:
                     raise ValueError("Карточка не найдена") from error
                 cursor = connection.execute(
                     """UPDATE dictionary_cards SET deck_id = ?, term = ?, reading = ?,
-                           translation = ?, language = ?, tags = ?, example = ?,
-                           example_translation = ?, notes = ?, source = ?, updated_at = ?
+                           translation = ?, language = ?, tags = ?, example = '',
+                           example_translation = '', notes = ?, updated_at = ?
                        WHERE id = ? AND user_id = ?""",
-                    (deck_id, term, reading, translation, language, tags, example,
-                     example_translation, notes, source, now, card_id, user_id),
+                    (deck_id, term, reading, translation, language, tags, notes,
+                     now, card_id, user_id),
                 )
                 if cursor.rowcount != 1:
                     raise ValueError("Карточка не найдена")
@@ -605,13 +667,13 @@ class PersonalWorkspaceStorage:
                 cursor = connection.execute(
                     """INSERT INTO dictionary_cards(
                            deck_id, user_id, term, reading, translation, language,
-                           tags, example, example_translation, notes, source,
-                           created_at, updated_at
-                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           tags, notes, created_at, updated_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (deck_id, user_id, term, reading, translation, language, tags,
-                     example, example_translation, notes, source, now, now),
+                     notes, now, now),
                 )
                 card_id = int(cursor.lastrowid)
+            _replace_dictionary_examples(connection, card_id, examples)
             connection.execute(
                 "UPDATE dictionary_decks SET updated_at = ? WHERE id = ?", (now, deck_id)
             )
@@ -652,12 +714,15 @@ class PersonalWorkspaceStorage:
                 if isinstance(tags, list):
                     tags = ", ".join(str(tag).strip() for tag in tags if str(tag).strip())
                 tags = _validated_notes_text(tags, "Теги", 500)
-                example = _validated_notes_text(
-                    card.get("example"), "Пример", 2000
-                )
-                example_translation = _validated_notes_text(
-                    card.get("example_translation"), "Перевод примера", 2000
-                )
+                raw_examples = card.get("examples")
+                if raw_examples is None and (
+                    card.get("example") or card.get("example_translation")
+                ):
+                    raw_examples = [{
+                        "text": card.get("example"),
+                        "translation": card.get("example_translation"),
+                    }]
+                examples = _validated_dictionary_examples(raw_examples)
                 notes = _validated_notes_text(card.get("notes"), "Заметка", 5000)
                 source = _validated_notes_text(card.get("source"), "Источник", 1000)
             except ValueError as error:
@@ -669,8 +734,8 @@ class PersonalWorkspaceStorage:
                 continue
             package_keys.add(key)
             prepared.append((
-                term, reading, translation, language, tags, example,
-                example_translation, notes, source,
+                term, reading, translation, language, tags, notes, source,
+                examples,
             ))
 
         now = datetime.now().isoformat(timespec="seconds")
@@ -698,12 +763,13 @@ class PersonalWorkspaceStorage:
                 cursor = connection.execute(
                     """INSERT INTO dictionary_cards(
                            deck_id, user_id, term, reading, translation, language,
-                           tags, example, example_translation, notes, source,
-                           created_at, updated_at
-                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (deck_id, user_id, *card, now, now),
+                           tags, notes, source, created_at, updated_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (deck_id, user_id, *card[:-1], now, now),
                 )
-                added_ids.append(int(cursor.lastrowid))
+                card_id = int(cursor.lastrowid)
+                _replace_dictionary_examples(connection, card_id, card[-1])
+                added_ids.append(card_id)
                 existing_keys.add(key)
             if added_ids:
                 connection.execute(
@@ -738,7 +804,33 @@ class PersonalWorkspaceStorage:
         query += " ORDER BY c.next_review, c.id"
         with self._connection_factory() as connection:
             rows = connection.execute(query, parameters).fetchall()
-        return [dict(row) for row in rows]
+            card_ids = [int(row["id"]) for row in rows]
+            examples_by_card = {}
+            if card_ids:
+                placeholders = ",".join("?" for _ in card_ids)
+                example_rows = connection.execute(
+                    f"""SELECT card_id, example_text, translation
+                        FROM dictionary_examples
+                        WHERE card_id IN ({placeholders})
+                        ORDER BY card_id, sort_order, id""",
+                    card_ids,
+                ).fetchall()
+                for example_row in example_rows:
+                    examples_by_card.setdefault(int(example_row["card_id"]), []).append({
+                        "text": example_row["example_text"],
+                        "translation": example_row["translation"],
+                    })
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["examples"] = examples_by_card.get(int(item["id"]), [])
+            first_example = item["examples"][0] if item["examples"] else None
+            item["example"] = first_example["text"] if first_example else ""
+            item["example_translation"] = (
+                first_example["translation"] if first_example else ""
+            )
+            result.append(item)
+        return result
 
     def delete_dictionary_card(self, user_id, card_id):
         user_id = self._validate_user_id(user_id)

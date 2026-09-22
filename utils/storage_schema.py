@@ -211,6 +211,15 @@ def create_schema(connection):
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS dictionary_examples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            card_id INTEGER NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            example_text TEXT NOT NULL,
+            translation TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY(card_id) REFERENCES dictionary_cards(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS dictionary_reviews (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -353,6 +362,8 @@ def create_schema(connection):
             ON dictionary_decks(user_id, name);
         CREATE INDEX IF NOT EXISTS idx_dictionary_cards_due
             ON dictionary_cards(user_id, deck_id, next_review);
+        CREATE INDEX IF NOT EXISTS idx_dictionary_examples_card
+            ON dictionary_examples(card_id, sort_order, id);
         CREATE INDEX IF NOT EXISTS idx_dictionary_reviews_user_date
             ON dictionary_reviews(user_id, reviewed_at DESC);
         CREATE INDEX IF NOT EXISTS idx_user_source_orders_user
@@ -424,6 +435,22 @@ def create_schema(connection):
             connection.execute(
                 f"ALTER TABLE dictionary_cards ADD COLUMN {name} {definition}"
             )
+    connection.execute(
+        """INSERT INTO dictionary_examples(
+               card_id, sort_order, example_text, translation
+           )
+           SELECT c.id, 0, c.example, c.example_translation
+           FROM dictionary_cards AS c
+           WHERE (TRIM(c.example) != '' OR TRIM(c.example_translation) != '')
+             AND NOT EXISTS (
+                 SELECT 1 FROM dictionary_examples AS e WHERE e.card_id = c.id
+             )"""
+    )
+    connection.execute(
+        """UPDATE dictionary_cards
+           SET example = '', example_translation = ''
+           WHERE id IN (SELECT card_id FROM dictionary_examples)"""
+    )
 
     calendar_columns = {
         row["name"] for row in connection.execute(

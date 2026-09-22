@@ -1324,16 +1324,27 @@ def notes_page():
                     "dictionary", mode="decks", message="Словарь удалён",
                 )
             if action == "save_dictionary_card":
+                example_texts = request.form.getlist("example_text")
+                example_translations = request.form.getlist("example_translation")
+                example_count = max(len(example_texts), len(example_translations))
+                examples = [
+                    {
+                        "text": example_texts[index] if index < len(example_texts) else "",
+                        "translation": (
+                            example_translations[index]
+                            if index < len(example_translations) else ""
+                        ),
+                    }
+                    for index in range(example_count)
+                ]
                 card_id = save_dictionary_card(
                     user_id, request.form.get("deck_id"),
                     request.form.get("term"), request.form.get("reading"),
                     request.form.get("translation"), request.form.get("card_id"),
                     language=request.form.get("language"),
                     tags=request.form.get("tags"),
-                    example=request.form.get("example"),
-                    example_translation=request.form.get("example_translation"),
+                    examples=examples,
                     notes=request.form.get("notes"),
-                    source=request.form.get("source"),
                 )
                 return _notes_redirect(
                     "dictionary", mode="dictionary",
@@ -1577,8 +1588,13 @@ def notes_page():
             prepared["initials"] = "".join(
                 word[0].upper() for word in words[:2] if word
             ) or "З"
-            body = " ".join(str(item.get("body", "")).split())
-            prepared["excerpt"] = body[:300] + ("…" if len(body) > 300 else "")
+            full_body = str(item.get("body", ""))
+            compact_body = " ".join(full_body.split())
+            prepared["excerpt"] = (
+                compact_body[:300] + ("…" if len(compact_body) > 300 else "")
+            )
+            prepared["body_text"] = full_body
+            prepared["is_truncated"] = len(compact_body) > 300
             try:
                 updated = datetime.fromisoformat(item.get("updated_at", ""))
                 prepared["display_date"] = (
@@ -1745,10 +1761,16 @@ def notes_page():
                 tag.casefold() != tag_folded for tag in card["tag_list"]
             ):
                 continue
-            searchable = " ".join(str(card.get(field, "")) for field in (
-                "term", "reading", "translation", "tags", "example",
-                "example_translation", "notes", "source",
-            )).casefold()
+            example_search = " ".join(
+                f"{example.get('text', '')} {example.get('translation', '')}"
+                for example in card.get("examples", [])
+            )
+            searchable = " ".join([
+                *(str(card.get(field, "")) for field in (
+                    "term", "reading", "translation", "tags", "notes", "source",
+                )),
+                example_search,
+            ]).casefold()
             if query_folded and query_folded not in searchable:
                 continue
             filtered_cards.append(card)
@@ -1838,8 +1860,7 @@ def notes_page():
             today_accuracy=today_accuracy,
             dictionary_card_form=selected_card or {
                 "id": "", "term": "", "reading": "", "translation": "",
-                "language": "ja", "tags": "", "example": "",
-                "example_translation": "", "notes": "", "source": "",
+                "language": "ja", "tags": "", "examples": [], "notes": "",
             },
             open_dictionary_dialog=(
                 request.args.get("edit") == "1" and bool(selected_card)

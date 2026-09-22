@@ -61,8 +61,7 @@
         .body{max-width:920px;font-family:Georgia,"Times New Roman",serif;font-size:17px;line-height:1.68}
         .body p{margin:0 0 1.18em}.body p:first-child{font-size:18px}.notice{padding:18px;border-left:3px solid var(--coral);background:#fff5f1}
         .article-footer{max-width:920px;margin-top:34px;padding-top:18px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;border-top:1px solid var(--line)}
-        .refresh{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:4px;color:var(--muted);background:#fff;cursor:pointer;font-size:11px}
-        .refresh:hover{color:var(--coral-dark);border-color:#efb6b0}.cache-note{color:var(--muted);font-size:11px}.refresh-error{max-width:920px;margin-top:18px;color:var(--coral-dark);font-size:12px}
+        .cache-note{color:var(--muted);font-size:11px}.refresh-error{max-width:920px;margin-top:18px;color:var(--coral-dark);font-size:12px}
         @media(max-width:920px){
             html,body{height:auto;overflow:auto}.app-layout{height:auto;display:block;overflow:visible}.left-rail{display:none}
             .shell{height:auto;min-height:100vh;padding:0 14px;display:block;overflow:visible}.topbar{grid-template-columns:1fr;grid-template-rows:auto auto auto;padding-top:12px}
@@ -87,7 +86,7 @@
             </a>
             <a class="rail-link" href="/collections"><span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2-2h3l2 2h4v10.75A1.75 1.75 0 0 1 18.75 20H5.25a1.75 1.75 0 0 1-1.75-1.75Z"/><path d="M3.5 10h17"/></svg></span><span>Подборки</span></a>
             {% if current_user.role == 'admin' %}
-            <a class="rail-link" href="/notes"><span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span><span>Заметки</span></a>
+            <a class="rail-link" href="/notes"><span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span><span>Записи</span></a>
             <a class="rail-link" href="/admin/users"><span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2"/><path d="M3 20v-2a5 5 0 0 1 10 0v2M14 15a4 4 0 0 1 7 3v2"/></svg></span><span>Пользователи</span></a>
             <a class="rail-link" href="/admin/system"><span class="rail-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-7"/></svg></span><span>Статус системы</span></a>
             {% endif %}
@@ -122,10 +121,7 @@
                 <h1>{{article.title or item.title}}</h1>
                 <div class="body">{% if article.paragraphs %}{% for paragraph in article.paragraphs %}<p>{{paragraph}}</p>{% endfor %}{% else %}<p class="notice">{{article.error}}</p>{% endif %}</div>
                 {% if article.refresh_error %}<div class="refresh-error">{{article.refresh_error}}</div>{% endif %}
-                {% if article.paragraphs or article.cached_at %}<footer class="article-footer">
-                    {% if article.paragraphs %}<form method="post" action="/article"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><input type="hidden" name="url" value="{{item.url}}"><input type="hidden" name="back_url" value="{{back_url}}"><button class="refresh" type="submit">Обновить текст</button></form>{% endif %}
-                    {% if article.cached_at %}<span class="cache-note">Сохранено локально {{article.cached_at.replace('T', ' ')}}</span>{% endif %}
-                </footer>{% endif %}
+                {% if article.cached_at %}<footer class="article-footer"><span class="cache-note">Сохранено локально {{article.cached_at.replace('T', ' ')}}</span></footer>{% endif %}
             </article>
         </div>
     </main>

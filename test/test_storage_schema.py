@@ -31,6 +31,7 @@ class StorageSchemaTests(unittest.TestCase):
             "bookmarks",
             "calendar_events",
             "dictionary_cards",
+            "dictionary_examples",
             "found_item_keywords",
             "news_items",
             "parser_jobs",
@@ -124,6 +125,49 @@ class StorageSchemaTests(unittest.TestCase):
             "phone": "",
             "last_contact_date": "",
         })
+
+    def test_schema_moves_legacy_dictionary_example_to_separate_rows_once(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            database = Path(temporary) / "legacy-dictionary.db"
+            connection = sqlite3.connect(database)
+            connection.row_factory = sqlite3.Row
+            try:
+                create_schema(connection)
+                connection.execute(
+                    """INSERT INTO users(username, password_hash, role, created_at)
+                       VALUES ('owner', 'hash', 'admin', 'now')"""
+                )
+                connection.execute(
+                    """INSERT INTO dictionary_decks(user_id, name, created_at, updated_at)
+                       VALUES (1, 'Словарь', 'now', 'now')"""
+                )
+                connection.execute(
+                    """INSERT INTO dictionary_cards(
+                           deck_id, user_id, term, translation, example,
+                           example_translation, created_at, updated_at
+                       ) VALUES (1, 1, '条約', 'договор', '条約を結ぶ。',
+                                 'Заключить договор.', 'now', 'now')"""
+                )
+                connection.commit()
+                create_schema(connection)
+                connection.commit()
+                create_schema(connection)
+                rows = connection.execute(
+                    """SELECT example_text, translation
+                       FROM dictionary_examples WHERE card_id = 1"""
+                ).fetchall()
+                legacy = connection.execute(
+                    """SELECT example, example_translation
+                       FROM dictionary_cards WHERE id = 1"""
+                ).fetchone()
+            finally:
+                connection.close()
+
+        self.assertEqual(
+            [dict(row) for row in rows],
+            [{"example_text": "条約を結ぶ。", "translation": "Заключить договор."}],
+        )
+        self.assertEqual(dict(legacy), {"example": "", "example_translation": ""})
 
     def test_schema_normalizes_legacy_publication_dates_once(self):
         with tempfile.TemporaryDirectory() as temporary:
