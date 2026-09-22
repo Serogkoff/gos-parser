@@ -224,6 +224,10 @@ class WebTemplateTests(unittest.TestCase):
             'data-manage-collection-open',
             'data-manage-collection-panel',
             'data-composer-open',
+            'class="meta material-meta"',
+            'class="material-source"',
+            'class="primary bookmark-save"',
+            '>Открыть оригинал</a>',
             'class="icon-button danger"',
             'class="icon-button add-action"',
             "confirm('Вы уверены, что хотите удалить подборку?')",
@@ -261,6 +265,13 @@ class WebTemplateTests(unittest.TestCase):
         self.assertIn('placeholder="Поиск"', template)
         self.assertNotIn("Рабочая подборка со статьями", template)
         self.assertNotIn("<label>Сортировка", template)
+        self.assertNotIn('<span class="badge">Статья</span>', template)
+        self.assertNotIn(
+            '<div class="article-section-head"><strong>Статьи</strong></div>',
+            template,
+        )
+        self.assertIn(".material-meta{min-height:42px", template)
+        self.assertIn(".edit .bookmark-save{min-height:36px", template)
 
 
 if __name__ == "__main__":

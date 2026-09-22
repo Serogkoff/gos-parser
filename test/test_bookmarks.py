@@ -376,7 +376,7 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertIn("data-note-toggle", page)
         self.assertIn("Свернуть", page)
         self.assertNotIn("<details", page)
-        self.assertIn("Оригинал ↗", page)
+        self.assertIn("Открыть оригинал", page)
         self.assertIn("Коммерсантъ", page)
         self.assertIn("2026-08-21", page)
         self.assertNotIn(note["updated_at"], page)
@@ -389,12 +389,16 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertIn('data-article-composer hidden', page)
         self.assertNotIn('name="comment"', page)
         self.assertNotIn("Проверить данные Минэнерго", page)
-        self.assertIn("<span class=\"badge\">Статья</span>", page)
-        title_position = page.index(note["title"])
-        source_position = page.index("material-footer", title_position)
+        self.assertNotIn("<span class=\"badge\">Статья</span>", page)
+        self.assertNotIn(
+            '<div class="article-section-head"><strong>Статьи</strong></div>',
+            page,
+        )
+        source_position = page.index("material-source")
+        title_position = page.index(note["title"], source_position)
         body_position = page.index("Абзац 1", title_position)
-        self.assertLess(title_position, source_position)
-        self.assertLess(source_position, body_position)
+        self.assertLess(source_position, title_position)
+        self.assertLess(title_position, body_position)
 
         found = client.get(
             f"/collections?folder={folder['id']}&q=поставках"
