@@ -104,6 +104,14 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertNotIn("Выбранные пользователи", html)
         self.assertIn("event-bold", html)
         self.assertIn("event-italic", html)
+        self.assertIn('class="day-number mobile-day-number"', html)
+        self.assertIn('class="mobile-calendar-agenda"', html)
+        self.assertIn('id="agenda-2026-08-28"', html)
+        self.assertIn('class="mobile-agenda-event color-green event-bold event-italic"', html)
+        self.assertIn('<time>14:00</time>', html)
+        self.assertIn('class="mobile-calendar-add"', html)
+        self.assertIn('class="mobile-bottom-nav"', html)
+        self.assertIn('</svg><span>Записи</span></a>', html)
 
     def test_calendar_supports_month_week_and_day_views(self):
         client, _ = self._client_for(self.admin)
@@ -128,6 +136,20 @@ class NotesTestModeTests(unittest.TestCase):
             self.assertIn('aria-label="Новая заметка"', html)
             self.assertNotIn('</svg>Новая заметка</button>', html)
             self.assertIn('.new-event-button,.record-add', stylesheet)
+
+        for marker in (
+            '.mobile-bottom-nav,.mobile-day-number,.mobile-event-dots',
+            '.clocks{grid-column:1;grid-row:2;width:auto',
+            'display:flex!important',
+            '.head-actions{display:none}',
+            '.month{min-width:0',
+            '.mobile-calendar-agenda{padding:20px 0 4px;display:grid',
+            '.mobile-agenda-event{--event-line:#e9362a',
+            '.mobile-calendar-add{position:fixed',
+            'grid-template-columns:repeat(5,minmax(0,1fr))',
+        ):
+            with self.subTest(mobile_calendar_marker=marker):
+                self.assertIn(marker, stylesheet)
 
     def test_records_workspace_and_dictionary_are_visible(self):
         client, _ = self._client_for(self.admin)

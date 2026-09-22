@@ -70,7 +70,8 @@
             .article-viewport{padding-top:14px;overflow:visible}.article-card{padding:14px 18px 38px}.article-header{align-items:flex-start;flex-wrap:wrap}.header-divider{display:none}
             h1{font-size:34px}.body{font-size:16px}.body p:first-child{font-size:17px}
         }
-        @media(max-width:560px){.clocks{display:none}.site-sections{gap:22px}.article-header{gap:12px}.source-emblem{width:50px;height:50px}.source-mark{width:48px;height:48px}.original{width:100%;justify-content:center}h1{font-size:30px}}
+        .mobile-bottom-nav{display:none}
+        @media(max-width:560px){html,body{padding-bottom:calc(68px + env(safe-area-inset-bottom))}.topbar{min-height:0;padding-top:18px;display:grid;grid-template-columns:1fr;grid-template-rows:auto auto auto}.mobile-brand{grid-column:1;grid-row:1;font-size:48px;line-height:1}.clocks{grid-column:1;grid-row:2;width:auto;margin-top:8px;padding:0;display:flex;justify-self:start}.clock-card{min-width:0;padding:0 14px;text-align:left}.clock-card:first-child{padding-left:0}.clock-city{font-size:12px}.clock-time{margin-left:5px;font-size:17px}.site-sections{grid-column:1;grid-row:3;margin-top:13px;gap:22px}.article-header{gap:12px}.source-emblem{width:50px;height:50px}.source-mark{width:48px;height:48px}.original{width:100%;justify-content:center}h1{font-size:30px}.mobile-bottom-nav{position:fixed;z-index:50;top:calc(100dvh - 68px - env(safe-area-inset-bottom));right:0;bottom:auto;left:0;width:100%;height:calc(68px + env(safe-area-inset-bottom));padding:7px 8px calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-top:1px solid var(--line);background:#fff;transform:translate3d(0,0,0);isolation:isolate}.mobile-bottom-link{min-width:0;display:grid;justify-items:center;align-content:center;gap:3px;color:#737774;font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif;font-size:10px;line-height:1}.mobile-bottom-link svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.mobile-bottom-link.active{color:var(--coral-dark)}}
     </style>
 </head>
 <body>
@@ -125,6 +126,13 @@
             </article>
         </div>
     </main>
+    <nav class="mobile-bottom-nav" aria-label="Мобильное меню">
+        <a class="mobile-bottom-link {{'active' if article_mode == 'all' else ''}}" href="{{group_home}}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Лента</span></a>
+        <a class="mobile-bottom-link {{'active' if article_mode == 'found' else ''}}" href="{{group_found}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 13.5 13.5 10.5M8 16l-1.5 1.5a3.2 3.2 0 0 1-4.5-4.5L6.5 8.5A3.2 3.2 0 0 1 11 8M16 8l1.5-1.5A3.2 3.2 0 0 1 22 11l-4.5 4.5A3.2 3.2 0 0 1 13 16"/></svg><span>Совпадения</span></a>
+        <a class="mobile-bottom-link" href="/collections"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2-2h3l2 2h4v10.75A1.75 1.75 0 0 1 18.75 20H5.25a1.75 1.75 0 0 1-1.75-1.75Z"/><path d="M3.5 10h17"/></svg><span>Подборки</span></a>
+        {% if current_user.role == 'admin' %}<a class="mobile-bottom-link" href="/notes"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span>Записи</span></a>{% else %}<span class="mobile-bottom-link" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span>Записи</span></span>{% endif %}
+        <a class="mobile-bottom-link" href="/account"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 21v-2a7.5 7.5 0 0 1 15 0v2"/></svg><span>Профиль</span></a>
+    </nav>
 </div>
 <script>
     const articleBack = document.getElementById('article-back');

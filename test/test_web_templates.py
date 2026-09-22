@@ -194,6 +194,10 @@ class WebTemplateTests(unittest.TestCase):
             'article-viewport::-webkit-scrollbar{display:none}',
             'class="rail-logout"',
             'aria-label="Выйти" title="Выйти"',
+            'class="mobile-brand" href="/all">Монитор</a>',
+            'class="mobile-bottom-nav"',
+            'aria-label="Мобильное меню"',
+            'grid-template-columns:repeat(5,minmax(0,1fr))',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)
@@ -235,6 +239,13 @@ class WebTemplateTests(unittest.TestCase):
             "confirm('Вы уверены, что хотите удалить подборку?')",
             'class="rail-logout"',
             'aria-label="Выйти" title="Выйти"',
+            'class="mobile-brand" href="/all">Монитор</a>',
+            'class="mobile-bottom-nav"',
+            'aria-label="Мобильное меню"',
+            '.folder-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))',
+            '.folder-card{min-height:88px',
+            'display:flex!important',
+            'grid-template-columns:repeat(5,minmax(0,1fr))',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)

@@ -1503,8 +1503,19 @@ def notes_page():
                 ],
                 "in_month": mode != "month" or item_date.month == anchor.month,
                 "is_today": item_date == today,
+                "is_selected": item_date.isoformat() == selected_date,
+                "agenda_label": (
+                    f"Сегодня, {item_date.day} "
+                    f"{MONTH_NAMES_GENITIVE_RU[item_date.month]}"
+                    if item_date == today else
+                    f"{item_date.day} {MONTH_NAMES_GENITIVE_RU[item_date.month]}"
+                ),
                 "events": events_by_date.get(item_date.isoformat(), []),
             })
+        mobile_agenda_days = [
+            item for item in period_days
+            if item["in_month"] and item["events"]
+        ]
         selected_event = next(
             (
                 event for event in events
@@ -1521,6 +1532,7 @@ def notes_page():
             calendar_mode=mode,
             period_label=period_label,
             period_days=period_days,
+            mobile_agenda_days=mobile_agenda_days,
             selected_date=selected_date,
             event_form=event_form,
             open_event_dialog=bool(selected_event),
