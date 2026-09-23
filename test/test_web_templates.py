@@ -232,11 +232,12 @@ class WebTemplateTests(unittest.TestCase):
             'data-composer-open',
             'class="meta material-meta"',
             'class="material-source"',
-            'class="primary bookmark-save"',
-            '>Открыть оригинал</a>',
-            'class="icon-button danger"',
+            'class="bookmark-actions"',
+            '>Оригинал</a>',
+            '>Переместить</summary>',
+            'class="bookmark-action" type="submit">Удалить</button>',
             'class="icon-button add-action"',
-            "confirm('Вы уверены, что хотите удалить подборку?')",
+            'aria-label="Создать публикацию"',
             'class="rail-logout"',
             'aria-label="Выйти" title="Выйти"',
             'class="mobile-brand" href="/all">Монитор</a>',
@@ -284,7 +285,10 @@ class WebTemplateTests(unittest.TestCase):
             template,
         )
         self.assertIn(".material-meta{min-height:42px", template)
-        self.assertIn(".edit .bookmark-save{min-height:36px", template)
+        self.assertIn(".bookmark-actions{min-height:34px", template)
+        self.assertIn("grid-template-columns:repeat(2,40px)", template)
+        self.assertNotIn('aria-label="Удалить подборку"', template)
+        self.assertNotIn("Вы уверены, что хотите удалить подборку?", template)
 
 
 if __name__ == "__main__":

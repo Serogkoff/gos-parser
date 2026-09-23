@@ -108,6 +108,11 @@ class PersonalBookmarksTests(unittest.TestCase):
             f"/collections?folder={favorite['id']}"
         ).get_data(as_text=True)
         self.assertIn(self.item["title"], favorite_page)
+        self.assertIn(">Оригинал</a>", favorite_page)
+        self.assertIn(">Переместить</summary>", favorite_page)
+        self.assertIn('aria-label="Папка для перемещения"', favorite_page)
+        self.assertIn('class="bookmark-action" type="submit">Удалить</button>', favorite_page)
+        self.assertNotIn('class="primary bookmark-save"', favorite_page)
 
         second_client = web_app.app.test_client()
         self._login(second_client, self.second["id"])
@@ -134,8 +139,9 @@ class PersonalBookmarksTests(unittest.TestCase):
             f"/collections?folder={favorite['id']}"
         ).get_data(as_text=True)
         self.assertIn('data-manage-collection-open', page)
-        self.assertIn('aria-label="Удалить подборку"', page)
+        self.assertNotIn('aria-label="Удалить подборку"', page)
         self.assertIn('class="icon-button add-action"', page)
+        self.assertIn('aria-label="Создать публикацию"', page)
 
         renamed = storage.update_collection(
             self.first["id"], favorite["id"], "Главное", "", "private", [],
@@ -376,7 +382,7 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertIn("data-note-toggle", page)
         self.assertIn("Свернуть", page)
         self.assertNotIn("<details", page)
-        self.assertIn("Открыть оригинал", page)
+        self.assertIn(">Оригинал</a>", page)
         self.assertIn("Коммерсантъ", page)
         self.assertIn("2026-08-21", page)
         self.assertNotIn(note["updated_at"], page)
