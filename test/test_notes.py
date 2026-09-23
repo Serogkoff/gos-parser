@@ -144,12 +144,13 @@ class NotesTestModeTests(unittest.TestCase):
             '.head-actions{display:none}',
             '.month{min-width:0',
             '.mobile-calendar-agenda{padding:20px 0 4px;display:grid',
-            '.mobile-agenda-event{--event-line:#e9362a',
+            '.event-chip,.week-event,.day-event,.aside-event,.mobile-agenda-event{--event-fill:#fff1ee',
             '.mobile-calendar-add{position:fixed',
             'grid-template-columns:repeat(5,minmax(0,1fr))',
         ):
             with self.subTest(mobile_calendar_marker=marker):
                 self.assertIn(marker, stylesheet)
+        self.assertNotIn('.mobile-agenda-event{--event-line:#e9362a', stylesheet)
 
     def test_records_workspace_and_dictionary_are_visible(self):
         client, _ = self._client_for(self.admin)

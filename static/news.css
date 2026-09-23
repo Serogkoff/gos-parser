@@ -681,7 +681,7 @@
             .sidebar.mobile-open .coverage{display:none}
             .mobile-source-backdrop.mobile-open{position:fixed;z-index:65;inset:0 0 calc(68px + env(safe-area-inset-bottom));display:block;border:0;background:rgba(17,17,15,.28)}
             .mobile-bottom-nav{
-                position:fixed;z-index:50;top:calc(100dvh - 68px - env(safe-area-inset-bottom));right:0;bottom:auto;left:0;
+                position:fixed;z-index:50;right:0;bottom:0;left:0;
                 width:100%;height:calc(68px + env(safe-area-inset-bottom));padding:7px 8px calc(6px + env(safe-area-inset-bottom));
                 display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
                 border-top:1px solid var(--line);background:#fff;

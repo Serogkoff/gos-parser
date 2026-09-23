@@ -113,7 +113,7 @@ class WebTemplateTests(unittest.TestCase):
             'min-height:52px;padding:0 0 0 8px',
             'grid-row:3;height:53px;gap:12px',
             '.site-section{padding:0 1px 17px;font-size:15px}',
-            'top:calc(100dvh - 68px - env(safe-area-inset-bottom))',
+            'position:fixed;z-index:50;right:0;bottom:0;left:0',
             'height:calc(68px + env(safe-area-inset-bottom))',
             'transform:translate3d(0,0,0)',
             '-webkit-backface-visibility:hidden;backface-visibility:hidden',
