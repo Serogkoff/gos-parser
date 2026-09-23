@@ -152,6 +152,7 @@ from utils.storage import (
 
 
 app = Flask(__name__)
+app.jinja_env.globals["PROJECT_VERSION"] = PROJECT_VERSION
 PROJECT_DIR = Path(__file__).resolve().parent
 NEWS_PER_PAGE = 35
 UNREAD_INDEX_LIMIT = 2000

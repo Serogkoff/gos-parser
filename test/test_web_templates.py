@@ -8,6 +8,7 @@ class WebTemplateTests(unittest.TestCase):
     def test_all_page_templates_are_available(self):
         template_names = (
             "admin_incidents.html",
+            "admin_base.html",
             "admin_reliability.html",
             "admin_sources.html",
             "admin_system.html",
@@ -23,6 +24,49 @@ class WebTemplateTests(unittest.TestCase):
             with self.subTest(template=template_name):
                 template = web_app.app.jinja_env.get_template(template_name)
                 self.assertEqual(template.name, template_name)
+
+    def test_admin_pages_share_monitor_layout(self):
+        base = (
+            Path(web_app.app.template_folder) / "admin_base.html"
+        ).read_text(encoding="utf-8")
+        stylesheet = (
+            Path(web_app.app.static_folder) / "admin.css"
+        ).read_text(encoding="utf-8")
+
+        for marker in (
+            'class="admin-app"',
+            'class="admin-rail"',
+            'class="admin-tabs"',
+            'data-clock="moscow"',
+            'data-clock="tokyo"',
+            'class="mobile-bottom"',
+            "PROJECT_VERSION",
+        ):
+            with self.subTest(base_marker=marker):
+                self.assertIn(marker, base)
+
+        for marker in (
+            ".metric-strip",
+            ".overview-layout",
+            ".quiet-panel",
+            ".danger-fold",
+            "@media(max-width:820px)",
+        ):
+            with self.subTest(style_marker=marker):
+                self.assertIn(marker, stylesheet)
+
+        for template_name in (
+            "admin_system.html",
+            "admin_sources.html",
+            "admin_incidents.html",
+            "admin_reliability.html",
+            "settings.html",
+        ):
+            template = (
+                Path(web_app.app.template_folder) / template_name
+            ).read_text(encoding="utf-8")
+            with self.subTest(shared_template=template_name):
+                self.assertIn('{% extends "admin_base.html" %}', template)
 
     def test_news_template_keeps_editorial_desktop_layout(self):
         template_path = Path(web_app.app.template_folder) / "news.html"

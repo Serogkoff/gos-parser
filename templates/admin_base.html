@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    {% block extra_head %}{% endblock %}<title>{% block title %}Управление{% endblock %} — Монитор</title>
+    <link rel="stylesheet" href="{{url_for('static',filename='admin.css')}}?v={{PROJECT_VERSION}}">
+</head>
+<body><div class="admin-app">
+    <aside class="admin-rail">
+        <a class="admin-brand" href="/">Монитор</a>
+        <nav class="rail-nav" aria-label="Основные разделы">
+            <a class="rail-link" href="/"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>Лента новостей</a>
+            <a class="rail-link" href="/all/found"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg>Совпадения</a>
+            <a class="rail-link" href="/collections"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10H3zM3 7V5h7l2 2"/></svg>Подборки</a>
+            <a class="rail-link" href="/notes"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>Записи</a>
+            {% if current_user.role == 'admin' %}<a class="rail-link {{'active' if request.path == '/admin/users' else ''}}" href="/admin/users"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2.5"/><path d="M3.5 20v-2a5.5 5.5 0 0 1 11 0v2M14 16a4.5 4.5 0 0 1 6.5 4"/></svg>Пользователи</a><a class="rail-link {{'active' if request.path.startswith('/admin/') and request.path != '/admin/users' else ''}}" href="/admin/system"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg>Статус системы</a>{% endif %}
+        </nav>
+        <div class="rail-bottom"><div class="rail-profile"><a class="profile-avatar" href="/account">●</a><a class="profile-copy" href="/account"><strong>{{current_user.username}}</strong><small>{{'Администратор' if current_user.role == 'admin' else 'Пользователь'}}</small></a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><button class="rail-logout" type="submit" title="Выйти"><svg viewBox="0 0 24 24"><path d="M10 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H10M14 8l4 4-4 4M18 12H9"/></svg></button></form></div></div>
+    </aside>
+    <main class="admin-main">
+        <header class="admin-top"><nav class="admin-tabs" aria-label="Управление">
+            {% if current_user.role == 'admin' %}<a class="admin-tab {{'active' if request.path == '/admin/system' else ''}}" href="/admin/system">Система</a><a class="admin-tab {{'active' if request.path == '/admin/sources' else ''}}" href="/admin/sources">Источники</a><a class="admin-tab {{'active' if request.path == '/admin/incidents' else ''}}" href="/admin/incidents">Инциденты</a><a class="admin-tab {{'active' if request.path == '/admin/reliability' else ''}}" href="/admin/reliability">Надёжность</a><a class="admin-tab {{'active' if request.path == '/admin/users' else ''}}" href="/admin/users">Пользователи</a>{% endif %}<a class="admin-tab {{'active' if request.path == '/account' else ''}}" href="/account">Мой аккаунт</a>
+        </nav><div class="clock-group"><div class="clock"><div class="clock-line">Москва <strong data-clock="moscow">--:--</strong></div><time data-date="moscow">--.--.----</time></div><div class="clock"><div class="clock-line">Токио <strong data-clock="tokyo">--:--</strong></div><time data-date="tokyo">--.--.----</time></div></div></header>
+        {% block content %}{% endblock %}
+    </main>
+    <nav class="mobile-bottom"><a href="/"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>Лента</a><a href="/all/found"><svg viewBox="0 0 24 24"><path d="m9.5 14.5-2 2a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5 0M14.5 9.5l2-2a3.5 3.5 0 0 1 5 5l-3 3a3.5 3.5 0 0 1-5 0M8 12h8"/></svg>Совпадения</a><a href="/collections"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10H3zM3 7V5h7l2 2"/></svg>Подборки</a><a href="/notes"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>Записи</a><a class="active" href="/account"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21v-2a7.5 7.5 0 0 1 15 0v2"/></svg>Профиль</a></nav>
+</div><script>
+function updateAdminClocks(){const zones={moscow:'Europe/Moscow',tokyo:'Asia/Tokyo'};for(const [key,zone] of Object.entries(zones)){const now=new Date();const clock=document.querySelector(`[data-clock="${key}"]`);const date=document.querySelector(`[data-date="${key}"]`);if(clock)clock.textContent=new Intl.DateTimeFormat('ru-RU',{timeZone:zone,hour:'2-digit',minute:'2-digit'}).format(now);if(date)date.textContent=new Intl.DateTimeFormat('ru-RU',{timeZone:zone,day:'2-digit',month:'2-digit',year:'numeric'}).format(now)}}updateAdminClocks();setInterval(updateAdminClocks,30000);
+</script>{% block scripts %}{% endblock %}</body></html>
