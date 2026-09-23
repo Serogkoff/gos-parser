@@ -141,7 +141,7 @@ class WebTemplateTests(unittest.TestCase):
             '.news-card{border-bottom:0}',
             '.source-row{border-bottom:0}',
             '.rail-bottom{margin-top:auto;padding-bottom:24px',
-            '<circle cx="10.5" cy="10.5" r="6.5"/>',
+            'M10.5 13.5 13.5 10.5M8 16',
             'M3.5 7.5h6l2-2h3l2 2h4',
             'class="rail-logout"',
             'aria-label="Выйти" title="Выйти"',
@@ -176,6 +176,51 @@ class WebTemplateTests(unittest.TestCase):
         self.assertNotIn('class="mobile-search-jump"', template)
         self.assertIn('.rail-icon{margin-left:4px}', stylesheet)
         self.assertIn('align-self:start;transform:translateY(-5px)', stylesheet)
+
+    def test_desktop_navigation_separates_notes_tools(self):
+        template_folder = Path(web_app.app.template_folder)
+        chain_icon = "M10.5 13.5 13.5 10.5M8 16"
+
+        for template_name in (
+            "admin_base.html",
+            "article.html",
+            "bookmarks.html",
+            "news.html",
+            "notes.html",
+        ):
+            template = (template_folder / template_name).read_text(encoding="utf-8")
+            desktop_rail = template[
+                template.index("<aside"):
+                template.index("</aside>", template.index("<aside"))
+            ]
+            with self.subTest(template=template_name):
+                self.assertIn('/notes?view=records', desktop_rail)
+                self.assertIn('/notes?view=calendar', desktop_rail)
+                self.assertIn('/notes?view=dictionary', desktop_rail)
+                self.assertIn("Заметки", desktop_rail)
+                self.assertIn("Календарь", desktop_rail)
+                self.assertIn("Словарь-квиз", desktop_rail)
+                self.assertIn(chain_icon, desktop_rail)
+
+        admin_base = (template_folder / "admin_base.html").read_text(
+            encoding="utf-8"
+        )
+        admin_tabs = admin_base[
+            admin_base.index('<nav class="admin-tabs"'):
+            admin_base.index("</nav>", admin_base.index('<nav class="admin-tabs"'))
+        ]
+        self.assertNotIn("Мой аккаунт", admin_tabs)
+        self.assertIn('class="profile-copy" href="/account"', admin_base)
+        self.assertIn(">Записи</a>", admin_base)
+
+        sources = (template_folder / "admin_sources.html").read_text(
+            encoding="utf-8"
+        )
+        stylesheet = (Path(web_app.app.static_folder) / "admin.css").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('class="data-table source-control-table"', sources)
+        self.assertIn(".source-control-table{min-width:0;table-layout:fixed}", stylesheet)
 
     def test_auth_template_uses_blurred_static_product_preview(self):
         template_path = Path(web_app.app.template_folder) / "auth.html"
