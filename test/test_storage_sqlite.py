@@ -893,6 +893,21 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertTrue(stats["backup_created"])
         self.assertEqual(stats["backup_count"], 1)
 
+    def test_database_stats_reports_diagnostic_timings(self):
+        self._write_json(self.all_json, [])
+        self._write_json(self.found_json, [])
+
+        stats = storage.database_stats()
+
+        timings = stats["_timings_ms"]
+        self.assertIn("news_count", timings)
+        self.assertIn("found_count", timings)
+        self.assertIn("cached_articles", timings)
+        self.assertIn("integrity_check", timings)
+        self.assertIn("storage_size", timings)
+        self.assertIn("total", timings)
+        self.assertGreaterEqual(timings["total"], 0)
+
     def test_caches_only_successfully_opened_article_text(self):
         self._write_json(self.all_json, [])
         self._write_json(self.found_json, [])

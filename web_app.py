@@ -40,7 +40,12 @@ from utils.keywords import (
     rebuild_found_news,
     remove_keyword,
 )
-from utils.logger import error_log_stats, get_logger, read_recent_errors
+from utils.logger import (
+    error_log_stats,
+    get_logger,
+    read_recent_errors,
+    write_system_performance,
+)
 from utils.proxy import kyodo_proxy_status
 from utils.security import AttemptLimiter
 from utils.source_groups import (
@@ -847,6 +852,16 @@ def admin_sources():
 @app.route("/admin/system", methods=["GET", "POST"])
 def admin_system():
     """Показывает состояние SQLite, копии базы и хвост журнала ошибок."""
+    request_started = perf_counter()
+    last_checkpoint = request_started
+    timings = {}
+
+    def checkpoint(name):
+        nonlocal last_checkpoint
+        now = perf_counter()
+        timings[name] = round((now - last_checkpoint) * 1000, 1)
+        last_checkpoint = now
+
     administrator = current_user()
     if not administrator or administrator.get("role") != "admin":
         abort(403)
@@ -915,6 +930,8 @@ def admin_system():
         return redirect(url_for("admin_system", error="Неизвестное действие"))
 
     database = database_stats()
+    database_timings = database.pop("_timings_ms", {})
+    checkpoint("database")
     prepared_database = dict(database)
     prepared_database["size"] = _format_file_size(database.get("size_bytes", 0))
     prepared_database["limit"] = _format_file_size(DATABASE_SIZE_LIMIT_BYTES)
@@ -926,25 +943,32 @@ def admin_system():
     prepared_database["near_limit"] = (
         database.get("size_bytes", 0) >= DATABASE_SIZE_LIMIT_BYTES * 0.8
     )
+    checkpoint("database_prepare")
     backups = list_database_backups()
+    checkpoint("backups")
     prepared_backups = []
     for item in backups:
         prepared = dict(item)
         prepared["size"] = _format_file_size(item.get("size_bytes", 0))
         prepared_backups.append(prepared)
+    checkpoint("backups_prepare")
     log = error_log_stats()
+    checkpoint("log_stats")
     log["size"] = _format_file_size(log.get("size_bytes", 0))
+    errors = list(reversed(read_recent_errors(limit=120)))
+    checkpoint("errors")
     alerts = system_alerts(
         database,
         backups,
         size_limit_bytes=DATABASE_SIZE_LIMIT_BYTES,
     )
+    checkpoint("diagnostics")
 
-    return render_template(
+    response = render_template(
         "admin_system.html",
         database=prepared_database,
         backups=prepared_backups,
-        errors=list(reversed(read_recent_errors(limit=120))),
+        errors=errors,
         log=log,
         alerts=alerts,
         alert_counts=alert_summary(alerts),
@@ -956,6 +980,24 @@ def admin_system():
         message=str(request.args.get("message", "")).strip(),
         error=str(request.args.get("error", "")).strip(),
     )
+    checkpoint("template")
+    timings["total"] = round((perf_counter() - request_started) * 1000, 1)
+    detailed_timings = {
+        f"db_{name}": value
+        for name, value in database_timings.items()
+        if name != "total"
+    }
+    ordered_timings = {
+        "database": timings.pop("database"),
+        **detailed_timings,
+        **timings,
+    }
+    timing_line = " ".join(
+        f"{name}={value}ms" for name, value in ordered_timings.items()
+    )
+    performance_logger.info("Система: %s", timing_line)
+    write_system_performance(f"Система: {timing_line}")
+    return response
 
 
 @app.route("/admin/incidents")

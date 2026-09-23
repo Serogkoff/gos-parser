@@ -492,6 +492,8 @@ class AuthenticationTests(unittest.TestCase):
                 "size_bytes": 128,
                 "modified_at": "2026-08-13T10:00:00",
             }),
+            patch.object(web_app.performance_logger, "info") as performance,
+            patch.object(web_app, "write_system_performance") as write_timing,
         ):
             page = self.client.get("/admin/system")
 
@@ -500,6 +502,16 @@ class AuthenticationTests(unittest.TestCase):
         self.assertIn("Целостность SQLite", html)
         self.assertIn("Автоматическая диагностика", html)
         self.assertIn("Сайт не ответил", html)
+        performance.assert_called_once()
+        timing_line = performance.call_args.args[1]
+        self.assertIn("database=", timing_line)
+        self.assertIn("db_integrity_check=", timing_line)
+        self.assertIn("backups=", timing_line)
+        self.assertIn("errors=", timing_line)
+        self.assertIn("template=", timing_line)
+        self.assertIn("total=", timing_line)
+        write_timing.assert_called_once()
+        self.assertIn("Система: database=", write_timing.call_args.args[0])
         token = self._csrf(page)
 
         with patch.object(

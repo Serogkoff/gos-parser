@@ -10,6 +10,7 @@ backups/
 .venv/
 .idea/
 parser_errors.log
+system_performance.log
 night_runs/
 runtime_logs/
 kyodo_build_id.txt

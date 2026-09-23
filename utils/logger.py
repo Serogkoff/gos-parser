@@ -6,6 +6,7 @@ from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 ERROR_LOG_FILE = PROJECT_DIR / "parser_errors.log"
+SYSTEM_PERFORMANCE_LOG_FILE = PROJECT_DIR / "system_performance.log"
 
 
 def get_logger(name):
@@ -91,3 +92,14 @@ def error_log_stats():
             timespec="seconds"
         ),
     }
+
+
+def write_system_performance(line):
+    """Сохраняет временную диагностику открытия страницы «Система»."""
+    try:
+        with SYSTEM_PERFORMANCE_LOG_FILE.open("a", encoding="utf-8") as file:
+            file.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} | {line}\n")
+    except OSError:
+        # Диагностика не должна мешать открытию административной страницы.
+        return False
+    return True

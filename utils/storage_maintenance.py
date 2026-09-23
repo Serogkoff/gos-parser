@@ -6,6 +6,7 @@ import shutil
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
+from time import perf_counter
 
 class DatabaseMaintenance:
     _BACKUP_FREE_SPACE_RESERVE = 1024 ** 3
@@ -24,39 +25,63 @@ class DatabaseMaintenance:
 
     def database_stats(self, connection=None):
         """Возвращает краткую статистику и результат проверки целостности."""
+        started = perf_counter()
+        last_checkpoint = started
+        timings = {}
+
+        def checkpoint(name):
+            nonlocal last_checkpoint
+            now = perf_counter()
+            timings[name] = round((now - last_checkpoint) * 1000, 1)
+            last_checkpoint = now
+
         owns_connection = connection is None
         if owns_connection:
             self._initialize_database()
+            checkpoint("initialize")
             connection = self._connect()
+            checkpoint("connect")
         try:
             news_count = connection.execute(
                 "SELECT COUNT(*) FROM news_items"
             ).fetchone()[0]
+            checkpoint("news_count")
             found_count = connection.execute(
                 "SELECT COUNT(*) FROM found_items"
             ).fetchone()[0]
+            checkpoint("found_count")
             cached_articles = connection.execute(
                 "SELECT COUNT(*) FROM article_cache"
             ).fetchone()[0]
+            checkpoint("cached_articles")
             integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+            checkpoint("integrity_check")
             backups = self._list_managed_backups()
+            checkpoint("managed_backups")
             migration = connection.execute(
                 "SELECT value FROM metadata WHERE key = ?",
                 (self._json_migration_key,),
             ).fetchone()
+            checkpoint("migration")
+            storage_size = self._database_storage_size()
+            checkpoint("storage_size")
+            journal_mode = connection.execute(
+                "PRAGMA journal_mode"
+            ).fetchone()[0]
+            checkpoint("journal_mode")
+            timings["total"] = round((perf_counter() - started) * 1000, 1)
             return {
                 "news_count": news_count,
                 "found_count": found_count,
                 "cached_articles": cached_articles,
                 "integrity": integrity,
                 "path": str(self._database_file()),
-                "size_bytes": self._database_storage_size(),
-                "journal_mode": connection.execute(
-                    "PRAGMA journal_mode"
-                ).fetchone()[0],
+                "size_bytes": storage_size,
+                "journal_mode": journal_mode,
                 "json_migrated": migration is not None,
                 "backup_count": len(backups),
                 "last_backup": str(backups[-1]) if backups else "",
+                "_timings_ms": timings,
             }
         finally:
             if owns_connection:
