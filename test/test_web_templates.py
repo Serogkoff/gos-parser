@@ -249,6 +249,12 @@ class WebTemplateTests(unittest.TestCase):
         self.assertIn("filename='notes.css'", template)
         self.assertIn("asset_version|urlencode", template)
         self.assertNotIn("<style>", template)
+        notes_css = stylesheet.read_text(encoding="utf-8")
+        self.assertIn(".section-tabs{display:none}", notes_css)
+        self.assertIn(
+            ".section-tabs{grid-column:1;grid-row:2;display:flex",
+            notes_css,
+        )
 
     def test_system_template_keeps_storage_controls_explicit(self):
         template_path = Path(web_app.app.template_folder) / "admin_system.html"
