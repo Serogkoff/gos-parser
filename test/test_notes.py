@@ -106,12 +106,49 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn("event-italic", html)
         self.assertIn('class="day-number mobile-day-number"', html)
         self.assertIn('class="mobile-calendar-agenda"', html)
+        self.assertIn('<details class="mobile-past-agenda" open>', html)
+        self.assertIn('<summary>Прошедшие события</summary>', html)
         self.assertIn('id="agenda-2026-08-28"', html)
         self.assertIn('class="mobile-agenda-event color-green event-bold event-italic"', html)
         self.assertIn('<time>14:00</time>', html)
         self.assertIn('class="mobile-calendar-add"', html)
         self.assertIn('class="mobile-bottom-nav"', html)
         self.assertIn('</svg><span>Записи</span></a>', html)
+
+    def test_mobile_calendar_starts_with_today_and_hides_past_events(self):
+        class FixedDate(date):
+            @classmethod
+            def today(cls):
+                return cls(2026, 9, 23)
+
+        client, _ = self._client_for(self.admin)
+        storage.save_calendar_event(
+            self.admin["id"], "Прошедшее событие", "2026-09-22", color="blue"
+        )
+        storage.save_calendar_event(
+            self.admin["id"], "Событие сегодня", "2026-09-23", color="green"
+        )
+        storage.save_calendar_event(
+            self.admin["id"], "Будущее событие", "2026-09-24", color="violet"
+        )
+
+        with patch.object(web_app, "date", FixedDate):
+            html = client.get(
+                "/notes?view=calendar&mode=month&selected=2026-09-23"
+            ).get_data(as_text=True)
+
+        agenda_start = html.index('<div class="mobile-calendar-agenda">')
+        details_start = html.index('<details class="mobile-past-agenda"')
+        details_end = html.index("</details>", details_start)
+        opening_tag = html[details_start:html.index(">", details_start) + 1]
+        upcoming_html = html[agenda_start:details_start]
+        past_html = html[details_start:details_end]
+
+        self.assertIn("Событие сегодня", upcoming_html)
+        self.assertIn("Будущее событие", upcoming_html)
+        self.assertNotIn("Прошедшее событие", upcoming_html)
+        self.assertIn("Прошедшее событие", past_html)
+        self.assertNotIn(" open", opening_tag)
 
     def test_calendar_supports_month_week_and_day_views(self):
         client, _ = self._client_for(self.admin)
@@ -144,6 +181,7 @@ class NotesTestModeTests(unittest.TestCase):
             '.head-actions{display:none}',
             '.month{min-width:0',
             '.mobile-calendar-agenda{padding:20px 0 4px;display:grid',
+            '.mobile-past-agenda summary{min-height:44px',
             '.event-chip,.week-event,.day-event,.aside-event,.mobile-agenda-event{--event-fill:#fff1ee',
             '.mobile-calendar-add{position:fixed',
             'grid-template-columns:repeat(5,minmax(0,1fr))',
