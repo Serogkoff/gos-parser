@@ -144,7 +144,7 @@ def system_alerts(database, backups, now=None, size_limit_bytes=None):
     moment = now or datetime.now()
     alerts = []
     integrity = str(database.get("integrity", "")).strip().casefold()
-    if integrity != "ok":
+    if database.get("integrity_checked") and integrity != "ok":
         alerts.append(_alert(
             "critical",
             "database-integrity",

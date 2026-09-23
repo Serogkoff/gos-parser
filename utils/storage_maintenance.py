@@ -1,5 +1,6 @@
 """Проверка, резервное копирование и обслуживание SQLite-базы."""
 
+import json
 import os
 import re
 import shutil
@@ -10,6 +11,7 @@ from time import perf_counter
 
 class DatabaseMaintenance:
     _BACKUP_FREE_SPACE_RESERVE = 1024 ** 3
+    _INTEGRITY_METADATA_KEY = "database_integrity_status_v1"
 
     def __init__(
         self, initialize_database, connect, lock, database_file,
@@ -23,8 +25,8 @@ class DatabaseMaintenance:
         self._json_migration_key = json_migration_key
         self._logger = logger
 
-    def database_stats(self, connection=None):
-        """Возвращает краткую статистику и результат проверки целостности."""
+    def database_stats(self, connection=None, check_integrity=False):
+        """Возвращает статистику и сохранённый результат проверки SQLite."""
         started = perf_counter()
         last_checkpoint = started
         timings = {}
@@ -54,7 +56,12 @@ class DatabaseMaintenance:
                 "SELECT COUNT(*) FROM article_cache"
             ).fetchone()[0]
             checkpoint("cached_articles")
-            integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+            if check_integrity:
+                integrity_status = self._run_integrity_check(connection)
+                if owns_connection:
+                    connection.commit()
+            else:
+                integrity_status = self._load_integrity_status(connection)
             checkpoint("integrity_check")
             backups = self._list_managed_backups()
             checkpoint("managed_backups")
@@ -74,7 +81,9 @@ class DatabaseMaintenance:
                 "news_count": news_count,
                 "found_count": found_count,
                 "cached_articles": cached_articles,
-                "integrity": integrity,
+                "integrity": integrity_status["result"],
+                "integrity_checked": integrity_status["checked"],
+                "integrity_checked_at": integrity_status["checked_at"],
                 "path": str(self._database_file()),
                 "size_bytes": storage_size,
                 "journal_mode": journal_mode,
@@ -86,6 +95,50 @@ class DatabaseMaintenance:
         finally:
             if owns_connection:
                 connection.close()
+
+    def check_database_integrity(self):
+        """Запускает полную проверку SQLite и сохраняет её результат."""
+        self._initialize_database()
+        with self._lock:
+            connection = self._connect()
+            try:
+                status = self._run_integrity_check(connection)
+                connection.commit()
+                return status
+            finally:
+                connection.close()
+
+    def _run_integrity_check(self, connection):
+        result = connection.execute("PRAGMA integrity_check").fetchone()[0]
+        checked_at = datetime.now().isoformat(timespec="seconds")
+        connection.execute(
+            "INSERT OR REPLACE INTO metadata(key, value) VALUES (?, ?)",
+            (
+                self._INTEGRITY_METADATA_KEY,
+                json.dumps(
+                    {"result": result, "checked_at": checked_at},
+                    ensure_ascii=False,
+                ),
+            ),
+        )
+        return {"result": result, "checked": True, "checked_at": checked_at}
+
+    def _load_integrity_status(self, connection):
+        row = connection.execute(
+            "SELECT value FROM metadata WHERE key = ?",
+            (self._INTEGRITY_METADATA_KEY,),
+        ).fetchone()
+        if row is None:
+            return {"result": "не проверена", "checked": False, "checked_at": ""}
+        try:
+            payload = json.loads(row[0])
+        except (TypeError, json.JSONDecodeError):
+            return {"result": "не проверена", "checked": False, "checked_at": ""}
+        result = str(payload.get("result", "")).strip()
+        checked_at = str(payload.get("checked_at", "")).strip()
+        if not result:
+            return {"result": "не проверена", "checked": False, "checked_at": ""}
+        return {"result": result, "checked": True, "checked_at": checked_at}
 
     def backup_database(self, destination=None):
         """Атомарно создаёт и проверяет копию работающей SQLite-базы."""
@@ -204,13 +257,13 @@ class DatabaseMaintenance:
 
     def prepare_database(self, retention=3):
         """Проверяет рабочую базу и создаёт ежедневную резервную копию."""
-        stats = self.database_stats()
+        stats = self.database_stats(check_integrity=True)
         if stats["integrity"] != "ok":
             raise sqlite3.DatabaseError(
                 f"проверка целостности SQLite завершилась: {stats['integrity']}"
             )
         backup = self.ensure_daily_backup(retention=retention)
-        stats = self.database_stats()
+        stats = self.database_stats(check_integrity=False)
         stats["backup_created"] = backup["created"]
         return stats
 

@@ -528,6 +528,24 @@ class AuthenticationTests(unittest.TestCase):
         create_backup.assert_called_once_with(retention=3)
         self.assertIn("news-manual-test.db", response.headers["Location"])
 
+        with patch.object(
+            web_app,
+            "check_database_integrity",
+            return_value={
+                "result": "ok",
+                "checked": True,
+                "checked_at": "2026-09-23T16:00:00",
+            },
+        ) as check_integrity:
+            response = self.client.post(
+                "/admin/system",
+                data={"csrf_token": token, "action": "check_integrity"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        check_integrity.assert_called_once_with()
+        self.assertIn("SQLite", response.headers["Location"])
+
     def test_archive_cleanup_requires_confirmation_and_uses_safe_retention(self):
         self._create_first_admin()
         page = self.client.get("/admin/system")

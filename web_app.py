@@ -144,6 +144,7 @@ from utils.storage import (
     source_news_statistics,
     source_incident_statistics,
     source_reliability_statistics,
+    check_database_integrity,
     database_stats,
     purge_news_archive,
     update_bookmark,
@@ -886,6 +887,24 @@ def admin_system():
             return redirect(url_for(
                 "admin_system",
                 message=f"Создана резервная копия {created['name']}",
+            ))
+        if action == "check_integrity":
+            try:
+                status = check_database_integrity()
+            except Exception as integrity_error:
+                return redirect(url_for(
+                    "admin_system",
+                    error=(
+                        "Не удалось проверить целостность SQLite: "
+                        f"{type(integrity_error).__name__}: {integrity_error}"
+                    ),
+                ))
+            return redirect(url_for(
+                "admin_system",
+                message=(
+                    "Проверка SQLite завершена: "
+                    f"{status['result']} · {status['checked_at']}"
+                ),
             ))
         if action == "purge_news_archive":
             confirmation = str(request.form.get("confirmation", "")).strip()

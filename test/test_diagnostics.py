@@ -90,7 +90,11 @@ class DiagnosticsTests(unittest.TestCase):
 
     def test_system_reports_database_and_missing_backup(self):
         alerts = system_alerts(
-            {"integrity": "malformed", "json_migrated": True},
+            {
+                "integrity": "malformed",
+                "integrity_checked": True,
+                "json_migrated": True,
+            },
             [],
             now=NOW,
         )
@@ -100,6 +104,19 @@ class DiagnosticsTests(unittest.TestCase):
             {item["code"] for item in alerts},
             {"database-integrity", "no-backup"},
         )
+
+    def test_system_does_not_report_integrity_before_manual_check(self):
+        alerts = system_alerts(
+            {
+                "integrity": "не проверена",
+                "integrity_checked": False,
+                "json_migrated": True,
+            },
+            [{"modified_at": "2026-08-13T08:00:00"}],
+            now=NOW,
+        )
+
+        self.assertEqual(alerts, [])
 
     def test_system_reports_stale_backup_but_not_recent_one(self):
         database = {"integrity": "ok", "json_migrated": True}

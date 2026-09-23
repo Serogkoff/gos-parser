@@ -565,7 +565,8 @@ class SQLiteStorageTests(unittest.TestCase):
 
         self.assertEqual(stats["news_count"], 1)
         self.assertEqual(stats["found_count"], 1)
-        self.assertEqual(stats["integrity"], "ok")
+        self.assertEqual(stats["integrity"], "не проверена")
+        self.assertFalse(stats["integrity_checked"])
         self.assertEqual(storage.load_all_news()[0]["summary"], item["summary"])
         self.assertNotIn("keywords", storage.load_all_news()[0])
         self.assertEqual(storage.load_found_news()[0]["keywords"], ["учения"])
@@ -900,6 +901,8 @@ class SQLiteStorageTests(unittest.TestCase):
         stats = storage.database_stats()
 
         timings = stats["_timings_ms"]
+        self.assertFalse(stats["integrity_checked"])
+        self.assertEqual(stats["integrity"], "не проверена")
         self.assertIn("news_count", timings)
         self.assertIn("found_count", timings)
         self.assertIn("cached_articles", timings)
@@ -907,6 +910,15 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertIn("storage_size", timings)
         self.assertIn("total", timings)
         self.assertGreaterEqual(timings["total"], 0)
+
+        checked = storage.check_database_integrity()
+        self.assertEqual(checked["result"], "ok")
+        self.assertTrue(checked["checked"])
+
+        cached = storage.database_stats()
+        self.assertTrue(cached["integrity_checked"])
+        self.assertEqual(cached["integrity"], "ok")
+        self.assertEqual(cached["integrity_checked_at"], checked["checked_at"])
 
     def test_caches_only_successfully_opened_article_text(self):
         self._write_json(self.all_json, [])

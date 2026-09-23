@@ -656,7 +656,10 @@ _DATABASE_INITIALIZER = DatabaseInitializer(
     found_news_file=lambda: FOUND_NEWS_FILE,
     connection_factory=lambda: _connection(),
     create_schema=_create_schema,
-    database_stats=lambda connection: database_stats(connection=connection),
+    database_stats=lambda connection: database_stats(
+        connection=connection,
+        check_integrity=False,
+    ),
     replace_collections=lambda connection, all_news, found_news: (
         _replace_collections(connection, all_news, found_news)
     ),
@@ -756,9 +759,14 @@ _DATABASE_MAINTENANCE = DatabaseMaintenance(
 )
 
 
-def database_stats(connection=None):
-    """Возвращает краткую статистику и результат проверки целостности."""
-    return _DATABASE_MAINTENANCE.database_stats(connection)
+def database_stats(connection=None, check_integrity=False):
+    """Возвращает статистику и сохранённый результат проверки целостности."""
+    return _DATABASE_MAINTENANCE.database_stats(connection, check_integrity)
+
+
+def check_database_integrity():
+    """Запускает полную проверку SQLite по явной команде администратора."""
+    return _DATABASE_MAINTENANCE.check_database_integrity()
 
 
 def backup_database(destination=None):
