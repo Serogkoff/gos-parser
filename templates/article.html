@@ -54,12 +54,12 @@
         .article-header{margin-top:18px;display:flex;align-items:center;gap:18px}
         .source-emblem{width:58px;height:58px;object-fit:contain}.source-mark{width:54px;height:54px;display:grid;place-items:center;border:1px solid #aaa9a3;border-radius:50%;color:#666;background:#fafaf8;font-family:Georgia,"Times New Roman",serif;font-size:23px}
         .source-copy{min-width:0;display:grid;gap:5px;font-family:Georgia,"Times New Roman",serif}.source-copy strong{font-size:13px}.source-copy time{font-size:12px;font-variant-numeric:tabular-nums}
-        .header-divider{width:1px;height:48px;margin-left:4px;background:var(--line)}
-        .original{height:42px;padding:0 15px;display:inline-flex;align-items:center;gap:9px;color:var(--coral);border:1px solid var(--coral);border-radius:4px;background:#fff;font-size:12px;font-weight:650}
-        .original:hover{color:var(--coral-dark);border-color:var(--coral-dark)}.original svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-        h1{max-width:1000px;margin:28px 0 27px;font-family:Georgia,"Times New Roman",serif;font-size:clamp(34px,3.1vw,48px);line-height:1.08;letter-spacing:-.025em}
-        .body{max-width:920px;font-family:Georgia,"Times New Roman",serif;font-size:17px;line-height:1.68}
-        .body p{margin:0 0 1.18em}.body p:first-child{font-size:18px}.notice{padding:18px;border-left:3px solid var(--coral);background:#fff5f1}
+        .header-divider{display:none}
+        .original{height:28px;padding:0 2px;display:inline-flex;align-items:center;gap:6px;color:var(--coral);border:0;border-radius:0;background:transparent;font-size:11px;font-weight:650}
+        .original:hover{color:var(--coral-dark);background:transparent}.original svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+        h1{max-width:1040px;margin:25px 0 23px;font-family:Georgia,"Times New Roman",serif;font-size:clamp(32px,2.7vw,42px);line-height:1.13;letter-spacing:-.02em}
+        .body{max-width:960px;font-family:Georgia,"Times New Roman",serif;font-size:17px;line-height:1.62}
+        .body p{margin:0 0 1.15em}.body p:first-child{font-size:17px}.notice{padding:18px;border-left:3px solid var(--coral);background:#fff5f1}
         .article-footer{max-width:920px;margin-top:34px;padding-top:18px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;border-top:1px solid var(--line)}
         .cache-note{color:var(--muted);font-size:11px}.refresh-error{max-width:920px;margin-top:18px;color:var(--coral-dark);font-size:12px}
         @media(max-width:920px){
@@ -71,7 +71,7 @@
             h1{font-size:34px}.body{font-size:16px}.body p:first-child{font-size:17px}
         }
         .mobile-bottom-nav{display:none}
-        @media(max-width:560px){html,body{padding-bottom:calc(68px + env(safe-area-inset-bottom))}.topbar{min-height:0;padding-top:18px;display:grid;grid-template-columns:1fr;grid-template-rows:auto auto auto}.mobile-brand{grid-column:1;grid-row:1;font-size:48px;line-height:1}.clocks{grid-column:1;grid-row:2;width:auto;margin-top:8px;padding:0;display:flex;justify-self:start}.clock-card{min-width:0;padding:0 14px;text-align:left}.clock-card:first-child{padding-left:0}.clock-city{font-size:12px}.clock-time{margin-left:5px;font-size:17px}.site-sections{grid-column:1;grid-row:3;margin-top:13px;gap:22px}.article-header{gap:12px}.source-emblem{width:50px;height:50px}.source-mark{width:48px;height:48px}.original{width:100%;justify-content:center}h1{font-size:30px}.mobile-bottom-nav{position:fixed;z-index:50;right:0;bottom:0;left:0;width:100%;height:calc(68px + env(safe-area-inset-bottom));padding:7px 8px calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-top:1px solid var(--line);background:#fff;transform:translate3d(0,0,0);isolation:isolate}.mobile-bottom-link{min-width:0;display:grid;justify-items:center;align-content:center;gap:3px;color:#737774;font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif;font-size:10px;line-height:1}.mobile-bottom-link svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.mobile-bottom-link.active{color:var(--coral-dark)}}
+        @media(max-width:560px){html,body{padding-bottom:calc(68px + env(safe-area-inset-bottom))}.topbar{min-height:0;padding-top:18px;display:grid;grid-template-columns:1fr;grid-template-rows:auto auto auto}.mobile-brand{grid-column:1;grid-row:1;font-size:48px;line-height:1}.clocks{grid-column:1;grid-row:2;width:auto;margin-top:8px;padding:0;display:flex;justify-self:start}.clock-card{min-width:0;padding:0 14px;text-align:left}.clock-card:first-child{padding-left:0}.clock-city{font-size:12px}.clock-time{margin-left:5px;font-size:17px}.site-sections{grid-column:1;grid-row:3;margin-top:13px;gap:22px}.article-header{gap:12px}.source-emblem{width:50px;height:50px}.source-mark{width:48px;height:48px}.original{width:auto;justify-content:flex-start}h1{font-size:30px}.mobile-bottom-nav{position:fixed;z-index:50;right:0;bottom:0;left:0;width:100%;height:calc(68px + env(safe-area-inset-bottom));padding:7px 8px calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-top:1px solid var(--line);background:#fff;transform:translate3d(0,0,0);isolation:isolate}.mobile-bottom-link{min-width:0;display:grid;justify-items:center;align-content:center;gap:3px;color:#737774;font-family:Inter,Manrope,"Segoe UI",Arial,sans-serif;font-size:10px;line-height:1}.mobile-bottom-link svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.mobile-bottom-link.active{color:var(--coral-dark)}}
     </style>
 </head>
 <body>
@@ -117,7 +117,7 @@
                     {% else %}<span class="source-mark" aria-hidden="true">{{(item.source or '?')[:1]}}</span>{% endif %}
                     <div class="source-copy"><strong>{{item.source}}</strong><time>{% if item.date %}{{item.publication_date_display or item.date}}{% if item.parser_added_time %} {{item.parser_added_time}}{% endif %}{% else %}{{item.parsed_date or ''}}{% endif %}</time></div>
                     <span class="header-divider" aria-hidden="true"></span>
-                    <a class="original" href="{{item.url}}" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8"/><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>Открыть оригинал</a>
+                    <a class="original" href="{{item.url}}" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8"/><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>Оригинал</a>
                 </div>
                 <h1>{{article.title or item.title}}</h1>
                 <div class="body">{% if article.paragraphs %}{% for paragraph in article.paragraphs %}<p>{{paragraph}}</p>{% endfor %}{% else %}<p class="notice">{{article.error}}</p>{% endif %}</div>

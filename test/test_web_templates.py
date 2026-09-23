@@ -187,7 +187,7 @@ class WebTemplateTests(unittest.TestCase):
             'class="article-card"',
             'class="source-emblem"',
             'class="original"',
-            '>Открыть оригинал</a>',
+            '>Оригинал</a>',
             'id="article-back"',
             '>Назад</a>',
             'class="article-viewport"',
@@ -209,7 +209,10 @@ class WebTemplateTests(unittest.TestCase):
         self.assertNotIn('class="filter-link"', template)
         self.assertNotIn("Обновить текст", template)
         self.assertNotIn('class="refresh"', template)
-        self.assertIn('color:var(--coral);border:1px solid var(--coral)', template)
+        self.assertIn('class="original"', template)
+        self.assertIn('>Оригинал</a>', template)
+        self.assertNotIn('>Открыть оригинал</a>', template)
+        self.assertIn('.original{height:28px;padding:0 2px', template)
 
     def test_collections_template_uses_editorial_application_layout(self):
         template_path = Path(web_app.app.template_folder) / "bookmarks.html"
@@ -286,7 +289,10 @@ class WebTemplateTests(unittest.TestCase):
         )
         self.assertIn(".material-meta{min-height:42px", template)
         self.assertIn(".bookmark-actions{min-height:34px", template)
-        self.assertIn("grid-template-columns:repeat(2,40px)", template)
+        self.assertIn(".collection-toolbar{width:250px", template)
+        self.assertIn("grid-template-columns:repeat(2,32px)", template)
+        self.assertIn(">Развернуть</button>", template)
+        self.assertIn("button.textContent = expanded ? 'Развернуть' : 'Свернуть'", template)
         self.assertNotIn('aria-label="Удалить подборку"', template)
         self.assertNotIn("Вы уверены, что хотите удалить подборку?", template)
 
