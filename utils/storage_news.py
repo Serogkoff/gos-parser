@@ -457,23 +457,60 @@ class NewsStorage:
         ]
 
     def _query_unread_counts(self, context, *, found_only=False):
-        unread_select = self._unread_news_select(
-            context["condition"], found_only=found_only,
+        condition = context["condition"]
+        condition_parameters = context["parameters"]
+        found_join = (
+            "JOIN found_items AS f ON f.news_key = n.news_key"
+            if found_only else ""
         )
         with self._connection_factory() as connection:
-            rows = connection.execute(
+            # Новые после личной границы читаются по first_seen_at. NOT EXISTS
+            # использует первичный ключ (user_id, normalized_url) и не требует
+            # тяжёлой проверки OR для всей таблицы новостей.
+            new_rows = connection.execute(
                 f"""
-                SELECT unread.source, COUNT(*) AS unread_count
-                FROM ({unread_select}) AS unread
-                GROUP BY unread.source
+                SELECT n.source, COUNT(*) AS unread_count
+                FROM news_items AS n INDEXED BY idx_news_unread_scan
+                {found_join}
+                WHERE {condition}
+                  AND n.normalized_url != ''
+                  AND n.first_seen_at > ?
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM news_item_reads AS r
+                      WHERE r.user_id = ?
+                        AND r.normalized_url = n.normalized_url
+                  )
+                GROUP BY n.source
                 """,
-                self._unread_news_parameters(context),
+                [
+                    *condition_parameters,
+                    context["read_all_before"],
+                    context["user_id"],
+                ],
             ).fetchall()
-        return {
-            (row["source"] or "Неизвестный источник"):
-                int(row["unread_count"])
-            for row in rows
-        }
+            # Явно оставленные непрочитанными архивные материалы начинаются с
+            # узкого пользовательского индекса и обычно занимают несколько строк.
+            explicit_rows = connection.execute(
+                f"""
+                SELECT n.source, COUNT(*) AS unread_count
+                FROM news_item_reads AS r INDEXED BY idx_news_item_reads_unread
+                JOIN news_items AS n
+                  ON n.normalized_url = r.normalized_url
+                {found_join}
+                WHERE r.user_id = ?
+                  AND r.is_read = 0
+                  AND {condition}
+                  AND n.normalized_url != ''
+                GROUP BY n.source
+                """,
+                [context["user_id"], *condition_parameters],
+            ).fetchall()
+        counts = {}
+        for row in [*new_rows, *explicit_rows]:
+            source = row["source"] or "Неизвестный источник"
+            counts[source] = counts.get(source, 0) + int(row["unread_count"])
+        return counts
 
     def news_unread_summary(
         self, user_id, source_group, visible_urls=None, *, found_only=False,

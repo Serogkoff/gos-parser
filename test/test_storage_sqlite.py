@@ -367,6 +367,54 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual(found_summary["by_source"], {"МЧС": 1, "Минфин": 1})
         self.assertEqual(found_summary["visible_urls"], [matching_mchs["url"]])
 
+    def test_unread_counter_uses_two_indexed_queries_without_or_scan(self):
+        self._write_json(self.all_json, [])
+        self._write_json(self.found_json, [])
+        user = storage.create_user("indexed-counter", "strong-password")
+        self.assertEqual(
+            storage.news_unread_summary(user["id"], "government")["total"],
+            0,
+        )
+        with storage._connection() as connection:
+            storage._insert_news_items(
+                connection,
+                [{
+                    "source": "МЧС",
+                    "title": "Новая публикация для индексного подсчёта",
+                    "url": "https://mchs.gov.ru/news/indexed-unread",
+                }],
+            )
+
+        statements = []
+        original_connection = storage._connection
+
+        @contextmanager
+        def traced_connection():
+            with original_connection() as connection:
+                connection.set_trace_callback(statements.append)
+                yield connection
+
+        context = storage._unread_news_context(user["id"], "government")
+        with patch.object(storage, "_connection", traced_connection):
+            counts = storage._NEWS_STORAGE._query_unread_counts(context)
+
+        count_queries = [
+            statement.upper()
+            for statement in statements
+            if "COUNT(*) AS UNREAD_COUNT" in statement.upper()
+        ]
+        self.assertEqual(counts, {"МЧС": 1})
+        self.assertEqual(len(count_queries), 2)
+        self.assertIn("INDEXED BY IDX_NEWS_UNREAD_SCAN", count_queries[0])
+        self.assertIn("NOT EXISTS", count_queries[0])
+        self.assertIn(
+            "INDEXED BY IDX_NEWS_ITEM_READS_UNREAD",
+            count_queries[1],
+        )
+        combined_queries = " ".join(count_queries)
+        self.assertNotIn("OR R.IS_READ = 0", combined_queries)
+        self.assertNotIn("LEFT JOIN NEWS_ITEM_READS", combined_queries)
+
     def test_news_overview_cache_does_not_leak_between_databases(self):
         first_database = self.database
         second_database = first_database.with_name("second-news.db")
