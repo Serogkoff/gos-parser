@@ -68,7 +68,8 @@ class StorageSchemaTests(unittest.TestCase):
                 connection.commit()
                 create_schema(connection)
                 row = connection.execute(
-                    """SELECT title, color, is_bold, is_italic, sort_order
+                    """SELECT title, event_date, end_date, color, is_bold,
+                              is_italic, sort_order
                        FROM calendar_events"""
                 ).fetchone()
             finally:
@@ -76,6 +77,8 @@ class StorageSchemaTests(unittest.TestCase):
 
         self.assertEqual(dict(row), {
             "title": "Старое событие",
+            "event_date": "2026-09-14",
+            "end_date": "2026-09-14",
             "color": "red",
             "is_bold": 0,
             "is_italic": 0,

@@ -83,6 +83,7 @@ class NotesTestModeTests(unittest.TestCase):
                 "action": "save_event",
                 "title": "Встреча в МИД",
                 "event_date": "2026-08-28",
+                "end_date": "2026-08-28",
                 "event_time": "14:00",
                 "place": "Смоленская площадь",
                 "description": "Взять паспорт",
@@ -118,11 +119,48 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn('<details class="mobile-past-agenda" open>', html)
         self.assertIn('<summary>Прошедшие события</summary>', html)
         self.assertIn('id="agenda-2026-08-28"', html)
-        self.assertIn('class="mobile-agenda-event color-green event-bold event-italic"', html)
+        self.assertIn('class="mobile-agenda-event color-green event-bold event-italic ', html)
         self.assertIn('<time>14:00</time>', html)
         self.assertIn('class="mobile-calendar-add"', html)
         self.assertIn('class="mobile-bottom-nav"', html)
         self.assertIn('</svg><span>Записи</span></a>', html)
+
+    def test_common_period_event_is_visible_but_only_owner_can_edit(self):
+        owner_client, owner_token = self._client_for(self.admin)
+        response = owner_client.post(
+            "/notes?view=calendar",
+            data={
+                "csrf_token": owner_token,
+                "action": "save_event",
+                "title": "Отпуск редактора",
+                "event_date": "2026-09-10",
+                "end_date": "2026-09-16",
+                "is_shared": "1",
+                "color": "green",
+                "calendar_mode": "month",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        event = storage.list_calendar_events(
+            self.admin["id"], "2026-09-10", "2026-09-16"
+        )[0]
+        self.assertEqual(event["visibility"], "all")
+        self.assertEqual(event["end_date"], "2026-09-16")
+
+        owner_html = owner_client.get(
+            "/notes?view=calendar&mode=month&selected=2026-09-10"
+        ).get_data(as_text=True)
+        self.assertGreaterEqual(owner_html.count("Отпуск редактора"), 7)
+        self.assertIn(f"event={event['id']}", owner_html)
+
+        reader_client, _ = self._client_for(self.reader)
+        reader_html = reader_client.get(
+            "/notes?view=calendar&mode=day&selected=2026-09-12"
+        ).get_data(as_text=True)
+        self.assertIn("Отпуск редактора", reader_html)
+        self.assertIn("Общее · owner", reader_html)
+        self.assertIn("shared-event", reader_html)
+        self.assertNotIn(f"event={event['id']}", reader_html)
 
     def test_mobile_calendar_starts_with_today_and_hides_past_events(self):
         class FixedDate(date):
@@ -179,8 +217,8 @@ class NotesTestModeTests(unittest.TestCase):
                 html, rf'class="view active"[^>]*>{view_label}</a>'
             )
             self.assertIn('class="icon-button new-event-button"', html)
-            self.assertIn('aria-label="Новая заметка"', html)
-            self.assertNotIn('</svg>Новая заметка</button>', html)
+            self.assertIn('aria-label="Новое событие"', html)
+            self.assertNotIn('</svg>Новое событие</button>', html)
             self.assertIn('.new-event-button,.record-add', stylesheet)
 
         for marker in (

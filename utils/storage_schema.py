@@ -157,6 +157,7 @@ def create_schema(connection):
             user_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             event_date TEXT NOT NULL,
+            end_date TEXT NOT NULL DEFAULT '',
             event_time TEXT NOT NULL DEFAULT '',
             place TEXT NOT NULL DEFAULT '',
             description TEXT NOT NULL DEFAULT '',
@@ -474,6 +475,17 @@ def create_schema(connection):
             "PRAGMA table_info(calendar_events)"
         ).fetchall()
     }
+    if "end_date" not in calendar_columns:
+        connection.execute(
+            "ALTER TABLE calendar_events ADD COLUMN end_date TEXT NOT NULL DEFAULT ''"
+        )
+    connection.execute(
+        "UPDATE calendar_events SET end_date = event_date WHERE end_date = ''"
+    )
+    connection.execute(
+        """CREATE INDEX IF NOT EXISTS idx_calendar_events_period
+           ON calendar_events(event_date, end_date, visibility, user_id)"""
+    )
     if "color" not in calendar_columns:
         connection.execute(
             "ALTER TABLE calendar_events ADD COLUMN color TEXT NOT NULL DEFAULT 'red'"

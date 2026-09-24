@@ -116,6 +116,36 @@ class PersonalWorkspaceStorageTests(unittest.TestCase):
             ["Третье", "Первое", "Второе"],
         )
 
+    def test_calendar_period_and_common_event_are_visible_to_other_users(self):
+        common_id = storage.save_calendar_event(
+            self.owner["id"], "Отпуск", "2026-09-10",
+            visibility="all", color="green", end_date="2026-09-16",
+        )
+        storage.save_calendar_event(
+            self.owner["id"], "Личное", "2026-09-12", end_date="2026-09-13",
+        )
+
+        reader_events = storage.list_calendar_events(
+            self.reader["id"], "2026-09-12", "2026-09-12"
+        )
+        self.assertEqual([event["id"] for event in reader_events], [common_id])
+        self.assertEqual(reader_events[0]["end_date"], "2026-09-16")
+        self.assertEqual(reader_events[0]["owner_username"], "owner")
+        self.assertTrue(reader_events[0]["is_shared"])
+        self.assertFalse(reader_events[0]["can_edit"])
+
+        owner_event = storage.list_calendar_events(
+            self.owner["id"], "2026-09-16", "2026-09-16"
+        )[0]
+        self.assertTrue(owner_event["can_edit"])
+
+    def test_calendar_period_cannot_end_before_it_starts(self):
+        with self.assertRaisesRegex(ValueError, "раньше даты начала"):
+            storage.save_calendar_event(
+                self.owner["id"], "Ошибка", "2026-09-16",
+                end_date="2026-09-10",
+            )
+
     def test_dictionary_is_private_to_its_owner(self):
         deck_id = storage.create_dictionary_deck(self.owner["id"], "Политика")
         card_id = storage.save_dictionary_card(

@@ -1328,23 +1328,24 @@ def notes_page():
                     user_id, request.form.get("title"),
                     request.form.get("event_date"), request.form.get("event_time"),
                     request.form.get("place"), request.form.get("description"),
-                    "private", (),
+                    "all" if request.form.get("is_shared") else "private", (),
                     request.form.get("event_id"),
                     color=request.form.get("color"),
                     is_bold=request.form.get("is_bold"),
                     is_italic=request.form.get("is_italic"),
+                    end_date=request.form.get("end_date"),
                 )
                 event_date = request.form.get("event_date")
                 return _notes_redirect(
                     "calendar", mode=request.form.get("calendar_mode", "month"),
-                    selected=event_date, message="Заметка сохранена",
+                    selected=event_date, message="Событие сохранено",
                 )
             if action == "delete_event":
                 delete_calendar_event(user_id, request.form.get("event_id"))
                 return _notes_redirect(
                     "calendar", mode=request.form.get("calendar_mode", "month"),
                     selected=request.form.get("return_date"),
-                    message="Заметка удалена",
+                    message="Событие удалено",
                 )
             if action == "save_record":
                 save_personal_note(
@@ -1568,7 +1569,29 @@ def notes_page():
         )
         events_by_date = {}
         for event in events:
-            events_by_date.setdefault(event["event_date"], []).append(event)
+            event_start = datetime.strptime(event["event_date"], "%Y-%m-%d").date()
+            event_end = datetime.strptime(event["end_date"], "%Y-%m-%d").date()
+            occurrence_start = max(event_start, range_start)
+            occurrence_end = min(event_end, range_end)
+            for occurrence_offset in range((occurrence_end - occurrence_start).days + 1):
+                occurrence_date = occurrence_start + timedelta(days=occurrence_offset)
+                occurrence = dict(event)
+                occurrence["occurrence_date"] = occurrence_date.isoformat()
+                occurrence["can_reorder"] = bool(
+                    occurrence["can_edit"]
+                    and not occurrence["event_time"]
+                    and event_start == event_end
+                )
+                events_by_date.setdefault(
+                    occurrence["occurrence_date"], []
+                ).append(occurrence)
+        for day_events in events_by_date.values():
+            day_events.sort(key=lambda item: (
+                bool(item["event_time"]),
+                item["sort_order"] if not item["event_time"] else 0,
+                item["event_time"],
+                item["id"],
+            ))
         period_days = []
         for offset in range((range_end - range_start).days + 1):
             item_date = range_start + timedelta(days=offset)
@@ -1603,12 +1626,14 @@ def notes_page():
         selected_event = next(
             (
                 event for event in events
-                if str(event["id"]) == str(request.args.get("event", ""))
+                if event["can_edit"]
+                and str(event["id"]) == str(request.args.get("event", ""))
             ),
             None,
         )
         event_form = selected_event or {
             "id": "", "title": "", "event_date": selected_date,
+            "end_date": selected_date, "visibility": "private",
             "event_time": "", "place": "", "description": "", "color": "red",
             "is_bold": 0, "is_italic": 0,
         }

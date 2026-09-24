@@ -316,11 +316,18 @@ class PersonalWorkspaceStorage:
     def save_calendar_event(self, user_id, title, event_date, event_time="", place="",
                             description="", visibility="private",
                             shared_user_ids=None, event_id=None, color="red",
-                            is_bold=False, is_italic=False):
+                            is_bold=False, is_italic=False, end_date=None):
         """Создаёт или обновляет событие календаря владельца."""
         user_id = self._validate_user_id(user_id)
         title = _validated_notes_text(title, "Название", 200, required=True)
         event_date = _validated_date(event_date)
+        end_date = _validated_date(end_date or event_date, "Дата окончания")
+        start_value = datetime.strptime(event_date, "%Y-%m-%d").date()
+        end_value = datetime.strptime(end_date, "%Y-%m-%d").date()
+        if end_value < start_value:
+            raise ValueError("Дата окончания не может быть раньше даты начала")
+        if (end_value - start_value).days > 366:
+            raise ValueError("Событие не может длиться больше 366 дней")
         event_time = _validated_time(event_time)
         place = _validated_notes_text(place, "Место", 500)
         description = _validated_notes_text(description, "Комментарий", 5000)
@@ -337,7 +344,7 @@ class PersonalWorkspaceStorage:
                 except (TypeError, ValueError) as error:
                     raise ValueError("Мероприятие не найдено") from error
                 current = connection.execute(
-                    """SELECT event_date, event_time, sort_order
+                    """SELECT event_date, end_date, event_time, sort_order
                        FROM calendar_events WHERE id = ? AND user_id = ?""",
                     (event_id, user_id),
                 ).fetchone()
@@ -352,10 +359,10 @@ class PersonalWorkspaceStorage:
                         )
                 cursor = connection.execute(
                     """UPDATE calendar_events SET title = ?, event_date = ?,
-                           event_time = ?, place = ?, description = ?, visibility = ?,
+                           end_date = ?, event_time = ?, place = ?, description = ?, visibility = ?,
                            color = ?, is_bold = ?, is_italic = ?, sort_order = ?,
                            updated_at = ? WHERE id = ? AND user_id = ?""",
-                    (title, event_date, event_time, place, description, visibility,
+                    (title, event_date, end_date, event_time, place, description, visibility,
                      color, is_bold, is_italic, sort_order,
                      now, event_id, user_id),
                 )
@@ -368,11 +375,11 @@ class PersonalWorkspaceStorage:
                     )
                 cursor = connection.execute(
                     """INSERT INTO calendar_events(
-                           user_id, title, event_date, event_time, place, description,
+                           user_id, title, event_date, end_date, event_time, place, description,
                            visibility, color, is_bold, is_italic, sort_order,
                            created_at, updated_at
-                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (user_id, title, event_date, event_time, place, description,
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (user_id, title, event_date, end_date, event_time, place, description,
                      visibility, color, is_bold, is_italic, sort_order, now, now),
                 )
                 event_id = cursor.lastrowid
@@ -400,21 +407,32 @@ class PersonalWorkspaceStorage:
         self._initialize_database()
         with self._connection_factory() as connection:
             rows = connection.execute(
-                """SELECT id, title, event_date, event_time, place, description,
-                          visibility, color, is_bold, is_italic, sort_order,
-                          created_at, updated_at
-                   FROM calendar_events
-                   WHERE user_id = ? AND event_date BETWEEN ? AND ?
-                   ORDER BY event_date,
-                            CASE WHEN event_time = '' THEN 0 ELSE 1 END,
-                            CASE WHEN event_time = '' THEN sort_order ELSE 0 END,
-                            event_time, id""",
-                (user_id, date_from, date_to),
+                """SELECT e.id, e.user_id, e.title, e.event_date, e.end_date,
+                          e.event_time, e.place, e.description, e.visibility,
+                          e.color, e.is_bold, e.is_italic, e.sort_order,
+                          e.created_at, e.updated_at, u.username AS owner_username
+                   FROM calendar_events AS e
+                   JOIN users AS u ON u.id = e.user_id
+                   WHERE e.event_date <= ? AND e.end_date >= ?
+                     AND (
+                         e.user_id = ? OR e.visibility = 'all' OR EXISTS (
+                             SELECT 1 FROM calendar_event_shares AS s
+                             WHERE s.event_id = e.id AND s.user_id = ?
+                         )
+                     )
+                   ORDER BY e.event_date,
+                            CASE WHEN e.event_time = '' THEN 0 ELSE 1 END,
+                            CASE WHEN e.event_time = '' THEN e.sort_order ELSE 0 END,
+                            e.event_time, e.id""",
+                (date_to, date_from, user_id, user_id),
             ).fetchall()
             result = []
             for row in rows:
                 item = dict(row)
                 item["id"] = int(item["id"])
+                item["user_id"] = int(item["user_id"])
+                item["can_edit"] = item["user_id"] == user_id
+                item["is_shared"] = item["visibility"] == "all"
                 item["shared_users"] = _shared_users(
                     connection, "calendar_event_shares", "event_id", item["id"]
                 )
@@ -435,7 +453,8 @@ class PersonalWorkspaceStorage:
         with self._lock, self._connection_factory() as connection:
             rows = connection.execute(
                 """SELECT id FROM calendar_events
-                   WHERE user_id = ? AND event_date = ? AND event_time = ''""",
+                   WHERE user_id = ? AND event_date = ? AND end_date = event_date
+                     AND event_time = ''""",
                 (user_id, event_date),
             ).fetchall()
             available_ids = {int(row["id"]) for row in rows}

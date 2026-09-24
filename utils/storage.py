@@ -184,11 +184,12 @@ def set_personal_note_pinned(user_id, note_id, is_pinned):
 def save_calendar_event(user_id, title, event_date, event_time="", place="",
                         description="", visibility="private",
                         shared_user_ids=None, event_id=None, color="red",
-                        is_bold=False, is_italic=False):
+                        is_bold=False, is_italic=False, end_date=None):
     """Создаёт или обновляет событие календаря владельца."""
     return _WORKSPACE_STORAGE.save_calendar_event(
         user_id, title, event_date, event_time, place, description,
-        visibility, shared_user_ids, event_id, color, is_bold, is_italic
+        visibility, shared_user_ids, event_id, color, is_bold, is_italic,
+        end_date
     )
 
 
