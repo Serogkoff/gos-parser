@@ -289,17 +289,30 @@ class NewsStorage:
                         parameters,
                     ).fetchone()[0]
                 )
+            outer_found_join = (
+                "JOIN found_items AS f ON f.news_key = n.news_key"
+                if found_only else ""
+            )
             rows = connection.execute(
                 f"""
+                WITH selected_news AS (
+                    SELECT n.news_key, n.publication_date, n.parsed_date
+                    FROM news_items AS n
+                    {join}
+                    WHERE {where_clause}
+                    ORDER BY n.publication_date DESC,
+                             n.parsed_date DESC,
+                             n.news_key DESC
+                    LIMIT ? OFFSET ?
+                )
                 SELECT {payload_column} AS payload_json,
                        n.parsed_date, n.first_seen_at
-                FROM news_items AS n
-                {join}
-                WHERE {where_clause}
-                ORDER BY n.publication_date DESC,
-                         n.parsed_date DESC,
-                         n.news_key DESC
-                LIMIT ? OFFSET ?
+                FROM selected_news AS selected
+                JOIN news_items AS n ON n.news_key = selected.news_key
+                {outer_found_join}
+                ORDER BY selected.publication_date DESC,
+                         selected.parsed_date DESC,
+                         selected.news_key DESC
                 """,
                 [*parameters, limit, offset],
             ).fetchall()

@@ -546,6 +546,52 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual(total, 1)
         self.assertEqual(page[0]["title"], "Искомый архивный материал")
 
+    def test_feed_limits_lightweight_keys_before_loading_payloads(self):
+        items = [
+            {
+                "source": "МЧС",
+                "title": f"Материал для быстрой страницы {number}",
+                "url": f"https://mchs.gov.ru/news/fast-page-{number}",
+                "date": "2026-09-24",
+                "summary": "Большой текст карточки " * 50,
+            }
+            for number in range(30)
+        ]
+        self._write_json(self.all_json, items)
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+        statements = []
+        original_connection = storage._connection
+
+        @contextmanager
+        def traced_connection():
+            with original_connection() as connection:
+                connection.set_trace_callback(statements.append)
+                yield connection
+
+        with patch.object(storage, "_connection", traced_connection):
+            page, total = storage.list_news_page("government")
+
+        page_query = next(
+            statement.upper()
+            for statement in statements
+            if "WITH SELECTED_NEWS AS" in statement.upper()
+        )
+        self.assertEqual(total, 30)
+        self.assertEqual(len(page), 20)
+        self.assertGreater(
+            page_query.index("PAYLOAD_JSON"),
+            page_query.index("LIMIT 20"),
+        )
+        with storage._connection() as connection:
+            indexes = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA index_list(news_items)"
+                ).fetchall()
+            }
+        self.assertIn("idx_news_feed_order", indexes)
+
     def test_unread_query_uses_single_join_without_union(self):
         query = storage._unread_news_select("n.source = ?")
         found_query = storage._unread_news_select(
