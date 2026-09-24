@@ -45,6 +45,7 @@ from utils.logger import (
     get_logger,
     read_recent_errors,
     write_system_performance,
+    write_web_performance,
 )
 from utils.proxy import kyodo_proxy_status
 from utils.security import AttemptLimiter
@@ -2646,12 +2647,16 @@ def render_news_page(
     )
     checkpoint("template")
     timings["total"] = round((perf_counter() - request_started) * 1000, 1)
-    performance_logger.info(
-        "Лента %s/%s: %s",
-        source_group,
-        mode,
-        " ".join(f"{name}={value}ms" for name, value in timings.items()),
+    timing_line = " ".join(
+        f"{name}={value}ms" for name, value in timings.items()
     )
+    request_label = (
+        f"route={request.path} group={source_group} mode={mode} "
+        f"page={page} sources={len(source_filters)} "
+        f"search={int(bool(search_query))} keyword={int(bool(keyword_filter))}"
+    )
+    performance_logger.info("Лента %s: %s", request_label, timing_line)
+    write_web_performance(f"Лента {request_label}: {timing_line}")
     return response
 
 

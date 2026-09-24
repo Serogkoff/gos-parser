@@ -148,6 +148,26 @@ class PersonalSourceOrderTests(unittest.TestCase):
         self.assertIn('href="/">Все</a>', html)
         self.assertIn('href="/found">Совпадения</a>', html)
 
+    def test_feed_performance_is_written_with_route_and_phases(self):
+        client = web_app.app.test_client()
+        self._login(client, self.first["id"])
+        with (
+            patch.object(web_app, "load_json", side_effect=self._app_data),
+            patch.object(web_app, "write_web_performance") as write_timing,
+        ):
+            response = client.get("/found?keyword=Япония")
+
+        self.assertEqual(response.status_code, 200)
+        write_timing.assert_called_once()
+        timing_line = write_timing.call_args.args[0]
+        self.assertIn("route=/found", timing_line)
+        self.assertIn("group=government", timing_line)
+        self.assertIn("mode=found", timing_line)
+        self.assertIn("keyword=1", timing_line)
+        for phase in ("account=", "overview=", "news=", "unread=", "template=", "total="):
+            with self.subTest(phase=phase):
+                self.assertIn(phase, timing_line)
+
     def test_source_order_api_requires_csrf(self):
         client = web_app.app.test_client()
         self._login(client, self.first["id"])

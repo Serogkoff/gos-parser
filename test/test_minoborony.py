@@ -174,7 +174,7 @@ class MinoboronyParserTests(unittest.TestCase):
             minoborony,
             "fetch_soup_js",
         ) as fetch_js:
-            result = minoborony.parse()
+            result = minoborony.parse(now=datetime(2026, 8, 26, 14, 0))
 
         self.assertEqual(len(result), 2)
         self.assertEqual(
@@ -209,7 +209,7 @@ class MinoboronyParserTests(unittest.TestCase):
             "fetch_soup_js",
             side_effect=fetch_js,
         ) as browser_fetch:
-            result = minoborony.parse()
+            result = minoborony.parse(now=datetime(2026, 8, 26, 14, 0))
 
         self.assertEqual([item["url"] for item in result], [NEW_ARTICLE_URL])
         self.assertEqual(
@@ -252,7 +252,7 @@ class MinoboronyParserTests(unittest.TestCase):
         ), mock.patch.object(
             minoborony, "fetch_soup_js", side_effect=fetch_js
         ) as browser_fetch:
-            result = minoborony.parse()
+            result = minoborony.parse(now=datetime(2026, 8, 26, 14, 0))
 
         self.assertEqual(
             [item["url"] for item in result],

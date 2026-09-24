@@ -28,7 +28,8 @@ ARTICLE_PATH = re.compile(
 )
 
 
-def parse():
+def parse(now=None):
+    now = now or datetime.now()
     news = []
     # Новый mil.ru проверяем первым, старый z.mil.ru оставляем резервом:
     # во время обновления сайта наборы карточек на них могут различаться.
@@ -40,7 +41,7 @@ def parse():
             verify=False,
         )
         page_news = (
-            _parse_news_page(soup, base_url=news_url)
+            _parse_news_page(soup, now=now, base_url=news_url)
             if soup is not None
             else []
         )
@@ -61,7 +62,7 @@ def parse():
                 use_partial_on_timeout=True,
             )
             page_news = (
-                _parse_news_page(soup, base_url=news_url)
+                _parse_news_page(soup, now=now, base_url=news_url)
                 if soup is not None
                 else []
             )

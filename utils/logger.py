@@ -7,6 +7,8 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 ERROR_LOG_FILE = PROJECT_DIR / "parser_errors.log"
 SYSTEM_PERFORMANCE_LOG_FILE = PROJECT_DIR / "system_performance.log"
+WEB_PERFORMANCE_LOG_FILE = PROJECT_DIR / "web_performance.log"
+PERFORMANCE_LOG_MAX_BYTES = 2_000_000
 
 
 def get_logger(name):
@@ -101,5 +103,21 @@ def write_system_performance(line):
             file.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} | {line}\n")
     except OSError:
         # Диагностика не должна мешать открытию административной страницы.
+        return False
+    return True
+
+
+def write_web_performance(line):
+    """Сохраняет замеры открытия ленты и совпадений в отдельный журнал."""
+    try:
+        if (
+            WEB_PERFORMANCE_LOG_FILE.exists()
+            and WEB_PERFORMANCE_LOG_FILE.stat().st_size > PERFORMANCE_LOG_MAX_BYTES
+        ):
+            WEB_PERFORMANCE_LOG_FILE.write_text("", encoding="utf-8")
+        with WEB_PERFORMANCE_LOG_FILE.open("a", encoding="utf-8") as file:
+            file.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} | {line}\n")
+    except OSError:
+        # Диагностика не должна задерживать или ломать пользовательскую страницу.
         return False
     return True

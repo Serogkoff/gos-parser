@@ -26,6 +26,23 @@ class ErrorLogTests(unittest.TestCase):
                 self.assertEqual(logger.read_recent_errors(), [])
                 self.assertEqual(logger.error_log_stats()["size_bytes"], 0)
 
+    def test_web_performance_log_is_separate_and_bounded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "web_performance.log"
+            path.write_text("старые замеры", encoding="utf-8")
+            with (
+                patch.object(logger, "WEB_PERFORMANCE_LOG_FILE", path),
+                patch.object(logger, "PERFORMANCE_LOG_MAX_BYTES", 1),
+            ):
+                result = logger.write_web_performance(
+                    "Лента route=/found total=12.3ms"
+                )
+            content = path.read_text(encoding="utf-8")
+
+        self.assertTrue(result)
+        self.assertNotIn("старые замеры", content)
+        self.assertIn("Лента route=/found total=12.3ms", content)
+
 
 if __name__ == "__main__":
     unittest.main()
