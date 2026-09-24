@@ -250,6 +250,12 @@ class WebTemplateTests(unittest.TestCase):
         self.assertIn("asset_version|urlencode", template)
         self.assertNotIn("<style>", template)
         notes_css = stylesheet.read_text(encoding="utf-8")
+        self.assertIn('class="desktop-section-title"', template)
+        self.assertIn("'Календарь' if view == 'calendar'", template)
+        self.assertIn("'Заметки' if view == 'records'", template)
+        self.assertIn("else 'Словарь-квиз'", template)
+        self.assertIn(".desktop-section-title{position:relative", notes_css)
+        self.assertIn(".desktop-section-title{display:none}", notes_css)
         self.assertIn(".section-tabs{display:none}", notes_css)
         self.assertIn(
             ".section-tabs{grid-column:1;grid-row:2;display:flex",
