@@ -82,6 +82,39 @@ class StorageSchemaTests(unittest.TestCase):
             "sort_order": 0,
         })
 
+    def test_schema_adds_dictionary_access_to_existing_users(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            database = Path(temporary) / "legacy-users.db"
+            connection = sqlite3.connect(database)
+            connection.row_factory = sqlite3.Row
+            try:
+                connection.execute(
+                    """CREATE TABLE users (
+                           id INTEGER PRIMARY KEY AUTOINCREMENT,
+                           username TEXT NOT NULL UNIQUE,
+                           password_hash TEXT NOT NULL,
+                           role TEXT NOT NULL DEFAULT 'user',
+                           is_active INTEGER NOT NULL DEFAULT 1,
+                           created_at TEXT NOT NULL,
+                           last_login_at TEXT NOT NULL DEFAULT ''
+                       )"""
+                )
+                connection.execute(
+                    """INSERT INTO users(username, password_hash, role, created_at)
+                       VALUES ('reader', 'hash', 'user', 'now')"""
+                )
+                connection.commit()
+                create_schema(connection)
+                row = connection.execute(
+                    "SELECT username, can_use_dictionary FROM users"
+                ).fetchone()
+            finally:
+                connection.close()
+
+        self.assertEqual(
+            dict(row), {"username": "reader", "can_use_dictionary": 0}
+        )
+
     def test_schema_expands_existing_personal_notes_without_data_loss(self):
         with tempfile.TemporaryDirectory() as temporary:
             database = Path(temporary) / "legacy-notes.db"

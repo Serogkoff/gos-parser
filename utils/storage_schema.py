@@ -65,6 +65,8 @@ def create_schema(connection):
                 CHECK(role IN ('admin', 'user')),
             is_active INTEGER NOT NULL DEFAULT 1
                 CHECK(is_active IN (0, 1)),
+            can_use_dictionary INTEGER NOT NULL DEFAULT 0
+                CHECK(can_use_dictionary IN (0, 1)),
             created_at TEXT NOT NULL,
             last_login_at TEXT NOT NULL DEFAULT ''
         );
@@ -391,6 +393,17 @@ def create_schema(connection):
     connection.execute(
         "INSERT OR IGNORE INTO metadata(key, value) VALUES ('news_revision', '0')"
     )
+
+    user_columns = {
+        row["name"] for row in connection.execute(
+            "PRAGMA table_info(users)"
+        ).fetchall()
+    }
+    if "can_use_dictionary" not in user_columns:
+        connection.execute(
+            "ALTER TABLE users ADD COLUMN can_use_dictionary "
+            "INTEGER NOT NULL DEFAULT 0"
+        )
 
     personal_note_columns = {
         row["name"] for row in connection.execute(

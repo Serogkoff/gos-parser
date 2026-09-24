@@ -134,6 +134,7 @@ from utils.storage import (
     mark_news_group_read,
     mark_news_read,
     set_user_active,
+    set_user_dictionary_access,
     set_user_password,
     set_user_role,
     review_dictionary_card,
@@ -653,6 +654,12 @@ def admin_users():
                         target["id"], request.form.get("password", "")
                     )
                     message = f"Пароль пользователя {updated['username']} изменён"
+                elif action == "dictionary_access":
+                    updated = set_user_dictionary_access(
+                        target["id"], not target["can_use_dictionary"]
+                    )
+                    state = "открыт" if updated["can_use_dictionary"] else "закрыт"
+                    message = f"Доступ к словарю для {updated['username']} {state}"
                 elif action == "delete":
                     if target["id"] == administrator["id"]:
                         raise ValueError("Нельзя удалить собственный аккаунт")
@@ -1277,11 +1284,18 @@ MONTH_NAMES_GENITIVE_RU = (
 )
 
 
-def _notes_admin():
+def _notes_user(view):
     user = current_user()
-    if not user or user.get("role") != "admin":
+    if not user:
         abort(403)
-    return user
+    if view in {"records", "calendar"}:
+        return user
+    if user.get("role") == "admin":
+        return user
+    if view == "dictionary" and user.get("can_use_dictionary"):
+        return user
+    else:
+        abort(403)
 
 
 def _notes_redirect(view, **values):
@@ -1290,12 +1304,12 @@ def _notes_redirect(view, **values):
 
 @app.route("/notes", methods=["GET", "POST"])
 def notes_page():
-    """Личное рабочее пространство, доступное только администратору."""
-    user = _notes_admin()
-    user_id = user["id"]
+    """Личное рабочее пространство с отдельным разрешением на словарь."""
     view = str(request.values.get("view", "calendar")).strip().casefold()
     if view not in {"calendar", "records", "dictionary"}:
         view = "calendar"
+    user = _notes_user(view)
+    user_id = user["id"]
 
     if request.method == "POST":
         if not csrf_is_valid():

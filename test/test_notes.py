@@ -51,19 +51,28 @@ class NotesTestModeTests(unittest.TestCase):
             return {"sources": [], "generated_at": ""}
         return []
 
-    def test_section_is_hidden_and_forbidden_for_regular_user(self):
+    def test_regular_user_gets_notes_and_calendar_but_dictionary_needs_access(self):
         client, _ = self._client_for(self.reader)
 
-        self.assertEqual(client.get("/notes").status_code, 403)
+        self.assertEqual(client.get("/notes").status_code, 200)
+        self.assertEqual(client.get("/notes?view=records").status_code, 200)
+        self.assertEqual(client.get("/notes?view=dictionary").status_code, 403)
         with patch.object(web_app, "load_json", side_effect=self._empty_app_data):
             page = client.get("/")
         self.assertEqual(page.status_code, 200)
-        self.assertNotIn('href="/notes"', page.get_data(as_text=True))
+        html = page.get_data(as_text=True)
+        self.assertIn('href="/notes"', html)
+        self.assertIn('/notes?view=records', html)
+        self.assertIn('/notes?view=calendar', html)
+        self.assertNotIn('/notes?view=dictionary', html)
+        self.assertNotIn('/admin/users', html)
+        self.assertNotIn('/admin/system', html)
 
-        admin_client, _ = self._client_for(self.admin)
-        with patch.object(web_app, "load_json", side_effect=self._empty_app_data):
-            admin_page = admin_client.get("/")
-        self.assertIn('href="/notes"', admin_page.get_data(as_text=True))
+        storage.set_user_dictionary_access(self.reader["id"], True)
+        client, _ = self._client_for(storage.load_user(self.reader["id"]))
+        self.assertEqual(client.get("/notes?view=dictionary").status_code, 200)
+        self.assertEqual(client.get("/admin/users").status_code, 403)
+        self.assertEqual(client.get("/admin/system").status_code, 403)
 
     def test_admin_creates_event_and_opens_selected_day(self):
         client, token = self._client_for(self.admin)

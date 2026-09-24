@@ -134,6 +134,11 @@ def set_user_active(user_id, is_active):
     return _USER_STORAGE.set_user_active(user_id, is_active)
 
 
+def set_user_dictionary_access(user_id, is_allowed):
+    """Меняет персональный доступ обычного пользователя к словарю-квизу."""
+    return _USER_STORAGE.set_user_dictionary_access(user_id, is_allowed)
+
+
 def delete_user(user_id):
     """Удаляет аккаунт и связанные личные данные, сохраняя последнего администратора."""
     return _USER_STORAGE.delete_user(user_id)

@@ -373,6 +373,18 @@ class AuthenticationTests(unittest.TestCase):
             item for item in storage.list_users() if item["username"] == "journalist"
         )
         self.assertEqual(user["role"], "user")
+        self.assertFalse(user["can_use_dictionary"])
+
+        dictionary_access = self.client.post(
+            "/admin/users",
+            data={
+                "csrf_token": token,
+                "action": "dictionary_access",
+                "user_id": user["id"],
+            },
+        )
+        self.assertEqual(dictionary_access.status_code, 302)
+        self.assertTrue(storage.load_user(user["id"])["can_use_dictionary"])
 
         promoted = self.client.post(
             "/admin/users",
