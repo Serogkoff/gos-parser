@@ -139,6 +139,36 @@ class PersonalWorkspaceStorageTests(unittest.TestCase):
         )[0]
         self.assertTrue(owner_event["can_edit"])
 
+    def test_calendar_event_can_be_shared_with_selected_user(self):
+        outsider = storage.create_user("outsider", "outsider-secret-2026")
+        event_id = storage.save_calendar_event(
+            self.owner["id"], "Только редактору", "2026-09-20",
+            visibility="selected", shared_user_ids=[self.reader["id"]],
+        )
+
+        reader_events = storage.list_calendar_events(
+            self.reader["id"], "2026-09-20", "2026-09-20"
+        )
+        self.assertEqual([event["id"] for event in reader_events], [event_id])
+        self.assertEqual(reader_events[0]["audience_label"], "Общее")
+        self.assertTrue(reader_events[0]["is_shared"])
+        self.assertEqual(
+            [account["id"] for account in reader_events[0]["shared_users"]],
+            [self.reader["id"]],
+        )
+        self.assertEqual(
+            storage.list_calendar_events(
+                outsider["id"], "2026-09-20", "2026-09-20"
+            ),
+            [],
+        )
+
+        with self.assertRaisesRegex(ValueError, "хотя бы одного"):
+            storage.save_calendar_event(
+                self.owner["id"], "Без адресата", "2026-09-21",
+                visibility="selected", shared_user_ids=[],
+            )
+
     def test_calendar_period_cannot_end_before_it_starts(self):
         with self.assertRaisesRegex(ValueError, "раньше даты начала"):
             storage.save_calendar_event(

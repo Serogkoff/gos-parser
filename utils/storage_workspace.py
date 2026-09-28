@@ -387,6 +387,13 @@ class PersonalWorkspaceStorage:
                 connection, "calendar_event_shares", user_id, event_id,
                 visibility, shared_user_ids,
             )
+            if visibility == "selected":
+                shared_count = connection.execute(
+                    "SELECT COUNT(*) FROM calendar_event_shares WHERE event_id = ?",
+                    (event_id,),
+                ).fetchone()[0]
+                if not shared_count:
+                    raise ValueError("Выберите хотя бы одного пользователя")
         return int(event_id)
 
     @staticmethod
@@ -432,7 +439,10 @@ class PersonalWorkspaceStorage:
                 item["id"] = int(item["id"])
                 item["user_id"] = int(item["user_id"])
                 item["can_edit"] = item["user_id"] == user_id
-                item["is_shared"] = item["visibility"] == "all"
+                item["is_shared"] = item["visibility"] != "private"
+                item["audience_label"] = (
+                    "Для всех" if item["visibility"] == "all" else "Общее"
+                )
                 item["shared_users"] = _shared_users(
                     connection, "calendar_event_shares", "event_id", item["id"]
                 )

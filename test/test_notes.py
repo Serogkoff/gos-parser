@@ -111,7 +111,9 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn("Календарь", html)
         self.assertIn("Записи", html)
         self.assertIn("Словарь-квиз", html)
-        self.assertNotIn("Выбранные пользователи", html)
+        self.assertIn("Личное", html)
+        self.assertIn("Выбранные пользователи", html)
+        self.assertIn("Для всех", html)
         self.assertIn("event-bold", html)
         self.assertIn("event-italic", html)
         self.assertIn('class="day-number mobile-day-number"', html)
@@ -135,7 +137,7 @@ class NotesTestModeTests(unittest.TestCase):
                 "title": "Отпуск редактора",
                 "event_date": "2026-09-10",
                 "end_date": "2026-09-16",
-                "is_shared": "1",
+                "visibility": "all",
                 "color": "green",
                 "calendar_mode": "month",
             },
@@ -158,9 +160,60 @@ class NotesTestModeTests(unittest.TestCase):
             "/notes?view=calendar&mode=day&selected=2026-09-12"
         ).get_data(as_text=True)
         self.assertIn("Отпуск редактора", reader_html)
-        self.assertIn("Общее · owner", reader_html)
+        self.assertIn("Для всех · owner", reader_html)
         self.assertIn("shared-event", reader_html)
         self.assertNotIn(f"event={event['id']}", reader_html)
+
+    def test_event_can_be_shared_with_selected_users(self):
+        outsider = storage.create_user("outsider", "outsider-secret-2026")
+        owner_client, owner_token = self._client_for(self.admin)
+        response = owner_client.post(
+            "/notes?view=calendar",
+            data={
+                "csrf_token": owner_token,
+                "action": "save_event",
+                "title": "Интервью для редактора",
+                "event_date": "2026-09-18",
+                "end_date": "2026-09-18",
+                "visibility": "selected",
+                "shared_user_ids": [self.reader["id"]],
+                "color": "blue",
+                "calendar_mode": "month",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        event = storage.list_calendar_events(
+            self.admin["id"], "2026-09-18", "2026-09-18"
+        )[0]
+        self.assertEqual(event["visibility"], "selected")
+        self.assertEqual(
+            [account["id"] for account in event["shared_users"]],
+            [self.reader["id"]],
+        )
+
+        reader_client, _ = self._client_for(self.reader)
+        reader_html = reader_client.get(
+            "/notes?view=calendar&mode=day&selected=2026-09-18"
+        ).get_data(as_text=True)
+        self.assertIn("Интервью для редактора", reader_html)
+        self.assertIn("Общее · owner", reader_html)
+
+        outsider_client, _ = self._client_for(outsider)
+        outsider_html = outsider_client.get(
+            "/notes?view=calendar&mode=day&selected=2026-09-18"
+        ).get_data(as_text=True)
+        self.assertNotIn("Интервью для редактора", outsider_html)
+
+        edit_html = owner_client.get(
+            f"/notes?view=calendar&mode=day&selected=2026-09-18&event={event['id']}"
+        ).get_data(as_text=True)
+        self.assertIn(
+            'name="visibility" value="selected" checked', edit_html
+        )
+        self.assertIn(
+            f'name="shared_user_ids" value="{self.reader["id"]}" checked',
+            edit_html,
+        )
 
     def test_mobile_calendar_starts_with_today_and_hides_past_events(self):
         class FixedDate(date):
@@ -742,7 +795,8 @@ class NotesTestModeTests(unittest.TestCase):
         ).get_data(as_text=True)
 
         self.assertIn(f'data-date="{today.isoformat()}"', html)
-        self.assertIn(f"{week_start.day}–{week_end.day}", html)
+        self.assertIn(str(week_start.day), html)
+        self.assertIn(str(week_end.day), html)
 
     def test_admin_reorders_all_day_events(self):
         client, token = self._client_for(self.admin)

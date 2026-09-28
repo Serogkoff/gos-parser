@@ -1328,7 +1328,8 @@ def notes_page():
                     user_id, request.form.get("title"),
                     request.form.get("event_date"), request.form.get("event_time"),
                     request.form.get("place"), request.form.get("description"),
-                    "all" if request.form.get("is_shared") else "private", (),
+                    request.form.get("visibility", "private"),
+                    request.form.getlist("shared_user_ids"),
                     request.form.get("event_id"),
                     color=request.form.get("color"),
                     is_bold=request.form.get("is_bold"),
@@ -1635,8 +1636,12 @@ def notes_page():
             "id": "", "title": "", "event_date": selected_date,
             "end_date": selected_date, "visibility": "private",
             "event_time": "", "place": "", "description": "", "color": "red",
-            "is_bold": 0, "is_italic": 0,
+            "is_bold": 0, "is_italic": 0, "shared_users": [],
         }
+        available_calendar_users = [
+            account for account in list_users()
+            if account.get("is_active") and account["id"] != user_id
+        ]
         context.update(
             calendar_mode=mode,
             period_label=period_label,
@@ -1647,6 +1652,10 @@ def notes_page():
             selected_is_past=anchor < today,
             selected_date=selected_date,
             event_form=event_form,
+            available_calendar_users=available_calendar_users,
+            event_shared_user_ids={
+                account["id"] for account in event_form.get("shared_users", [])
+            },
             open_event_dialog=bool(selected_event),
             previous_period_url=url_for(
                 "notes_page", view="calendar", mode=mode,
@@ -2005,8 +2014,14 @@ def bookmarks_page():
     if sort_mode not in COLLECTION_SORTS:
         sort_mode = "newest"
     folder_by_id = {str(folder["id"]): folder for folder in folders}
-    shared_folders = list_shared_collections(user_id)
-    shared_by_id = {str(folder["id"]): folder for folder in shared_folders}
+    accessible_shared_folders = list_shared_collections(user_id)
+    shared_by_id = {
+        str(folder["id"]): folder for folder in accessible_shared_folders
+    }
+    shared_folders = [
+        folder for folder in accessible_shared_folders
+        if str(folder.get("parent_id")) not in shared_by_id
+    ]
     if selected_folder not in {"all", "unfiled", *folder_by_id, *shared_by_id}:
         abort(404)
 
@@ -2171,12 +2186,14 @@ def bookmarks_page():
     read_note_ids = set()
     if selected_folder in folder_by_id or selected_folder in shared_by_id:
         selected_folder_data = load_collection(user_id, selected_folder)
-        if selected_folder in folder_by_id:
-            selected_folder_id = int(selected_folder)
-            child_folders = [
-                folder for folder in folders
-                if folder.get("parent_id") == selected_folder_id
-            ]
+        selected_folder_id = int(selected_folder)
+        available_folder_map = (
+            folder_by_id if selected_folder in folder_by_id else shared_by_id
+        )
+        child_folders = [
+            folder for folder in available_folder_map.values()
+            if folder.get("parent_id") == selected_folder_id
+        ]
         bookmarks = list_collection_bookmarks(user_id, selected_folder)
         notes = list_collection_notes(user_id, selected_folder)
         read_note_ids = list_collection_note_read_ids(user_id, selected_folder)
@@ -2194,14 +2211,19 @@ def bookmarks_page():
             if normalized_query in str(folder.get("name", "")).casefold()
         ]
     breadcrumbs = []
-    if selected_folder in folder_by_id:
-        current_folder = folder_by_id[selected_folder]
+    if selected_folder in folder_by_id or selected_folder in shared_by_id:
+        breadcrumb_folder_map = (
+            folder_by_id if selected_folder in folder_by_id else shared_by_id
+        )
+        current_folder = breadcrumb_folder_map[selected_folder]
         visited_folder_ids = set()
         while current_folder and current_folder["id"] not in visited_folder_ids:
             visited_folder_ids.add(current_folder["id"])
             breadcrumbs.append(current_folder)
             parent_id = current_folder.get("parent_id")
-            current_folder = folder_by_id.get(str(parent_id)) if parent_id else None
+            current_folder = (
+                breadcrumb_folder_map.get(str(parent_id)) if parent_id else None
+            )
         breadcrumbs.reverse()
     if selected_folder == "all":
         bookmarks = []
@@ -2248,9 +2270,10 @@ def bookmarks_page():
         visible_folders=visible_folders,
         folder_child_counts={
             folder["id"]: sum(
-                1 for child in folders if child.get("parent_id") == folder["id"]
+                1 for child in [*folders, *accessible_shared_folders]
+                if child.get("parent_id") == folder["id"]
             )
-            for folder in folders
+            for folder in [*folders, *accessible_shared_folders]
         },
         breadcrumbs=breadcrumbs,
         shared_folders=shared_folders,

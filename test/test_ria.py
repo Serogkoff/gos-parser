@@ -108,9 +108,10 @@ class RiaCardTests(unittest.TestCase):
             """
             <div class="list-item" data-type="article">
                 <a class="list-item__title"
-                   href="https://ria.ru/20260828/politika-1.html">
+                   href="https://ria.ru/politika-1.html">
                     РИА опубликовало политическую новость
                 </a>
+                <div class="list-item__info-item" data-type="date">12:00</div>
             </div>
             """,
             "html.parser",

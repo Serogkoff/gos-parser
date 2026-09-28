@@ -316,13 +316,22 @@ class CollectionStorage:
         return self.load_collection(user_id, folder_id)
 
     def load_collection(self, user_id, folder_id):
-        """Возвращает доступную подборку и отмечает права текущего пользователя."""
+        """Возвращает подборку с учётом доступа, унаследованного от родителей."""
         user_id = self._validate_user_id(user_id)
         folder_id = self._validated_folder_id(folder_id)
         self._initialize_database()
         with self._connection_factory() as connection:
             row = connection.execute(
-                """SELECT f.*, u.username AS owner_name,
+                """WITH RECURSIVE lineage(id, parent_id, user_id) AS (
+                       SELECT id, parent_id, user_id
+                       FROM bookmark_folders WHERE id = ?
+                       UNION ALL
+                       SELECT parent.id, parent.parent_id, parent.user_id
+                       FROM bookmark_folders AS parent
+                       JOIN lineage AS child ON child.parent_id = parent.id
+                       WHERE parent.user_id = child.user_id
+                   )
+                   SELECT f.*, u.username AS owner_name,
                           CASE WHEN f.user_id = ? THEN 1 ELSE 0 END AS can_edit
                    FROM bookmark_folders AS f
                    JOIN users AS u ON u.id = f.user_id
@@ -330,9 +339,20 @@ class CollectionStorage:
                        f.user_id = ? OR f.visibility = 'all' OR EXISTS(
                            SELECT 1 FROM bookmark_folder_shares AS s
                            WHERE s.folder_id = f.id AND s.user_id = ?
+                       ) OR EXISTS(
+                           SELECT 1
+                           FROM lineage AS ancestor
+                           JOIN bookmark_folders AS inherited
+                             ON inherited.id = ancestor.id
+                           WHERE ancestor.id != f.id AND (
+                               inherited.visibility = 'all' OR EXISTS(
+                                   SELECT 1 FROM bookmark_folder_shares AS s
+                                   WHERE s.folder_id = inherited.id AND s.user_id = ?
+                               )
+                           )
                        )
                    )""",
-                (user_id, folder_id, user_id, user_id),
+                (folder_id, user_id, folder_id, user_id, user_id, user_id),
             ).fetchone()
             if row is None:
                 return None
@@ -354,27 +374,51 @@ class CollectionStorage:
         }
 
     def list_shared_collections(self, user_id):
-        """Показывает подборки других владельцев, доступные пользователю."""
+        """Показывает прямые и унаследованно доступные чужие подборки."""
         user_id = self._validate_user_id(user_id)
         self._initialize_database()
         with self._connection_factory() as connection:
             rows = connection.execute(
-                """SELECT f.id, f.name, f.description, f.visibility,
+                """WITH RECURSIVE accessible(id, parent_id, user_id) AS (
+                       SELECT f.id, f.parent_id, f.user_id
+                       FROM bookmark_folders AS f
+                       WHERE f.user_id != ? AND (
+                           f.visibility = 'all' OR EXISTS(
+                               SELECT 1 FROM bookmark_folder_shares AS s
+                               WHERE s.folder_id = f.id AND s.user_id = ?
+                           )
+                       )
+                       UNION
+                       SELECT child.id, child.parent_id, child.user_id
+                       FROM bookmark_folders AS child
+                       JOIN accessible AS parent ON child.parent_id = parent.id
+                       WHERE child.user_id = parent.user_id
+                   )
+                   SELECT f.id, f.parent_id, f.user_id, f.name, f.description,
+                          f.visibility, f.sort_order,
                           u.username AS owner_name,
                           COUNT(DISTINCT b.id) AS bookmark_count,
                           COUNT(DISTINCT n.id) AS note_count
-                   FROM bookmark_folders AS f
+                   FROM accessible AS a
+                   JOIN bookmark_folders AS f ON f.id = a.id
                    JOIN users AS u ON u.id = f.user_id
                    LEFT JOIN bookmarks AS b ON b.folder_id = f.id
                    LEFT JOIN collection_notes AS n ON n.folder_id = f.id
-                   WHERE f.user_id != ? AND (f.visibility = 'all' OR EXISTS(
-                       SELECT 1 FROM bookmark_folder_shares AS s
-                       WHERE s.folder_id = f.id AND s.user_id = ?
-                   ))
                    GROUP BY f.id ORDER BY f.sort_order, f.name COLLATE NOCASE, f.id""",
                 (user_id, user_id),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [
+            {
+                **dict(row),
+                "id": int(row["id"]),
+                "parent_id": int(row["parent_id"]) if row["parent_id"] else None,
+                "user_id": int(row["user_id"]),
+                "sort_order": int(row["sort_order"]),
+                "bookmark_count": int(row["bookmark_count"]),
+                "note_count": int(row["note_count"]),
+            }
+            for row in rows
+        ]
 
     def list_collection_bookmarks(self, user_id, folder_id):
         collection = self.load_collection(user_id, folder_id)

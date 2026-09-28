@@ -558,6 +558,77 @@ class PersonalBookmarksTests(unittest.TestCase):
         self.assertEqual(cycle.status_code, 400)
         self.assertIn("круг", cycle.get_json()["error"])
 
+    def test_shared_parent_grants_access_to_nested_folders_and_materials(self):
+        parent = storage.create_bookmark_folder(self.first["id"], "Выборы")
+        child = storage.create_bookmark_folder(self.first["id"], "Кандидаты")
+        grandchild = storage.create_bookmark_folder(self.first["id"], "Справки")
+        storage.save_bookmark_folder_order(
+            self.first["id"],
+            [parent["id"], child["id"], grandchild["id"]],
+            [
+                {"id": parent["id"], "parent_id": None},
+                {"id": child["id"], "parent_id": parent["id"]},
+                {"id": grandchild["id"], "parent_id": child["id"]},
+            ],
+        )
+        storage.save_bookmark(self.first["id"], self.item, child["id"])
+        storage.save_collection_note(
+            self.first["id"], grandchild["id"],
+            "Досье кандидата", "Материал во вложенной папке",
+        )
+        storage.update_collection(
+            self.first["id"], parent["id"], "Выборы", "", "selected",
+            [self.second["id"]],
+        )
+
+        shared_ids = {
+            folder["id"]
+            for folder in storage.list_shared_collections(self.second["id"])
+        }
+        self.assertEqual(shared_ids, {parent["id"], child["id"], grandchild["id"]})
+        self.assertFalse(
+            storage.load_collection(self.second["id"], grandchild["id"])["can_edit"]
+        )
+        self.assertEqual(
+            storage.list_collection_bookmarks(
+                self.second["id"], child["id"]
+            )[0]["title"],
+            self.item["title"],
+        )
+        self.assertEqual(
+            storage.list_collection_notes(
+                self.second["id"], grandchild["id"]
+            )[0]["title"],
+            "Досье кандидата",
+        )
+
+        client = web_app.app.test_client()
+        self._login(client, self.second["id"])
+        root_html = client.get("/collections").get_data(as_text=True)
+        self.assertIn(f'/collections?folder={parent["id"]}', root_html)
+        self.assertNotIn(f'/collections?folder={child["id"]}', root_html)
+        parent_html = client.get(
+            f"/collections?folder={parent['id']}"
+        ).get_data(as_text=True)
+        self.assertIn(f'/collections?folder={child["id"]}', parent_html)
+        child_html = client.get(
+            f"/collections?folder={child['id']}"
+        ).get_data(as_text=True)
+        self.assertIn(self.item["title"], child_html)
+        self.assertIn(f'/collections?folder={grandchild["id"]}', child_html)
+        grandchild_html = client.get(
+            f"/collections?folder={grandchild['id']}"
+        ).get_data(as_text=True)
+        self.assertIn("Досье кандидата", grandchild_html)
+
+        storage.update_collection(
+            self.first["id"], parent["id"], "Выборы", "", "private", [],
+        )
+        self.assertIsNone(
+            storage.load_collection(self.second["id"], grandchild["id"])
+        )
+        self.assertEqual(storage.list_shared_collections(self.second["id"]), [])
+
     def test_collection_without_children_has_no_empty_folder_section(self):
         folder = storage.create_bookmark_folder(self.first["id"], "Без вложений")
         client = web_app.app.test_client()
