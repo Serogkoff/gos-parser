@@ -1282,6 +1282,10 @@ MONTH_NAMES_GENITIVE_RU = (
     "", "января", "февраля", "марта", "апреля", "мая", "июня",
     "июля", "августа", "сентября", "октября", "ноября", "декабря",
 )
+WEEKDAY_NAMES_RU = (
+    "Понедельник", "Вторник", "Среда", "Четверг",
+    "Пятница", "Суббота", "Воскресенье",
+)
 
 
 def _notes_user(view):
@@ -1365,13 +1369,13 @@ def notes_page():
                     last_contact_date=request.form.get("last_contact_date"),
                 )
                 return _notes_redirect(
-                    "records", kind=request.form.get("return_kind", "all"),
+                    "records", kind=request.form.get("record_type", "note"),
                     message="Запись сохранена",
                 )
             if action == "delete_record":
                 delete_personal_note(user_id, request.form.get("record_id"))
                 return _notes_redirect(
-                    "records", kind=request.form.get("return_kind", "all"),
+                    "records", kind=request.form.get("return_kind", "note"),
                     message="Запись удалена",
                 )
             if action == "toggle_record_pin":
@@ -1380,7 +1384,7 @@ def notes_page():
                     request.form.get("is_pinned"),
                 )
                 return _notes_redirect(
-                    "records", kind=request.form.get("return_kind", "all"),
+                    "records", kind=request.form.get("return_kind", "note"),
                 )
             if action == "save_dictionary_deck":
                 deck_id = request.form.get("deck_id")
@@ -1607,10 +1611,12 @@ def notes_page():
                 "is_past": item_date < today,
                 "is_selected": item_date.isoformat() == selected_date,
                 "agenda_label": (
-                    f"Сегодня, {item_date.day} "
+                    f"Сегодня, {WEEKDAY_NAMES_RU[item_date.weekday()].casefold()}, "
+                    f"{item_date.day} "
                     f"{MONTH_NAMES_GENITIVE_RU[item_date.month]}"
                     if item_date == today else
-                    f"{item_date.day} {MONTH_NAMES_GENITIVE_RU[item_date.month]}"
+                    f"{WEEKDAY_NAMES_RU[item_date.weekday()]}, {item_date.day} "
+                    f"{MONTH_NAMES_GENITIVE_RU[item_date.month]}"
                 ),
                 "events": events_by_date.get(item_date.isoformat(), []),
             })
@@ -1687,9 +1693,9 @@ def notes_page():
             "contact": "Контакт",
             "interview": "Интервью",
         }
-        record_kind = str(request.args.get("kind", "all")).strip().casefold()
-        if record_kind not in {"all", *record_labels}:
-            record_kind = "all"
+        record_kind = str(request.args.get("kind", "note")).strip().casefold()
+        if record_kind not in record_labels:
+            record_kind = "note"
         record_query = str(request.args.get("q", "")).strip()[:200]
         tag_filter = str(request.args.get("tag", "")).strip()[:100]
         sort_mode = str(request.args.get("sort", "newest")).strip().casefold()
@@ -1747,7 +1753,7 @@ def notes_page():
                 "note" if stored_type == "meeting" or item.get("is_draft")
                 else stored_type
             )
-            if record_kind != "all" and item_kind != record_kind:
+            if item_kind != record_kind:
                 continue
             item_tags = [
                 tag.strip() for tag in re.split(r"[,;]", item.get("tags", ""))

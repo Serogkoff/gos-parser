@@ -246,8 +246,11 @@ class NotesTestModeTests(unittest.TestCase):
 
         self.assertIn("Событие сегодня", upcoming_html)
         self.assertIn("Будущее событие", upcoming_html)
+        self.assertIn("Сегодня, среда, 23 сентября", upcoming_html)
+        self.assertIn("Четверг, 24 сентября", upcoming_html)
         self.assertNotIn("Прошедшее событие", upcoming_html)
         self.assertIn("Прошедшее событие", past_html)
+        self.assertIn("Вторник, 22 сентября", past_html)
         self.assertNotIn(" open", opening_tag)
 
     def test_calendar_supports_month_week_and_day_views(self):
@@ -300,10 +303,20 @@ class NotesTestModeTests(unittest.TestCase):
 
         self.assertIn('class="section-tabs"', records)
         self.assertNotIn('class="notes-tree"', records)
-        self.assertIn("Все записи", records)
+        self.assertNotIn("Все записи", records)
         self.assertIn("Контакты", records)
         self.assertIn("Интервью", records)
         self.assertIn("Заметки", records)
+        self.assertIn(
+            'class="records-tab active" href="/notes?view=records&amp;kind=note"',
+            records,
+        )
+        self.assertLess(
+            records.index(">Заметки</a>"), records.index(">Контакты</a>")
+        )
+        self.assertLess(
+            records.index(">Контакты</a>"), records.index(">Интервью</a>")
+        )
         self.assertIn('</svg></span>Заметки</a>', records)
         self.assertIn('</svg><span>Записи</span></a>', records)
         self.assertNotIn(">Совещания<", records)
