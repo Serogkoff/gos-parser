@@ -8,7 +8,9 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
 from utils.js_client import fetch_soup_js
+from utils.logger import get_logger
 from utils.news import deduplicate_news
+from utils.proxy import kyodo_proxy_url
 
 
 SOURCE_NAME = "Берлинский центр Карнеги"
@@ -19,15 +21,27 @@ ARTICLE_PATH_RE = re.compile(
     re.IGNORECASE,
 )
 MAX_ARTICLES = 20
+logger = get_logger("carnegie")
+
+
+def _proxy_url():
+    """Использует настроенный VPN-канал Киодо только для Carnegie."""
+    try:
+        return kyodo_proxy_url()
+    except ValueError as error:
+        logger.warning(f"[{SOURCE_NAME}] Настройка VPN некорректна: {error}")
+        return ""
 
 
 def parse():
+    proxy_url = _proxy_url()
     listing = fetch_soup(
         LISTING_URL,
         SOURCE_NAME,
         timeout=30,
         verify=True,
         attempts=2,
+        proxy_url=proxy_url,
     )
     if listing is None:
         print("  ✅ 0")
@@ -43,13 +57,16 @@ def parse():
             timeout_ms=45000,
             wait_until="domcontentloaded",
             use_partial_on_timeout=True,
+            proxy_url=proxy_url,
         )
         news = _parse_listing(rendered_listing)
     news = news[:MAX_ARTICLES]
     if news:
         workers = min(4, len(news))
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            metadata = list(pool.map(_load_article_metadata, news))
+            metadata = list(
+                pool.map(lambda item: _load_article_metadata(item, proxy_url), news)
+            )
         for item, details in zip(news, metadata):
             item.update(details)
 
@@ -92,13 +109,14 @@ def _parse_listing(soup):
     return [by_url[url] for url in ordered_urls if url in by_url]
 
 
-def _load_article_metadata(item):
+def _load_article_metadata(item, proxy_url=""):
     soup = fetch_soup(
         item["url"],
         f"{SOURCE_NAME} · публикация",
         timeout=20,
         verify=True,
         attempts=1,
+        proxy_url=proxy_url,
     )
     return _parse_article_metadata(soup)
 

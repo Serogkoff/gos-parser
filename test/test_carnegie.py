@@ -73,12 +73,19 @@ class CarnegieParserTests(unittest.TestCase):
             """
         )
 
-        with patch.object(carnegie, "fetch_soup", side_effect=[listing, article]):
+        proxy_url = "socks5h://user:password@203.0.113.7:1080"
+        with (
+            patch.object(carnegie, "kyodo_proxy_url", return_value=proxy_url),
+            patch.object(carnegie, "fetch_soup", side_effect=[listing, article]) as fetch,
+        ):
             items = carnegie.parse()
 
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["date"], "2026-09-30")
         self.assertEqual(items[0]["summary"], "Описание нового материала.")
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(fetch.call_args_list[0].kwargs["proxy_url"], proxy_url)
+        self.assertEqual(fetch.call_args_list[1].kwargs["proxy_url"], proxy_url)
 
     def test_parse_uses_browser_when_static_listing_has_no_cards(self):
         static_listing = self._soup("<main>Карточки загружаются…</main>")
@@ -96,6 +103,7 @@ class CarnegieParserTests(unittest.TestCase):
         )
 
         with (
+            patch.object(carnegie, "kyodo_proxy_url", return_value="proxy-route"),
             patch.object(carnegie, "fetch_soup", side_effect=[static_listing, article]),
             patch.object(
                 carnegie,
@@ -112,10 +120,24 @@ class CarnegieParserTests(unittest.TestCase):
             timeout_ms=45000,
             wait_until="domcontentloaded",
             use_partial_on_timeout=True,
+            proxy_url="proxy-route",
         )
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["title"], "Материал, загруженный браузером")
         self.assertEqual(items[0]["date"], "2026-09-30")
+
+    def test_invalid_proxy_setting_falls_back_without_crashing(self):
+        with (
+            patch.object(
+                carnegie,
+                "kyodo_proxy_url",
+                side_effect=ValueError("неверный адрес"),
+            ),
+            patch.object(carnegie.logger, "warning") as warning,
+        ):
+            self.assertEqual(carnegie._proxy_url(), "")
+
+        warning.assert_called_once()
 
 
 if __name__ == "__main__":
