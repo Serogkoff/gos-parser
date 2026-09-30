@@ -4,6 +4,7 @@ from unittest.mock import patch
 from bs4 import BeautifulSoup
 
 from parsers.sites import carnegie
+from utils.article_reader import extract_article
 
 
 class CarnegieParserTests(unittest.TestCase):
@@ -138,6 +139,49 @@ class CarnegieParserTests(unittest.TestCase):
             self.assertEqual(carnegie._proxy_url(), "")
 
         warning.assert_called_once()
+
+    def test_internal_reader_loads_carnegie_text_through_vpn(self):
+        title = "Новый аналитический материал Берлинского центра Карнеги"
+        article = self._soup(
+            f"""
+            <meta property="og:title" content="{title}">
+            <main>
+              <div class="cms-html payload-richtext">
+                <p>Первый содержательный абзац публикации длиной больше сорока пяти символов.</p>
+                <p>Второй содержательный абзац с продолжением анализа международной ситуации.</p>
+              </div>
+              <article>
+                <p>Посторонняя карточка другого материала, которая не должна попасть в текст.</p>
+              </article>
+            </main>
+            """
+        )
+        proxy_url = "socks5h://user:password@203.0.113.7:1080"
+
+        with (
+            patch(
+                "utils.article_reader.kyodo_proxy_url",
+                return_value=proxy_url,
+            ),
+            patch(
+                "utils.article_reader.fetch_soup",
+                return_value=article,
+            ) as fetch,
+        ):
+            result = extract_article(
+                "https://carnegieendowment.org/ru/russia-eurasia/"
+                "politika/2026/09/test-story",
+                title,
+            )
+
+        self.assertFalse(result["error"])
+        self.assertEqual(len(result["paragraphs"]), 2)
+        self.assertIn("Первый содержательный", result["paragraphs"][0])
+        self.assertNotIn(
+            "Посторонняя карточка",
+            " ".join(result["paragraphs"]),
+        )
+        self.assertEqual(fetch.call_args.kwargs["proxy_url"], proxy_url)
 
 
 if __name__ == "__main__":

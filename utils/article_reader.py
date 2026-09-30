@@ -60,6 +60,9 @@ YAHOO_PHOTO_MARKERS = (
 )
 
 VERIFIED_ARTICLE_SELECTORS = {
+    "carnegieendowment.org": (
+        ".cms-html.payload-richtext",
+    ),
     "kremlin.ru": (
         "[itemprop='articleBody']",
         ".read__content",
@@ -315,14 +318,19 @@ def extract_article(url, fallback_title=""):
                 verify=True,
                 attempts=1,
             )
-    elif _is_kyodo_url(url):
+    elif _is_kyodo_url(url) or _is_carnegie_url(url):
         try:
             proxy_url = kyodo_proxy_url()
         except ValueError:
             proxy_url = ""
+        source_name = (
+            "Просмотр Киодо"
+            if _is_kyodo_url(url)
+            else "Просмотр Carnegie"
+        )
         soup = fetch_soup(
             fetch_url,
-            "Просмотр Киодо",
+            source_name,
             timeout=30,
             verify=True,
             proxy_url=proxy_url,
@@ -330,7 +338,7 @@ def extract_article(url, fallback_title=""):
         if soup is None:
             soup = fetch_soup_js(
                 fetch_url,
-                "Просмотр Киодо",
+                source_name,
                 wait_ms=1500,
                 timeout_ms=40000,
                 wait_until="domcontentloaded",
@@ -352,8 +360,8 @@ def extract_article(url, fallback_title=""):
             "title": fallback_title,
             "paragraphs": [],
             "error": (
-                "Канал Киодо через VPN сейчас недоступен."
-                if _is_kyodo_url(url)
+                "Канал через VPN сейчас недоступен."
+                if _is_kyodo_url(url) or _is_carnegie_url(url)
                 else "Сайт ведомства сейчас не отдал текст публикации."
             ),
         }
@@ -637,6 +645,14 @@ def _is_yonhap_url(url):
 def _is_kyodo_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
     return hostname == "47news.jp" or hostname.endswith(".47news.jp")
+
+
+def _is_carnegie_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return (
+        hostname == "carnegieendowment.org"
+        or hostname.endswith(".carnegieendowment.org")
+    )
 
 
 def _extract_interfax_article(soup, fallback_title):
