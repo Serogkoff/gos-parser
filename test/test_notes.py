@@ -346,6 +346,7 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn("政府", inner)
         self.assertIn("правительство", inner)
         self.assertIn('data-speak="政府"', inner)
+        self.assertIn("const speechLocales={en:'en-US',ja:'ja-JP',ru:'ru-RU'}", inner)
         self.assertIn('placeholder="Поиск"', inner)
         self.assertNotIn("<h1>Словарь</h1>", inner)
         self.assertNotIn('class="dictionary-page-head"', inner)
@@ -419,6 +420,35 @@ class NotesTestModeTests(unittest.TestCase):
         self.assertIn('class="quiz-ratings" data-quiz-ratings hidden', quiz)
         self.assertIn('data-quiz-rating="again">Снова</button>', quiz)
         self.assertNotIn('data-quiz-rating="again">1 ', quiz)
+
+    def test_dictionary_speech_language_follows_each_card(self):
+        client, _ = self._client_for(self.admin)
+        deck_id = storage.create_dictionary_deck(
+            self.admin["id"], "English and Japanese"
+        )
+        english_id = storage.save_dictionary_card(
+            self.admin["id"], deck_id, "schedule", "ˈskedʒuːl", "расписание",
+            language="en",
+        )
+        japanese_id = storage.save_dictionary_card(
+            self.admin["id"], deck_id, "予定", "よてい", "план",
+            language="ja",
+        )
+
+        detail = client.get(
+            f"/notes?view=dictionary&mode=dictionary&deck={deck_id}"
+            f"&card={english_id}"
+        ).get_data(as_text=True)
+        quiz = client.get(
+            f"/notes?view=dictionary&mode=quiz&deck={deck_id}"
+        ).get_data(as_text=True)
+
+        for page in (detail, quiz):
+            self.assertIn(f'"{english_id}": "en"', page)
+            self.assertIn(f'"{japanese_id}": "ja"', page)
+            self.assertIn("en:'en-US'", page)
+            self.assertIn("ja:'ja-JP'", page)
+            self.assertIn("item.lang.toLowerCase()===locale.toLowerCase()", page)
 
     def test_dictionary_cards_can_be_imported_from_json(self):
         client, token = self._client_for(self.admin)

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="Carnegie">
+  <defs>
+    <mask id="carnegie-cutout">
+      <rect width="180" height="180" fill="#fff"/>
+      <path d="M90 18a72 72 0 0 1 0 144Z" fill="#000"/>
+    </mask>
+  </defs>
+  <path d="M90 18a72 72 0 0 0 0 144Z" fill="#064573"/>
+  <rect x="90" y="18" width="72" height="144" fill="#064573" mask="url(#carnegie-cutout)"/>
+</svg>

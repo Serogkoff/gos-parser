@@ -9,6 +9,7 @@ from utils.news import sort_news_by_publication
 from utils.source_groups import (
     ALL_GROUP,
     AGENCIES_GROUP,
+    CARNEGIE_SOURCE,
     GOVERNMENT_GROUP,
     NEWSPAPERS_GROUP,
     filter_news_by_group,
@@ -45,6 +46,7 @@ class SourceGroupTests(unittest.TestCase):
             source_group("Комсомольская правда"),
             NEWSPAPERS_GROUP,
         )
+        self.assertEqual(source_group(CARNEGIE_SOURCE), NEWSPAPERS_GROUP)
         self.assertEqual(source_group("МЧС"), GOVERNMENT_GROUP)
         self.assertEqual(source_group("Президент России"), GOVERNMENT_GROUP)
 
@@ -68,6 +70,7 @@ class SourceGroupTests(unittest.TestCase):
         self.assertEqual(config.YAHOO_UPDATE_INTERVAL, 600)
         self.assertEqual(config.KYODO_UPDATE_INTERVAL, 600)
         self.assertEqual(config.NEWSPAPER_UPDATE_HOUR, 8)
+        self.assertEqual(config.CARNEGIE_UPDATE_INTERVAL, 3600)
 
 
 class SourceGroupPageTests(unittest.TestCase):

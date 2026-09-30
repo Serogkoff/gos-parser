@@ -6,6 +6,7 @@ from threading import Event, Lock, Thread
 
 from config import (
     AGENCY_UPDATE_INTERVAL,
+    CARNEGIE_UPDATE_INTERVAL,
     DATABASE_BACKUP_RETENTION,
     GOVERNMENT_UPDATE_INTERVAL,
     KYODO_UPDATE_INTERVAL,
@@ -73,6 +74,7 @@ from parsers.sites.rg import parse as rg
 from parsers.sites.vedomosti import parse as vedomosti
 from parsers.sites.redstar import parse as redstar
 from parsers.sites.kp import parse as kp
+from parsers.sites.carnegie import parse as carnegie
 from parsers.sites.kremlin import parse as kremlin
 
 
@@ -118,7 +120,7 @@ KYODO_SITES = [
     ("Киодо (共同通信)", kyodo),
 ]
 
-NEWSPAPER_SITES = [
+DAILY_NEWSPAPER_SITES = [
     ("Независимая газета", ng),
     ("Коммерсантъ", kommersant),
     ("Известия", izvestia),
@@ -127,6 +129,12 @@ NEWSPAPER_SITES = [
     ("Красная звезда", redstar),
     ("Комсомольская правда", kp),
 ]
+
+CARNEGIE_SITES = [
+    ("Берлинский центр Карнеги", carnegie),
+]
+
+NEWSPAPER_SITES = [*DAILY_NEWSPAPER_SITES, *CARNEGIE_SITES]
 
 SITES = [
     *GOVERNMENT_SITES,
@@ -535,7 +543,7 @@ def main(argv=None):
     newspaper_thread = Thread(
         target=run_daily_schedule,
         args=(
-            NEWSPAPER_SITES,
+            DAILY_NEWSPAPER_SITES,
             "Газеты",
             NEWSPAPER_UPDATE_HOUR,
             stop_event,
@@ -544,6 +552,19 @@ def main(argv=None):
         daemon=True,
     )
     newspaper_thread.start()
+
+    carnegie_thread = Thread(
+        target=run_schedule,
+        args=(
+            CARNEGIE_SITES,
+            "Газеты · Carnegie",
+            CARNEGIE_UPDATE_INTERVAL,
+            stop_event,
+        ),
+        name="carnegie-parser",
+        daemon=True,
+    )
+    carnegie_thread.start()
 
     try:
         run_schedule(
@@ -560,6 +581,7 @@ def main(argv=None):
         yahoo_thread.join(timeout=2)
         kyodo_thread.join(timeout=2)
         newspaper_thread.join(timeout=2)
+        carnegie_thread.join(timeout=2)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,14 @@ def _broken_parser():
 
 
 class NightStabilityTests(unittest.TestCase):
+    def test_carnegie_uses_its_own_hourly_schedule(self):
+        carnegie_names = [name for name, _parser in main.CARNEGIE_SITES]
+        daily_names = [name for name, _parser in main.DAILY_NEWSPAPER_SITES]
+
+        self.assertEqual(carnegie_names, ["Берлинский центр Карнеги"])
+        self.assertNotIn("Берлинский центр Карнеги", daily_names)
+        self.assertEqual(main.CARNEGIE_UPDATE_INTERVAL, 3600)
+
     def test_parser_result_crosses_process_boundary(self):
         self.assertEqual(
             run_parser_with_timeout(_quick_parser, 3),

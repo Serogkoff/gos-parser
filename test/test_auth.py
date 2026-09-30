@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import web_app
 from utils import storage
+from utils.source_groups import CARNEGIE_SOURCE
 
 
 class AuthenticationTests(unittest.TestCase):
@@ -352,6 +353,68 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(self.client.get("/admin/system").status_code, 403)
         self.assertEqual(self.client.get("/admin/incidents").status_code, 403)
         self.assertEqual(self.client.get("/admin/reliability").status_code, 403)
+
+    def test_experimental_carnegie_source_is_visible_only_to_admin(self):
+        self._create_first_admin()
+        carnegie_item = {
+            "source": CARNEGIE_SOURCE,
+            "title": "Тестовый материал Берлинского центра Карнеги",
+            "url": (
+                "https://carnegieendowment.org/ru/russia-eurasia/"
+                "politika/2026/09/test-story"
+            ),
+            "date": "2026-09-30",
+        }
+        newspaper_item = {
+            "source": "Коммерсантъ",
+            "title": "Обычный газетный материал",
+            "url": "https://www.kommersant.ru/doc/999046",
+            "date": "2026-09-30",
+        }
+        storage.save_results([carnegie_item, newspaper_item], [], set())
+
+        with patch.object(
+            web_app,
+            "load_json",
+            side_effect=self._empty_app_data,
+        ):
+            admin_page = self.client.get("/newspapers")
+        admin_html = admin_page.get_data(as_text=True)
+        self.assertEqual(admin_page.status_code, 200)
+        self.assertIn(carnegie_item["title"], admin_html)
+        self.assertIn(newspaper_item["title"], admin_html)
+
+        reader = storage.create_user(
+            "carnegie-reader",
+            "reader-secret-2026",
+            role="user",
+        )
+        with self.client.session_transaction() as session:
+            session["user_id"] = reader["id"]
+            session["_csrf_token"] = "carnegie-test-token"
+        with patch.object(
+            web_app,
+            "load_json",
+            side_effect=self._empty_app_data,
+        ):
+            reader_page = self.client.get("/newspapers")
+        reader_html = reader_page.get_data(as_text=True)
+        self.assertEqual(reader_page.status_code, 200)
+        self.assertNotIn(carnegie_item["title"], reader_html)
+        self.assertNotIn(CARNEGIE_SOURCE, reader_html)
+        self.assertIn(newspaper_item["title"], reader_html)
+
+        article = self.client.get(
+            "/article",
+            query_string={"url": carnegie_item["url"]},
+        )
+        self.assertEqual(article.status_code, 403)
+        bookmark = self.client.post(
+            "/api/bookmarks",
+            json={"url": carnegie_item["url"]},
+            headers={"X-CSRF-Token": "carnegie-test-token"},
+        )
+        self.assertEqual(bookmark.status_code, 403)
 
     def test_admin_creates_manages_and_reactivates_user(self):
         self._create_first_admin()

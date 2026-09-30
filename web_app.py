@@ -50,6 +50,7 @@ from utils.logger import (
 from utils.proxy import kyodo_proxy_status
 from utils.security import AttemptLimiter
 from utils.source_groups import (
+    ADMIN_ONLY_SOURCES,
     ALL_GROUP,
     AGENCIES_GROUP,
     AGENCY_SOURCES,
@@ -277,6 +278,14 @@ def csrf_is_valid():
 def current_user():
     """Возвращает вошедшего пользователя для проверок прав."""
     return getattr(g, "current_user", None)
+
+
+def source_is_visible_to_user(user, source):
+    """Скрывает экспериментальные источники от обычных пользователей."""
+    return (
+        str(source or "") not in ADMIN_ONLY_SOURCES
+        or bool(user and user.get("role") == "admin")
+    )
 
 
 def safe_next_url(value):
@@ -1241,8 +1250,14 @@ def export_collection_docx():
     if collection is None:
         abort(404)
     materials = _collection_materials(
-        list_collection_bookmarks(user["id"], folder_id),
-        list_collection_notes(user["id"], folder_id),
+        [
+            item for item in list_collection_bookmarks(user["id"], folder_id)
+            if source_is_visible_to_user(user, item.get("source", ""))
+        ],
+        [
+            item for item in list_collection_notes(user["id"], folder_id)
+            if source_is_visible_to_user(user, item.get("source", ""))
+        ],
         request.args.get("sort", "newest"),
     )
 
@@ -1510,6 +1525,7 @@ def notes_page():
         "message": str(request.args.get("message", "")).strip(),
         "error": str(request.args.get("error", "")).strip(),
         "asset_version": PROJECT_VERSION,
+        "dictionary_speech_languages": {},
     }
 
     if view == "calendar":
@@ -1982,6 +1998,10 @@ def notes_page():
             selected_deck=selected_deck,
             dictionary_cards=filtered_cards,
             selected_dictionary_card=selected_card,
+            dictionary_speech_languages={
+                str(card["id"]): card.get("language", "ja")
+                for card in prepared_cards
+            },
             dictionary_card_explicit=bool(requested_card_match),
             dictionary_query=dictionary_query,
             dictionary_tag=dictionary_tag,
@@ -2185,7 +2205,10 @@ def bookmarks_page():
         ))
 
     search_query = str(request.args.get("q", "")).strip()[:200]
-    all_bookmarks = list_bookmarks(user_id)
+    all_bookmarks = [
+        item for item in list_bookmarks(user_id)
+        if source_is_visible_to_user(user, item.get("source", ""))
+    ]
     selected_folder_data = None
     child_folders = []
     notes = []
@@ -2235,7 +2258,8 @@ def bookmarks_page():
         bookmarks = []
     bookmarks = [
         item for item in bookmarks
-        if _matches_collection_search(
+        if source_is_visible_to_user(user, item.get("source", ""))
+        and _matches_collection_search(
             item,
             search_query,
             ("title", "source", "note", "date", "url", "folder_name"),
@@ -2243,6 +2267,8 @@ def bookmarks_page():
     ]
     prepared_notes = []
     for item in notes:
+        if not source_is_visible_to_user(user, item.get("source", "")):
+            continue
         if not _matches_collection_search(
             item,
             search_query,
@@ -2351,6 +2377,10 @@ def render_news_page(
         last_checkpoint = now
 
     user = current_user()
+    restricted_sources = {
+        source for source in ADMIN_ONLY_SOURCES
+        if not source_is_visible_to_user(user, source)
+    }
     if user["id"]:
         user_saved_urls = bookmarked_urls(user["id"])
         user_bookmark_count = count_bookmarks(user["id"])
@@ -2360,7 +2390,12 @@ def render_news_page(
     checkpoint("account")
     status = load_json("parser_status.json", {})
     total, found_count = news_group_counts(source_group)
-    counts = news_source_counts(source_group)
+    counts = {
+        source: count
+        for source, count in news_source_counts(source_group).items()
+        if source not in restricted_sources
+    }
+    total = sum(counts.values())
     sources = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     muted_sources = set(
         load_muted_sources(user["id"], mode)
@@ -2422,8 +2457,11 @@ def render_news_page(
         item
         for item in status.get("sources", [])
         if (
-            source_group == ALL_GROUP
-            or get_source_group(item.get("source", "")) == source_group
+            item.get("source", "") not in restricted_sources
+            and (
+                source_group == ALL_GROUP
+                or get_source_group(item.get("source", "")) == source_group
+            )
         )
     ]
     total_sources = len(status_sources) or len(sources)
@@ -2461,6 +2499,8 @@ def render_news_page(
     elif source_group == NEWSPAPERS_GROUP:
         group_title = "Свежие номера газет"
         group_eyebrow = "Коммерсантъ · Известия · РГ · Ведомости · Красная звезда · КП"
+        if not restricted_sources:
+            group_eyebrow += " · Carnegie"
         group_home = "/newspapers"
         group_found = "/newspapers/found"
     else:
@@ -2552,8 +2592,9 @@ def render_news_page(
         limit=NEWS_PER_PAGE,
         offset=page_offset,
     )
-    if muted_sources:
-        news_page_options["excluded_sources"] = muted_sources
+    excluded_sources = muted_sources | restricted_sources
+    if excluded_sources:
+        news_page_options["excluded_sources"] = excluded_sources
     page_news, page_total = list_news_page(source_group, **news_page_options)
     checkpoint("news")
     page_count = max(1, (page_total + NEWS_PER_PAGE - 1) // NEWS_PER_PAGE)
@@ -2635,7 +2676,7 @@ def render_news_page(
     unread_counts = {
         source: count
         for source, count in unread_summary["by_source"].items()
-        if source not in muted_sources
+        if source not in excluded_sources
     }
     unread_summary["total"] = sum(unread_counts.values())
     checkpoint("unread")
@@ -2836,6 +2877,8 @@ def article_page():
         )
     if item is None:
         abort(404)
+    if not source_is_visible_to_user(current_user(), item.get("source", "")):
+        abort(403)
     force_refresh = request.method == "POST"
     cached = load_cached_article(url)
     if (
@@ -2984,11 +3027,19 @@ def bookmarks_api():
     """Переключает сердечко и складывает выбранную новость в «Моё избранное»."""
     user = current_user()
     user_id = user["id"]
+
+    def visible_bookmark_state():
+        bookmarks = [
+            item for item in list_bookmarks(user_id)
+            if source_is_visible_to_user(user, item.get("source", ""))
+        ]
+        return {
+            "urls": [item["url"] for item in bookmarks],
+            "count": len(bookmarks),
+        }
+
     if request.method == "GET":
-        return jsonify(
-            urls=bookmarked_urls(user_id),
-            count=count_bookmarks(user_id),
-        )
+        return jsonify(**visible_bookmark_state())
     if not csrf_is_valid():
         return jsonify(error="Сессия устарела. Обновите страницу."), 400
 
@@ -3004,17 +3055,19 @@ def bookmarks_api():
             # Один ограниченный пакет переносит их в текущий аккаунт.
             for legacy_url in legacy_urls[:500]:
                 item = find_news_by_url(str(legacy_url).strip())
-                if item is not None:
+                if (
+                    item is not None
+                    and source_is_visible_to_user(user, item.get("source", ""))
+                ):
                     save_bookmark(user_id, item, favorite_folder["id"])
         else:
             item = find_news_by_url(url)
             if item is None:
                 return jsonify(error="Новость не найдена"), 404
+            if not source_is_visible_to_user(user, item.get("source", "")):
+                return jsonify(error="Источник доступен только администратору"), 403
             save_bookmark(user_id, item, favorite_folder["id"])
-    return jsonify(
-        urls=bookmarked_urls(user_id),
-        count=count_bookmarks(user_id),
-    )
+    return jsonify(**visible_bookmark_state())
 
 
 @app.get("/api/news-index")
@@ -3029,6 +3082,10 @@ def news_index_api():
     }:
         return jsonify(error="Неизвестный раздел источников"), 400
     user = current_user()
+    restricted_sources = {
+        source for source in ADMIN_ONLY_SOURCES
+        if not source_is_visible_to_user(user, source)
+    }
     mode = str(request.args.get("mode", "all")).strip().casefold()
     if mode not in {"all", "found"}:
         return jsonify(error="Неизвестный режим ленты"), 400
@@ -3047,6 +3104,8 @@ def news_index_api():
                     continue
                 if item["source"] in muted_sources:
                     continue
+                if item["source"] in restricted_sources:
+                    continue
                 seen_urls.add(item["url"])
                 items.append(item)
         return jsonify(items=items[:UNREAD_INDEX_LIMIT])
@@ -3056,6 +3115,7 @@ def news_index_api():
             user["id"], source_group, UNREAD_INDEX_LIMIT,
         )
         if item["source"] not in muted_sources
+        and item["source"] not in restricted_sources
     ])
 
 
@@ -3116,7 +3176,11 @@ def source_order_api():
     if not isinstance(requested, list):
         return jsonify(error="Некорректный порядок источников"), 400
 
-    counts = news_source_counts(source_group)
+    counts = {
+        source: count
+        for source, count in news_source_counts(source_group).items()
+        if source_is_visible_to_user(user, source)
+    }
     available = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     final_order = [name for name, _ in apply_source_order(available, requested)]
     try:
@@ -3140,7 +3204,11 @@ def source_mutes_api():
     if mode not in {"all", "found"}:
         return jsonify(error="Неизвестный режим ленты"), 400
 
-    available = news_source_counts(ALL_GROUP)
+    available = {
+        source: count
+        for source, count in news_source_counts(ALL_GROUP).items()
+        if source_is_visible_to_user(user, source)
+    }
     canonical = {source.casefold(): source for source in available}
     muted = []
     seen = set()
