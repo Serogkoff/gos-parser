@@ -80,6 +80,43 @@ class CarnegieParserTests(unittest.TestCase):
         self.assertEqual(items[0]["date"], "2026-09-30")
         self.assertEqual(items[0]["summary"], "Описание нового материала.")
 
+    def test_parse_uses_browser_when_static_listing_has_no_cards(self):
+        static_listing = self._soup("<main>Карточки загружаются…</main>")
+        rendered_listing = self._soup(
+            """
+            <a href="/ru/russia-eurasia/politika/2026/09/browser-story">
+              Материал, загруженный браузером
+            </a>
+            """
+        )
+        article = self._soup(
+            """
+            <meta property="article:published_time" content="2026-09-30T09:00:00Z">
+            """
+        )
+
+        with (
+            patch.object(carnegie, "fetch_soup", side_effect=[static_listing, article]),
+            patch.object(
+                carnegie,
+                "fetch_soup_js",
+                return_value=rendered_listing,
+            ) as browser_fetch,
+        ):
+            items = carnegie.parse()
+
+        browser_fetch.assert_called_once_with(
+            carnegie.LISTING_URL,
+            carnegie.SOURCE_NAME,
+            wait_ms=2500,
+            timeout_ms=45000,
+            wait_until="domcontentloaded",
+            use_partial_on_timeout=True,
+        )
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["title"], "Материал, загруженный браузером")
+        self.assertEqual(items[0]["date"], "2026-09-30")
+
 
 if __name__ == "__main__":
     unittest.main()

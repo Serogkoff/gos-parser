@@ -7,6 +7,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
+from utils.js_client import fetch_soup_js
 from utils.news import deduplicate_news
 
 
@@ -32,7 +33,19 @@ def parse():
         print("  ✅ 0")
         return []
 
-    news = _parse_listing(listing)[:MAX_ARTICLES]
+    news = _parse_listing(listing)
+    if not news:
+        print("  ℹ️ Карточки Carnegie подгружаются JavaScript — открываю браузером")
+        rendered_listing = fetch_soup_js(
+            LISTING_URL,
+            SOURCE_NAME,
+            wait_ms=2500,
+            timeout_ms=45000,
+            wait_until="domcontentloaded",
+            use_partial_on_timeout=True,
+        )
+        news = _parse_listing(rendered_listing)
+    news = news[:MAX_ARTICLES]
     if news:
         workers = min(4, len(news))
         with ThreadPoolExecutor(max_workers=workers) as pool:
