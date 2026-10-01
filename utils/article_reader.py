@@ -62,9 +62,26 @@ YAHOO_PHOTO_MARKERS = (
 VERIFIED_ARTICLE_SELECTORS = {
     "globalaffairs.ru": (
         "[itemprop='articleBody']",
+        ".article__body",
+        ".article__text",
+        ".article__content",
+        ".article-content",
+        ".single-article__content",
+        ".post-content",
+        "[class*='article'][class*='content']",
+        "main article",
+        ".entry-content",
+        "article",
+    ),
+    "valdaiclub.com": (
+        "[itemprop='articleBody']",
+        ".article__body",
+        ".article__text",
         ".article__content",
         ".article-content",
         ".entry-content",
+        "[class*='article'][class*='content']",
+        "main article",
         "article",
     ),
     "carnegieendowment.org": (
@@ -255,6 +272,7 @@ def extract_article(url, fallback_title=""):
         return _extract_dynamic_verified_article(url, fallback_title)
 
     fetch_url = url
+    used_browser = False
     verified_selectors = _verified_article_selectors(url)
     is_mvd = _is_mvd_url(url)
     if _is_minobrnauki_url(url) or _is_mnr_url(url):
@@ -361,6 +379,7 @@ def extract_article(url, fallback_title=""):
                 wait_ms=1500,
                 timeout_ms=40000,
             )
+            used_browser = True
 
     if soup is None:
         return {
@@ -407,6 +426,14 @@ def extract_article(url, fallback_title=""):
         article = _extract_yahoo_article(soup, fallback_title)
         if article:
             return article
+
+    if _is_global_affairs_url(url):
+        return _extract_global_affairs_article(
+            soup,
+            url,
+            fallback_title,
+            allow_browser=not used_browser,
+        )
 
     if verified_selectors:
         return _extract_verified_article(
@@ -660,6 +687,103 @@ def _is_carnegie_url(url):
         hostname == "carnegieendowment.org"
         or hostname.endswith(".carnegieendowment.org")
     )
+
+
+def _is_global_affairs_url(url):
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return hostname == "globalaffairs.ru" or hostname.endswith(".globalaffairs.ru")
+
+
+def _extract_global_affairs_article(
+    soup,
+    url,
+    fallback_title,
+    allow_browser=True,
+):
+    """Читает полный текст журнала либо указанную им исходную публикацию."""
+    selectors = _verified_article_selectors(url)
+    original_urls = [_global_affairs_original_url(soup)]
+    best = _extract_verified_article(soup, fallback_title, selectors)
+
+    if allow_browser and not _article_is_complete(best):
+        rendered = fetch_soup_js(
+            url,
+            "Просмотр России в глобальной политике",
+            wait_ms=1800,
+            timeout_ms=40000,
+            wait_until="domcontentloaded",
+            use_partial_on_timeout=True,
+        )
+        if rendered is not None:
+            original_urls.insert(0, _global_affairs_original_url(rendered))
+            candidate = _extract_verified_article(
+                rendered,
+                fallback_title,
+                selectors,
+            )
+            best = _longer_article(best, candidate)
+
+    if _article_is_complete(best):
+        return best
+
+    original_url = next(
+        (original for original in original_urls if original),
+        "",
+    )
+    if not original_url:
+        return best
+
+    original = fetch_soup(
+        original_url,
+        "Просмотр исходного материала журнала",
+        timeout=30,
+        verify=True,
+        attempts=1,
+    )
+    if original is None:
+        original = fetch_soup_js(
+            original_url,
+            "Просмотр исходного материала журнала",
+            wait_ms=1500,
+            timeout_ms=40000,
+            wait_until="domcontentloaded",
+            use_partial_on_timeout=True,
+        )
+    if original is None:
+        return best
+
+    candidate = _extract_verified_article(
+        original,
+        fallback_title,
+        _verified_article_selectors(original_url),
+    )
+    return _longer_article(best, candidate)
+
+
+def _global_affairs_original_url(soup):
+    """Возвращает только явно указанную ссылку на доверенный первоисточник."""
+    if soup is None:
+        return ""
+    for link in soup.select("a[href]"):
+        parts = urlsplit(urljoin("https://globalaffairs.ru", link.get("href")))
+        hostname = (parts.hostname or "").casefold()
+        if hostname == "valdaiclub.com" or hostname.endswith(".valdaiclub.com"):
+            return urlunsplit(("https", hostname, parts.path.rstrip("/"), "", ""))
+    return ""
+
+
+def _article_is_complete(article):
+    paragraphs = article.get("paragraphs", []) if isinstance(article, dict) else []
+    return len(paragraphs) >= 5 or sum(len(text) for text in paragraphs) >= 900
+
+
+def _longer_article(current, candidate):
+    def score(article):
+        if not isinstance(article, dict) or article.get("error"):
+            return -1
+        return sum(len(text) for text in article.get("paragraphs", []))
+
+    return candidate if score(candidate) > score(current) else current
 
 
 def _extract_interfax_article(soup, fallback_title):
@@ -1006,7 +1130,11 @@ def _extract_verified_article(soup, fallback_title, selectors):
             ),
         }
 
-    if structured_article and structured_article["paragraphs"]:
+    if (
+        structured_article
+        and structured_article["paragraphs"]
+        and not structured_article.get("is_description")
+    ):
         return {
             "title": fallback_title or structured_article["title"],
             "paragraphs": structured_article["paragraphs"][:100],
@@ -1059,6 +1187,13 @@ def _extract_verified_article(soup, fallback_title, selectors):
         return {
             "title": title,
             "paragraphs": best[:100],
+            "error": "",
+        }
+
+    if structured_article and structured_article["paragraphs"]:
+        return {
+            "title": fallback_title or structured_article["title"],
+            "paragraphs": structured_article["paragraphs"][:100],
             "error": "",
         }
 
@@ -1120,6 +1255,7 @@ def _extract_structured_article(soup, fallback_title):
                     return {
                         "title": headline or fallback_title,
                         "paragraphs": paragraphs,
+                        "is_description": False,
                     }
 
             description = item.get("description")
@@ -1131,6 +1267,7 @@ def _extract_structured_article(soup, fallback_title):
                 return {
                     "title": headline,
                     "paragraphs": _structured_paragraphs(description),
+                    "is_description": True,
                 }
 
     return None

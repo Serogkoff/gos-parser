@@ -113,7 +113,10 @@ class GlobalAffairsParserTests(unittest.TestCase):
             """
         )
 
-        with patch("utils.article_reader.fetch_soup", return_value=article):
+        with (
+            patch("utils.article_reader.fetch_soup", return_value=article),
+            patch("utils.article_reader.fetch_soup_js", return_value=None),
+        ):
             result = extract_article(
                 "https://globalaffairs.ru/articles/test-story/",
                 title,
@@ -122,6 +125,82 @@ class GlobalAffairsParserTests(unittest.TestCase):
         self.assertFalse(result["error"])
         self.assertEqual(len(result["paragraphs"]), 2)
         self.assertNotIn("Посторонний анонс", " ".join(result["paragraphs"]))
+
+    def test_internal_reader_prefers_body_over_json_description(self):
+        title = "Новая война: быстро, эффективно. Но без победителя"
+        article = self._soup(
+            f"""
+            <script type="application/ld+json">
+              {{
+                "headline": "{title}",
+                "description": "Короткий лид-анонс материала, который не является полным текстом публикации и не должен его заменять."
+              }}
+            </script>
+            <h1>{title}</h1>
+            <div class="article__body">
+              <p>Первый полный абзац подробно раскрывает изменения характера современных войн.</p>
+              <p>Второй полный абзац описывает влияние новых технологий на государства.</p>
+              <p>Третий полный абзац рассматривает последствия ускорения боевых действий.</p>
+              <p>Четвёртый полный абзац содержит аргументы автора и важные примеры.</p>
+              <p>Пятый полный абзац завершает анализ и формулирует основной вывод.</p>
+            </div>
+            """
+        )
+
+        with patch("utils.article_reader.fetch_soup", return_value=article):
+            result = extract_article(
+                "https://globalaffairs.ru/articles/novaya-vojna-kavanagh/",
+                title,
+            )
+
+        self.assertEqual(len(result["paragraphs"]), 5)
+        self.assertIn("Первый полный абзац", result["paragraphs"][0])
+        self.assertNotIn("Короткий лид-анонс", " ".join(result["paragraphs"]))
+
+    def test_internal_reader_follows_explicit_valdai_original(self):
+        title = "Новая война: быстро, эффективно. Но без победителя"
+        journal_page = self._soup(
+            f"""
+            <meta property="og:title" content="{title}">
+            <h1>{title}</h1>
+            <div class="article__content">
+              <p>Короткий журнальный анонс публикации, продолжение которой находится в первоисточнике.</p>
+            </div>
+            <a href="https://ru.valdaiclub.com/a/highlights/novaya-voyna/">
+              Читать в источнике
+            </a>
+            """
+        )
+        original_page = self._soup(
+            f"""
+            <meta property="og:title" content="{title}">
+            <h1>{title}</h1>
+            <article itemprop="articleBody">
+              <p>Первый развёрнутый абзац исходного материала содержит полный авторский анализ.</p>
+              <p>Второй развёрнутый абзац объясняет технологические изменения современных войн.</p>
+              <p>Третий развёрнутый абзац приводит дополнительные факты и аргументы автора.</p>
+              <p>Четвёртый развёрнутый абзац сопоставляет возможности сильных и слабых стран.</p>
+              <p>Пятый развёрнутый абзац формулирует итоговый вывод исходной публикации.</p>
+            </article>
+            """
+        )
+
+        with (
+            patch(
+                "utils.article_reader.fetch_soup",
+                side_effect=[journal_page, original_page],
+            ) as fetch,
+            patch("utils.article_reader.fetch_soup_js", return_value=None),
+        ):
+            result = extract_article(
+                "https://globalaffairs.ru/articles/novaya-vojna-kavanagh/",
+                title,
+            )
+
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(len(result["paragraphs"]), 5)
+        self.assertIn("исходного материала", result["paragraphs"][0])
+        self.assertNotIn("Короткий журнальный анонс", " ".join(result["paragraphs"]))
 
 
 if __name__ == "__main__":

@@ -1147,6 +1147,47 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertIn("Новая версия".encode("utf-8"), failed.data)
         self.assertIn("Источник временно недоступен".encode("utf-8"), failed.data)
 
+    def test_global_affairs_short_cache_is_replaced_automatically(self):
+        item = {
+            "source": "Россия в глобальной политике",
+            "title": "Полный аналитический материал",
+            "url": "https://globalaffairs.ru/articles/cache-refresh-test",
+            "date": "2026-10-01",
+        }
+        self._write_json(self.all_json, [item])
+        self._write_json(self.found_json, [])
+        storage.initialize_database()
+        storage.save_cached_article(
+            item["url"],
+            {
+                "title": item["title"],
+                "paragraphs": ["Короткий лид-анонс старой версии."],
+                "error": "",
+            },
+            item["source"],
+        )
+        full_text = [
+            "Полный текст новой версии материала. " * 12,
+            "Продолжение полного авторского анализа. " * 12,
+        ]
+
+        with patch.object(web_app, "extract_article", return_value={
+            "title": item["title"],
+            "paragraphs": full_text,
+            "error": "",
+        }) as reader:
+            response = web_app.app.test_client().get(
+                "/article",
+                query_string={"url": item["url"]},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        reader.assert_called_once_with(item["url"], item["title"])
+        self.assertEqual(
+            storage.load_cached_article(item["url"])["paragraphs"],
+            [text.strip() for text in full_text],
+        )
+
     def test_embedded_article_replaces_stale_cached_page_text(self):
         item = {
             "source": "Сахалинская обл.",

@@ -56,6 +56,7 @@ from utils.source_groups import (
     AGENCY_SOURCES,
     GOVERNMENT_GROUP,
     GOVERNMENT_SOURCES,
+    GLOBAL_AFFAIRS_SOURCE,
     NEWSPAPERS_GROUP,
     NEWSPAPER_SOURCES,
     SOURCE_GROUPS,
@@ -2887,6 +2888,14 @@ def article_page():
     ):
         # Версия 2026.08.17.6 могла сохранить вместе со статьёй рейтинг Yahoo.
         # Такой кэш не показываем и заменяем чистым текстом при этом открытии.
+        cached = None
+    if (
+        item.get("source") == GLOBAL_AFFAIRS_SOURCE
+        and cached is not None
+        and sum(len(text) for text in cached.get("paragraphs", [])) < 900
+    ):
+        # Версия 17.50 могла сохранить только лид-анонс. Один раз перечитываем
+        # такую запись новым извлекателем и заменяем короткий кэш полным текстом.
         cached = None
     embedded_paragraphs = [
         " ".join(str(paragraph).split())
