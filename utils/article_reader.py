@@ -60,6 +60,13 @@ YAHOO_PHOTO_MARKERS = (
 )
 
 VERIFIED_ARTICLE_SELECTORS = {
+    "globalaffairs.ru": (
+        "[itemprop='articleBody']",
+        ".article__content",
+        ".article-content",
+        ".entry-content",
+        "article",
+    ),
     "carnegieendowment.org": (
         ".cms-html.payload-richtext",
     ),

@@ -10,6 +10,7 @@ from utils.source_groups import (
     ALL_GROUP,
     AGENCIES_GROUP,
     CARNEGIE_SOURCE,
+    GLOBAL_AFFAIRS_SOURCE,
     GOVERNMENT_GROUP,
     NEWSPAPERS_GROUP,
     filter_news_by_group,
@@ -47,6 +48,7 @@ class SourceGroupTests(unittest.TestCase):
             NEWSPAPERS_GROUP,
         )
         self.assertEqual(source_group(CARNEGIE_SOURCE), NEWSPAPERS_GROUP)
+        self.assertEqual(source_group(GLOBAL_AFFAIRS_SOURCE), NEWSPAPERS_GROUP)
         self.assertEqual(source_group("МЧС"), GOVERNMENT_GROUP)
         self.assertEqual(source_group("Президент России"), GOVERNMENT_GROUP)
 
@@ -71,6 +73,7 @@ class SourceGroupTests(unittest.TestCase):
         self.assertEqual(config.KYODO_UPDATE_INTERVAL, 600)
         self.assertEqual(config.NEWSPAPER_UPDATE_HOUR, 8)
         self.assertEqual(config.CARNEGIE_UPDATE_INTERVAL, 3600)
+        self.assertEqual(config.GLOBAL_AFFAIRS_UPDATE_INTERVAL, 7200)
 
 
 class SourceGroupPageTests(unittest.TestCase):

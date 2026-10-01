@@ -32,6 +32,14 @@ class NightStabilityTests(unittest.TestCase):
         self.assertNotIn("Берлинский центр Карнеги", daily_names)
         self.assertEqual(main.CARNEGIE_UPDATE_INTERVAL, 3600)
 
+    def test_global_affairs_uses_its_own_two_hour_schedule(self):
+        source_names = [name for name, _parser in main.GLOBAL_AFFAIRS_SITES]
+        daily_names = [name for name, _parser in main.DAILY_NEWSPAPER_SITES]
+
+        self.assertEqual(source_names, ["Россия в глобальной политике"])
+        self.assertNotIn("Россия в глобальной политике", daily_names)
+        self.assertEqual(main.GLOBAL_AFFAIRS_UPDATE_INTERVAL, 7200)
+
     def test_parser_result_crosses_process_boundary(self):
         self.assertEqual(
             run_parser_with_timeout(_quick_parser, 3),

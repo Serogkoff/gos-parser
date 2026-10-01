@@ -12,7 +12,8 @@ SOURCE_GROUPS = (
 )
 YAHOO_SOURCE_PREFIX = "Yahoo! JAPAN"
 CARNEGIE_SOURCE = "Берлинский центр Карнеги"
-ADMIN_ONLY_SOURCES = frozenset({CARNEGIE_SOURCE})
+GLOBAL_AFFAIRS_SOURCE = "Россия в глобальной политике"
+ADMIN_ONLY_SOURCES = frozenset({CARNEGIE_SOURCE, GLOBAL_AFFAIRS_SOURCE})
 
 GOVERNMENT_SOURCES = frozenset({
     "Президент России",
@@ -75,6 +76,7 @@ NEWSPAPER_SOURCES = frozenset({
     "Красная звезда",
     "Комсомольская правда",
     CARNEGIE_SOURCE,
+    GLOBAL_AFFAIRS_SOURCE,
 })
 
 

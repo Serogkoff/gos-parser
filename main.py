@@ -9,6 +9,7 @@ from config import (
     CARNEGIE_UPDATE_INTERVAL,
     DATABASE_BACKUP_RETENTION,
     GOVERNMENT_UPDATE_INTERVAL,
+    GLOBAL_AFFAIRS_UPDATE_INTERVAL,
     KYODO_UPDATE_INTERVAL,
     KYODO_MAX_BACKOFF_SECONDS,
     MAX_RETRIES,
@@ -75,6 +76,7 @@ from parsers.sites.vedomosti import parse as vedomosti
 from parsers.sites.redstar import parse as redstar
 from parsers.sites.kp import parse as kp
 from parsers.sites.carnegie import parse as carnegie
+from parsers.sites.global_affairs import parse as global_affairs
 from parsers.sites.kremlin import parse as kremlin
 
 
@@ -134,7 +136,15 @@ CARNEGIE_SITES = [
     ("Берлинский центр Карнеги", carnegie),
 ]
 
-NEWSPAPER_SITES = [*DAILY_NEWSPAPER_SITES, *CARNEGIE_SITES]
+GLOBAL_AFFAIRS_SITES = [
+    ("Россия в глобальной политике", global_affairs),
+]
+
+NEWSPAPER_SITES = [
+    *DAILY_NEWSPAPER_SITES,
+    *CARNEGIE_SITES,
+    *GLOBAL_AFFAIRS_SITES,
+]
 
 SITES = [
     *GOVERNMENT_SITES,
@@ -566,6 +576,19 @@ def main(argv=None):
     )
     carnegie_thread.start()
 
+    global_affairs_thread = Thread(
+        target=run_schedule,
+        args=(
+            GLOBAL_AFFAIRS_SITES,
+            "Газеты · Россия в глобальной политике",
+            GLOBAL_AFFAIRS_UPDATE_INTERVAL,
+            stop_event,
+        ),
+        name="global-affairs-parser",
+        daemon=True,
+    )
+    global_affairs_thread.start()
+
     try:
         run_schedule(
             GOVERNMENT_SITES,
@@ -582,6 +605,7 @@ def main(argv=None):
         kyodo_thread.join(timeout=2)
         newspaper_thread.join(timeout=2)
         carnegie_thread.join(timeout=2)
+        global_affairs_thread.join(timeout=2)
 
 
 if __name__ == "__main__":

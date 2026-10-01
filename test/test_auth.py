@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import web_app
 from utils import storage
-from utils.source_groups import CARNEGIE_SOURCE
+from utils.source_groups import CARNEGIE_SOURCE, GLOBAL_AFFAIRS_SOURCE
 
 
 class AuthenticationTests(unittest.TestCase):
@@ -354,7 +354,7 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(self.client.get("/admin/incidents").status_code, 403)
         self.assertEqual(self.client.get("/admin/reliability").status_code, 403)
 
-    def test_experimental_carnegie_source_is_visible_only_to_admin(self):
+    def test_experimental_sources_are_visible_only_to_admin(self):
         self._create_first_admin()
         carnegie_item = {
             "source": CARNEGIE_SOURCE,
@@ -371,7 +371,17 @@ class AuthenticationTests(unittest.TestCase):
             "url": "https://www.kommersant.ru/doc/999046",
             "date": "2026-09-30",
         }
-        storage.save_results([carnegie_item, newspaper_item], [], set())
+        global_affairs_item = {
+            "source": GLOBAL_AFFAIRS_SOURCE,
+            "title": "Тестовый материал журнала о мировой политике",
+            "url": "https://globalaffairs.ru/articles/test-story",
+            "date": "2026-10-01",
+        }
+        storage.save_results(
+            [carnegie_item, global_affairs_item, newspaper_item],
+            [],
+            set(),
+        )
 
         with patch.object(
             web_app,
@@ -382,6 +392,7 @@ class AuthenticationTests(unittest.TestCase):
         admin_html = admin_page.get_data(as_text=True)
         self.assertEqual(admin_page.status_code, 200)
         self.assertIn(carnegie_item["title"], admin_html)
+        self.assertIn(global_affairs_item["title"], admin_html)
         self.assertIn(newspaper_item["title"], admin_html)
 
         reader = storage.create_user(
@@ -402,6 +413,8 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(reader_page.status_code, 200)
         self.assertNotIn(carnegie_item["title"], reader_html)
         self.assertNotIn(CARNEGIE_SOURCE, reader_html)
+        self.assertNotIn(global_affairs_item["title"], reader_html)
+        self.assertNotIn(GLOBAL_AFFAIRS_SOURCE, reader_html)
         self.assertIn(newspaper_item["title"], reader_html)
 
         article = self.client.get(
@@ -409,12 +422,23 @@ class AuthenticationTests(unittest.TestCase):
             query_string={"url": carnegie_item["url"]},
         )
         self.assertEqual(article.status_code, 403)
+        global_affairs_article = self.client.get(
+            "/article",
+            query_string={"url": global_affairs_item["url"]},
+        )
+        self.assertEqual(global_affairs_article.status_code, 403)
         bookmark = self.client.post(
             "/api/bookmarks",
             json={"url": carnegie_item["url"]},
             headers={"X-CSRF-Token": "carnegie-test-token"},
         )
         self.assertEqual(bookmark.status_code, 403)
+        global_affairs_bookmark = self.client.post(
+            "/api/bookmarks",
+            json={"url": global_affairs_item["url"]},
+            headers={"X-CSRF-Token": "carnegie-test-token"},
+        )
+        self.assertEqual(global_affairs_bookmark.status_code, 403)
 
     def test_admin_creates_manages_and_reactivates_user(self):
         self._create_first_admin()

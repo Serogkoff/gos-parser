@@ -1,6 +1,6 @@
 """Отдельные эмблемы источников для редакционной ленты."""
 
-from utils.source_groups import CARNEGIE_SOURCE
+from utils.source_groups import CARNEGIE_SOURCE, GLOBAL_AFFAIRS_SOURCE
 
 
 DEFENSE_SOURCE = "Минобороны РФ"
@@ -57,6 +57,7 @@ NEWSPAPER_EMBLEMS = {
     "Красная звезда": "redstar.png",
     "Комсомольская правда": "kp.png",
     CARNEGIE_SOURCE: "carnegie.png",
+    GLOBAL_AFFAIRS_SOURCE: "global_affairs.png",
 }
 
 

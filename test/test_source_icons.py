@@ -71,6 +71,7 @@ class SourceIconTests(unittest.TestCase):
             "Красная звезда": "redstar.png",
             "Комсомольская правда": "kp.png",
             "Берлинский центр Карнеги": "carnegie.png",
+            "Россия в глобальной политике": "global_affairs.png",
         }
         self.assertEqual(NEWSPAPER_EMBLEMS, expected)
         for source, filename in expected.items():
