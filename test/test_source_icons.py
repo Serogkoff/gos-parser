@@ -72,6 +72,12 @@ class SourceIconTests(unittest.TestCase):
             "Комсомольская правда": "kp.png",
             "Берлинский центр Карнеги": "carnegie.png",
             "Россия в глобальной политике": "global_affairs.png",
+            "BBC Russian": "bbc_russian.png",
+            "The Moscow Times": "moscow_times.png",
+            "Meduza": "meduza.png",
+            "Важные истории": "istories.png",
+            "Вёрстка": "verstka.png",
+            "The Insider": "the_insider.png",
         }
         self.assertEqual(NEWSPAPER_EMBLEMS, expected)
         for source, filename in expected.items():

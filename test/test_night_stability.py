@@ -40,6 +40,16 @@ class NightStabilityTests(unittest.TestCase):
         self.assertNotIn("Россия в глобальной политике", daily_names)
         self.assertEqual(main.GLOBAL_AFFAIRS_UPDATE_INTERVAL, 7200)
 
+    def test_vpn_media_are_split_between_requested_intervals(self):
+        self.assertEqual(
+            [name for name, _parser in main.FAST_VPN_MEDIA_SITES],
+            ["Meduza", "The Insider"],
+        )
+        self.assertEqual(
+            [name for name, _parser in main.VPN_MEDIA_SITES],
+            ["BBC Russian", "The Moscow Times", "Важные истории", "Вёрстка"],
+        )
+
     def test_parser_result_crosses_process_boundary(self):
         self.assertEqual(
             run_parser_with_timeout(_quick_parser, 3),
@@ -71,6 +81,23 @@ class NightStabilityTests(unittest.TestCase):
             main.NEWSPAPER_SITES,
             group_name="Газеты · ручное обновление",
             merge_status=True,
+        )
+
+    def test_manual_vpn_media_update_contains_all_six_sources(self):
+        with mock.patch.object(main, "run_once") as run_once:
+            main.run_manual_group("vpn-media")
+
+        sites = run_once.call_args.args[0]
+        self.assertEqual(
+            {name for name, _parser in sites},
+            {
+                "BBC Russian", "The Moscow Times", "Meduza",
+                "Важные истории", "Вёрстка", "The Insider",
+            },
+        )
+        self.assertEqual(
+            run_once.call_args.kwargs["group_name"],
+            "Газеты · VPN · ручное обновление",
         )
 
     def test_admin_queue_runs_source_once_and_finishes_job(self):

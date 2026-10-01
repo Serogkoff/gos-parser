@@ -737,6 +737,11 @@ def load_existing_urls():
     return _NEWS_PERSISTENCE.load_existing_urls()
 
 
+def load_source_url_aliases(source):
+    """Возвращает сохранённые canonical/RSS-адреса одного источника."""
+    return _NEWS_PERSISTENCE.load_source_url_aliases(source)
+
+
 def save_results(all_news, found_news, existing_urls):
     return _NEWS_PERSISTENCE.save_results(
         all_news, found_news, existing_urls

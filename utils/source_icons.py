@@ -58,6 +58,12 @@ NEWSPAPER_EMBLEMS = {
     "Комсомольская правда": "kp.png",
     CARNEGIE_SOURCE: "carnegie.png",
     GLOBAL_AFFAIRS_SOURCE: "global_affairs.png",
+    "BBC Russian": "bbc_russian.png",
+    "The Moscow Times": "moscow_times.png",
+    "Meduza": "meduza.png",
+    "Важные истории": "istories.png",
+    "Вёрстка": "verstka.png",
+    "The Insider": "the_insider.png",
 }
 
 

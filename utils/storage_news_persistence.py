@@ -203,6 +203,29 @@ class NewsPersistenceStorage:
             ).fetchall()
         return {row["normalized_url"] for row in rows}
 
+    def load_source_url_aliases(self, source):
+        """Возвращает RSS- и canonical-адреса одного источника без обхода БД."""
+        self._initialize_database()
+        with self._connection_factory() as connection:
+            rows = connection.execute(
+                """SELECT normalized_url, payload_json
+                   FROM news_items
+                   WHERE source = ?""",
+                (str(source),),
+            ).fetchall()
+        aliases = {}
+        for row in rows:
+            item = self.decode_item(row["payload_json"]) or {}
+            canonical = normalize_url(item.get("url", "")) or row["normalized_url"]
+            state = {
+                "url": canonical,
+                "has_article": bool(item.get("article_paragraphs")),
+            }
+            for candidate in (canonical, normalize_url(item.get("rss_url", ""))):
+                if candidate:
+                    aliases[candidate] = state
+        return aliases
+
     def save_results(self, all_news, found_news, existing_urls):
         with self._lock:
             return self._save_results(all_news, found_news, existing_urls)

@@ -8,6 +8,7 @@ from config import (
     AGENCY_UPDATE_INTERVAL,
     CARNEGIE_UPDATE_INTERVAL,
     DATABASE_BACKUP_RETENTION,
+    FAST_VPN_MEDIA_UPDATE_INTERVAL,
     GOVERNMENT_UPDATE_INTERVAL,
     GLOBAL_AFFAIRS_UPDATE_INTERVAL,
     KYODO_UPDATE_INTERVAL,
@@ -18,6 +19,7 @@ from config import (
     PROJECT_VERSION,
     SOURCE_TIMEOUT_OVERRIDES,
     SOURCE_TIMEOUT_SECONDS,
+    VPN_MEDIA_UPDATE_INTERVAL,
     YAHOO_UPDATE_INTERVAL,
 )
 from utils.parser_runner import ParserTimeoutError, run_parser_with_timeout
@@ -77,6 +79,12 @@ from parsers.sites.redstar import parse as redstar
 from parsers.sites.kp import parse as kp
 from parsers.sites.carnegie import parse as carnegie
 from parsers.sites.global_affairs import parse as global_affairs
+from parsers.sites.bbc_russian import parse as bbc_russian
+from parsers.sites.moscow_times import parse as moscow_times
+from parsers.sites.meduza import parse as meduza
+from parsers.sites.istories import parse as istories
+from parsers.sites.verstka import parse as verstka
+from parsers.sites.the_insider import parse as the_insider
 from parsers.sites.kremlin import parse as kremlin
 
 
@@ -140,10 +148,24 @@ GLOBAL_AFFAIRS_SITES = [
     ("Россия в глобальной политике", global_affairs),
 ]
 
+FAST_VPN_MEDIA_SITES = [
+    ("Meduza", meduza),
+    ("The Insider", the_insider),
+]
+
+VPN_MEDIA_SITES = [
+    ("BBC Russian", bbc_russian),
+    ("The Moscow Times", moscow_times),
+    ("Важные истории", istories),
+    ("Вёрстка", verstka),
+]
+
 NEWSPAPER_SITES = [
     *DAILY_NEWSPAPER_SITES,
     *CARNEGIE_SITES,
     *GLOBAL_AFFAIRS_SITES,
+    *FAST_VPN_MEDIA_SITES,
+    *VPN_MEDIA_SITES,
 ]
 
 SITES = [
@@ -452,6 +474,7 @@ def _parse_arguments(argv=None):
             "yahoo",
             "kyodo",
             "newspapers",
+            "vpn-media",
             "all",
         ),
         help="однократно обновить выбранную группу и завершить работу",
@@ -484,6 +507,10 @@ def run_manual_group(group_name):
         "yahoo": (YAHOO_SITES, "Yahoo! JAPAN"),
         "kyodo": (KYODO_SITES, "Киодо"),
         "newspapers": (NEWSPAPER_SITES, "Газеты"),
+        "vpn-media": (
+            [*FAST_VPN_MEDIA_SITES, *VPN_MEDIA_SITES],
+            "Газеты · VPN",
+        ),
     }
     selected = groups.items() if group_name == "all" else ((group_name, groups[group_name]),)
     for _key, (sites, title) in selected:
@@ -589,6 +616,32 @@ def main(argv=None):
     )
     global_affairs_thread.start()
 
+    fast_vpn_media_thread = Thread(
+        target=run_schedule,
+        args=(
+            FAST_VPN_MEDIA_SITES,
+            "Газеты · VPN · 5 минут",
+            FAST_VPN_MEDIA_UPDATE_INTERVAL,
+            stop_event,
+        ),
+        name="fast-vpn-media-parser",
+        daemon=True,
+    )
+    fast_vpn_media_thread.start()
+
+    vpn_media_thread = Thread(
+        target=run_schedule,
+        args=(
+            VPN_MEDIA_SITES,
+            "Газеты · VPN · 10 минут",
+            VPN_MEDIA_UPDATE_INTERVAL,
+            stop_event,
+        ),
+        name="vpn-media-parser",
+        daemon=True,
+    )
+    vpn_media_thread.start()
+
     try:
         run_schedule(
             GOVERNMENT_SITES,
@@ -606,6 +659,8 @@ def main(argv=None):
         newspaper_thread.join(timeout=2)
         carnegie_thread.join(timeout=2)
         global_affairs_thread.join(timeout=2)
+        fast_vpn_media_thread.join(timeout=2)
+        vpn_media_thread.join(timeout=2)
 
 
 if __name__ == "__main__":

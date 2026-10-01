@@ -134,6 +134,32 @@ class NewsPersistenceStorageTests(unittest.TestCase):
 
         self.assertEqual(storage.load_all_news()[0]["summary"], "Уточнённый анонс")
 
+    def test_source_aliases_link_rss_url_to_canonical_article(self):
+        item = self._item(
+            1,
+            source="BBC Russian",
+            url="https://www.bbc.com/russian/articles/canonical",
+            rss_url=(
+                "https://www.bbc.com/russian/articles/canonical"
+                "?at_medium=RSS&at_campaign=rss"
+            ),
+            article_paragraphs=["Полный текст публикации BBC Russian."],
+        )
+        storage.save_results([item], [], set())
+
+        aliases = storage.load_source_url_aliases("BBC Russian")
+
+        self.assertEqual(len(aliases), 2)
+        rss_state = aliases[
+            "https://www.bbc.com/russian/articles/canonical"
+            "?at_medium=RSS&at_campaign=rss"
+        ]
+        self.assertEqual(
+            rss_state["url"],
+            "https://www.bbc.com/russian/articles/canonical",
+        )
+        self.assertTrue(rss_state["has_article"])
+
     def test_limited_cycle_keeps_title_based_deduplication(self):
         original = {
             "source": "МЧС",

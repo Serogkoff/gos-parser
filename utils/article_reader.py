@@ -87,6 +87,35 @@ VERIFIED_ARTICLE_SELECTORS = {
     "carnegieendowment.org": (
         ".cms-html.payload-richtext",
     ),
+    "bbc.com": (
+        "[data-component='text-block']",
+        "main",
+    ),
+    "bbc.co.uk": (
+        "[data-component='text-block']",
+        "main",
+    ),
+    "ru.themoscowtimes.com": (
+        ".article__content",
+        "article",
+    ),
+    "meduza.io": (
+        "[class*='GeneralMaterial-module-article']",
+        "main",
+    ),
+    "istories.media": (
+        "[class*='BlocksContainer']",
+        "article",
+    ),
+    "verstka.media": (
+        ".vm-single-post-content",
+        "article",
+        "main",
+    ),
+    "theins.ru": (
+        "article",
+        "main",
+    ),
     "kremlin.ru": (
         "[itemprop='articleBody']",
         ".read__content",
@@ -343,16 +372,17 @@ def extract_article(url, fallback_title=""):
                 verify=True,
                 attempts=1,
             )
-    elif _is_kyodo_url(url) or _is_carnegie_url(url):
+    elif _is_kyodo_url(url) or _is_carnegie_url(url) or _is_vpn_media_url(url):
         try:
             proxy_url = kyodo_proxy_url()
         except ValueError:
             proxy_url = ""
-        source_name = (
-            "Просмотр Киодо"
-            if _is_kyodo_url(url)
-            else "Просмотр Carnegie"
-        )
+        if _is_kyodo_url(url):
+            source_name = "Просмотр Киодо"
+        elif _is_carnegie_url(url):
+            source_name = "Просмотр Carnegie"
+        else:
+            source_name = "Просмотр СМИ через VPN"
         soup = fetch_soup(
             fetch_url,
             source_name,
@@ -387,7 +417,7 @@ def extract_article(url, fallback_title=""):
             "paragraphs": [],
             "error": (
                 "Канал через VPN сейчас недоступен."
-                if _is_kyodo_url(url) or _is_carnegie_url(url)
+                if _is_kyodo_url(url) or _is_carnegie_url(url) or _is_vpn_media_url(url)
                 else "Сайт ведомства сейчас не отдал текст публикации."
             ),
         }
@@ -505,6 +535,23 @@ def _is_ng_url(url):
 def _is_yahoo_url(url):
     hostname = (urlsplit(url).hostname or "").casefold()
     return hostname == "news.yahoo.co.jp"
+
+
+def _is_vpn_media_url(url):
+    """Узнаёт независимые СМИ, которые читаются через общий VPN-канал."""
+    hostname = (urlsplit(url).hostname or "").casefold()
+    return any(
+        hostname == domain or hostname.endswith(f".{domain}")
+        for domain in (
+            "bbc.com",
+            "bbc.co.uk",
+            "ru.themoscowtimes.com",
+            "meduza.io",
+            "istories.media",
+            "verstka.media",
+            "theins.ru",
+        )
+    )
 
 
 def _ng_mirror_url(url):

@@ -74,6 +74,8 @@ class SourceGroupTests(unittest.TestCase):
         self.assertEqual(config.NEWSPAPER_UPDATE_HOUR, 8)
         self.assertEqual(config.CARNEGIE_UPDATE_INTERVAL, 3600)
         self.assertEqual(config.GLOBAL_AFFAIRS_UPDATE_INTERVAL, 7200)
+        self.assertEqual(config.FAST_VPN_MEDIA_UPDATE_INTERVAL, 300)
+        self.assertEqual(config.VPN_MEDIA_UPDATE_INTERVAL, 600)
 
 
 class SourceGroupPageTests(unittest.TestCase):
