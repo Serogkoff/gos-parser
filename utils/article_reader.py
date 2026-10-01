@@ -99,6 +99,14 @@ VERIFIED_ARTICLE_SELECTORS = {
         ".article__content",
         "article",
     ),
+    "www.themoscowtimes.com": (
+        ".article__content",
+        "article",
+    ),
+    "themoscowtimes.com": (
+        ".article__content",
+        "article",
+    ),
     "meduza.io": (
         "[class*='GeneralMaterial-module-article']",
         "main",
@@ -546,6 +554,7 @@ def _is_vpn_media_url(url):
             "bbc.com",
             "bbc.co.uk",
             "ru.themoscowtimes.com",
+            "themoscowtimes.com",
             "meduza.io",
             "istories.media",
             "verstka.media",

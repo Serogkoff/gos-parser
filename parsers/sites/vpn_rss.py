@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
+from utils.js_client import fetch_response_soup_js
 from utils.logger import get_logger
 from utils.news import deduplicate_news, normalize_url
 from utils.proxy import kyodo_proxy_url
@@ -47,20 +48,16 @@ class VpnRssSource:
     max_items: int = 50
     max_new_articles: int = 8
     rss_full_text_fallback: bool = False
+    prefer_rss_full_text: bool = False
+    feed_fallback_urls: tuple = ()
+    browser_fallback: bool = False
+    browser_warmup_url: str = ""
 
 
 def parse_source(config, now=None):
     """Читает RSS, а полные тексты только новых материалов — через VPN."""
     proxy_url = _proxy_url(config.name)
-    feed = fetch_soup(
-        config.feed_url,
-        f"{config.name} · RSS",
-        timeout=30,
-        verify=True,
-        parser="xml",
-        attempts=2,
-        proxy_url=proxy_url,
-    )
+    feed = _load_feed(config, proxy_url)
     if feed is None:
         print("  ✅ 0")
         return []
@@ -84,6 +81,11 @@ def parse_source(config, now=None):
             continue
 
         new_count += not bool(existing)
+        if config.prefer_rss_full_text:
+            rss_enriched = _rss_fallback(dict(item), config)
+            if rss_enriched.get("article_paragraphs"):
+                result.append(rss_enriched)
+                continue
         enriched = load_article(item, config, proxy_url=proxy_url)
         if enriched.get("article_paragraphs"):
             result.append(enriched)
@@ -159,6 +161,16 @@ def load_article(item, config, proxy_url=""):
         attempts=2,
         proxy_url=proxy_url,
     )
+    if soup is None and config.browser_fallback:
+        soup = fetch_response_soup_js(
+            item["url"],
+            f"{config.name} · полный текст · браузер",
+            timeout_ms=45000,
+            wait_ms=2500,
+            proxy_url=proxy_url,
+            parser="html.parser",
+            warmup_url=config.browser_warmup_url,
+        )
     if soup is None:
         return _rss_fallback(result, config)
 
@@ -311,6 +323,39 @@ def _rss_fallback(item, config):
         if sum(map(len, paragraphs)) >= 500:
             item["article_paragraphs"] = paragraphs
     return item
+
+
+def _load_feed(config, proxy_url):
+    """Tries official feed aliases, then the existing browser VPN transport."""
+    feed_urls = (config.feed_url, *config.feed_fallback_urls)
+    for feed_url in feed_urls:
+        feed = fetch_soup(
+            feed_url,
+            f"{config.name} · RSS",
+            timeout=30,
+            verify=True,
+            parser="xml",
+            attempts=2,
+            proxy_url=proxy_url,
+        )
+        if feed is not None and feed.find("item") is not None:
+            return feed
+
+    if not config.browser_fallback:
+        return None
+    for feed_url in feed_urls:
+        feed = fetch_response_soup_js(
+            feed_url,
+            f"{config.name} · RSS · браузер",
+            timeout_ms=45000,
+            wait_ms=2500,
+            proxy_url=proxy_url,
+            parser="xml",
+            warmup_url=config.browser_warmup_url,
+        )
+        if feed is not None and feed.find("item") is not None:
+            return feed
+    return None
 
 
 def _proxy_url(source_name):

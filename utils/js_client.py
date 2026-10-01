@@ -97,6 +97,88 @@ def fetch_soup_js(
     return BeautifulSoup(html, parser)
 
 
+def fetch_response_soup_js(
+    url,
+    source_name,
+    timeout_ms=45000,
+    wait_ms=2500,
+    proxy_url="",
+    parser="html.parser",
+    warmup_url="",
+):
+    """Loads a response in Chromium and parses its original response body.
+
+    This is intentionally separate from ``fetch_soup_js``: XML feeds need the
+    network response, not Chromium's HTML XML-viewer representation.  It is a
+    narrow fallback for public sites that reject the requests client while
+    still serving a normal browser through the same configured proxy.
+    """
+    try:
+        with sync_playwright() as p:
+            launch_options = {
+                "headless": True,
+                "args": ["--disable-blink-features=AutomationControlled"],
+            }
+            proxy = playwright_proxy(proxy_url)
+            if proxy:
+                launch_options["proxy"] = proxy
+            browser = p.chromium.launch(**launch_options)
+            context = browser.new_context(
+                ignore_https_errors=True,
+                locale="ru-RU",
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+            )
+            page = context.new_page()
+
+            if warmup_url:
+                try:
+                    page.goto(
+                        warmup_url,
+                        wait_until="domcontentloaded",
+                        timeout=timeout_ms,
+                    )
+                    page.wait_for_timeout(wait_ms)
+                except (PlaywrightError, PlaywrightTimeoutError):
+                    # The target request below is authoritative.  A failed
+                    # warm-up should not suppress it.
+                    pass
+
+            response = page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=timeout_ms,
+            )
+            page.wait_for_timeout(wait_ms)
+            if response is None:
+                raise PlaywrightError("navigation returned no response")
+            if response.status >= 400:
+                logger.warning(
+                    f"[{source_name}] Браузер получил HTTP {response.status} "
+                    f"на {url}"
+                )
+                context.close()
+                browser.close()
+                return None
+            body = response.body()
+            context.close()
+            browser.close()
+    except Exception as error:
+        logger.warning(
+            f"[{source_name}] Ошибка браузерной загрузки ответа {url}: "
+            f"{type(error).__name__}: {error}"
+        )
+        return None
+
+    if not body:
+        logger.warning(f"[{source_name}] Браузер вернул пустой ответ: {url}")
+        return None
+    return BeautifulSoup(body, parser)
+
+
 def _is_transient_browser_error(error):
     return any(
         marker in str(error)

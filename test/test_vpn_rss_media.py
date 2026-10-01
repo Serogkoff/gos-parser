@@ -146,6 +146,76 @@ class VpnRssMediaTests(unittest.TestCase):
         fetch.assert_called_once()
         self.assertEqual(fetch.call_args.kwargs["proxy_url"], "vpn-route")
 
+    def test_browser_feed_fallback_keeps_original_domain_and_rss_text(self):
+        feed = BeautifulSoup(
+            """
+            <rss xmlns:content="http://purl.org/rss/1.0/modules/content/">
+              <channel><item>
+                <title>Редакция опубликовала подробности нового события</title>
+                <link>https://verstka.media/news/original</link>
+                <pubDate>Thu, 01 Oct 2026 09:11:56 +0300</pubDate>
+                <content:encoded><![CDATA[
+                  <p>Первый большой абзац полного текста публикации, содержащий все необходимые подробности события.</p>
+                  <p>Второй большой абзац продолжает публикацию и содержит достаточно полезной информации.</p>
+                  <p>Третий большой абзац завершает полный материал редакции и добавляет важный контекст.</p>
+                  <p>Четвёртый большой абзац нужен для надёжной проверки достаточной длины полного текста.</p>
+                  <p>Пятый большой абзац подтверждает, что RSS содержит полную публикацию без запроса страницы.</p>
+                  <p>Шестой большой абзац содержит дополнительные факты и завершает проверочный материал.</p>
+                ]]></content:encoded>
+              </item></channel>
+            </rss>
+            """,
+            "xml",
+        )
+        source = VpnRssSource(
+            name="Вёрстка",
+            feed_url="https://verstka.media/feed/",
+            domains=("verstka.media",),
+            article_selectors=("article",),
+            rss_full_text_fallback=True,
+            prefer_rss_full_text=True,
+            browser_fallback=True,
+            browser_warmup_url="https://verstka.media/",
+        )
+        with (
+            patch("parsers.sites.vpn_rss.kyodo_proxy_url", return_value="vpn-route"),
+            patch("parsers.sites.vpn_rss.fetch_soup", return_value=None),
+            patch(
+                "parsers.sites.vpn_rss.fetch_response_soup_js",
+                return_value=feed,
+            ) as browser_fetch,
+            patch("parsers.sites.vpn_rss.load_source_url_aliases", return_value={}),
+            patch("parsers.sites.vpn_rss.load_article") as load_page,
+        ):
+            items = parse_source(source)
+
+        self.assertEqual(len(items), 1)
+        self.assertGreaterEqual(len(items[0]["article_paragraphs"]), 6)
+        self.assertEqual(items[0]["url"], "https://verstka.media/news/original")
+        browser_fetch.assert_called_once()
+        load_page.assert_not_called()
+
+    def test_moscow_times_combines_ru_and_english_feeds_as_one_source(self):
+        russian = [{"source": moscow_times.SOURCE_NAME, "url": "https://ru.themoscowtimes.com/a/1"}]
+        english = [{"source": moscow_times.SOURCE_NAME, "url": "https://www.themoscowtimes.com/a/2"}]
+        with patch(
+            "parsers.sites.moscow_times.parse_source",
+            side_effect=(russian, english),
+        ) as parse_feed_source:
+            items = moscow_times.parse()
+
+        self.assertEqual(len(items), 2)
+        self.assertEqual(parse_feed_source.call_count, 2)
+        self.assertEqual(
+            parse_feed_source.call_args_list[0].args[0].feed_url,
+            "https://ru.themoscowtimes.com/rss/news",
+        )
+        self.assertEqual(
+            parse_feed_source.call_args_list[1].args[0].feed_url,
+            "https://www.themoscowtimes.com/rss/news",
+        )
+        self.assertTrue(all(item["source"] == "The Moscow Times" for item in items))
+
     def test_all_sources_use_exact_feeds_domains_and_admin_visibility(self):
         expected = {
             bbc_russian.SOURCE_NAME: ("https://feeds.bbci.co.uk/russian/rss.xml", "bbc.com"),
@@ -164,6 +234,13 @@ class VpnRssMediaTests(unittest.TestCase):
                 self.assertIn(module.SOURCE_NAME, ADMIN_ONLY_SOURCES)
                 self.assertEqual(source_group(module.SOURCE_NAME), NEWSPAPERS_GROUP)
         self.assertNotIn("nproxy.org", verstka.CONFIG.feed_url)
+        self.assertNotIn("nproxy.org", " ".join(verstka.CONFIG.feed_fallback_urls))
+        self.assertTrue(verstka.CONFIG.browser_fallback)
+        self.assertTrue(verstka.CONFIG.prefer_rss_full_text)
+        self.assertEqual(
+            moscow_times.CONFIG_EN.feed_url,
+            "https://www.themoscowtimes.com/rss/news",
+        )
         self.assertEqual(config.FAST_VPN_MEDIA_UPDATE_INTERVAL, 300)
         self.assertEqual(config.VPN_MEDIA_UPDATE_INTERVAL, 600)
 
