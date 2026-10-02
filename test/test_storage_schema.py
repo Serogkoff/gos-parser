@@ -109,13 +109,15 @@ class StorageSchemaTests(unittest.TestCase):
                 connection.commit()
                 create_schema(connection)
                 row = connection.execute(
-                    "SELECT username, can_use_dictionary FROM users"
+                    "SELECT username, can_use_dictionary, is_hidden FROM users"
                 ).fetchone()
             finally:
                 connection.close()
 
         self.assertEqual(
-            dict(row), {"username": "reader", "can_use_dictionary": 0}
+            dict(row), {
+                "username": "reader", "can_use_dictionary": 0, "is_hidden": 0,
+            }
         )
 
     def test_schema_expands_existing_personal_notes_without_data_loss(self):

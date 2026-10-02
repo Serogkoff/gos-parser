@@ -21,11 +21,9 @@ VPN_MEDIA_SOURCES = frozenset({
     "Вёрстка",
     "The Insider",
 })
-ADMIN_ONLY_SOURCES = frozenset({
-    CARNEGIE_SOURCE,
-    GLOBAL_AFFAIRS_SOURCE,
-    *VPN_MEDIA_SOURCES,
-})
+# Все зарегистрированные СМИ доступны обычным пользователям. VPN влияет
+# только на способ загрузки источника и не ограничивает просмотр материалов.
+ADMIN_ONLY_SOURCES = frozenset()
 
 GOVERNMENT_SOURCES = frozenset({
     "Президент России",

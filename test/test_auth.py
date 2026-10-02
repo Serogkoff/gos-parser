@@ -354,7 +354,7 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(self.client.get("/admin/incidents").status_code, 403)
         self.assertEqual(self.client.get("/admin/reliability").status_code, 403)
 
-    def test_experimental_sources_are_visible_only_to_admin(self):
+    def test_new_media_sources_are_visible_to_regular_users(self):
         self._create_first_admin()
         carnegie_item = {
             "source": CARNEGIE_SOURCE,
@@ -411,34 +411,85 @@ class AuthenticationTests(unittest.TestCase):
             reader_page = self.client.get("/newspapers")
         reader_html = reader_page.get_data(as_text=True)
         self.assertEqual(reader_page.status_code, 200)
-        self.assertNotIn(carnegie_item["title"], reader_html)
-        self.assertNotIn(CARNEGIE_SOURCE, reader_html)
-        self.assertNotIn(global_affairs_item["title"], reader_html)
-        self.assertNotIn(GLOBAL_AFFAIRS_SOURCE, reader_html)
+        self.assertIn(carnegie_item["title"], reader_html)
+        self.assertIn(CARNEGIE_SOURCE, reader_html)
+        self.assertIn(global_affairs_item["title"], reader_html)
+        self.assertIn(GLOBAL_AFFAIRS_SOURCE, reader_html)
         self.assertIn(newspaper_item["title"], reader_html)
 
-        article = self.client.get(
-            "/article",
-            query_string={"url": carnegie_item["url"]},
-        )
-        self.assertEqual(article.status_code, 403)
-        global_affairs_article = self.client.get(
-            "/article",
-            query_string={"url": global_affairs_item["url"]},
-        )
-        self.assertEqual(global_affairs_article.status_code, 403)
+        with patch.object(
+            web_app,
+            "extract_article",
+            return_value={"title": "Тест", "paragraphs": ["Полный текст"]},
+        ):
+            article = self.client.get(
+                "/article",
+                query_string={"url": carnegie_item["url"]},
+            )
+            global_affairs_article = self.client.get(
+                "/article",
+                query_string={"url": global_affairs_item["url"]},
+            )
+        self.assertEqual(article.status_code, 200)
+        self.assertEqual(global_affairs_article.status_code, 200)
         bookmark = self.client.post(
             "/api/bookmarks",
             json={"url": carnegie_item["url"]},
             headers={"X-CSRF-Token": "carnegie-test-token"},
         )
-        self.assertEqual(bookmark.status_code, 403)
+        self.assertEqual(bookmark.status_code, 200)
         global_affairs_bookmark = self.client.post(
             "/api/bookmarks",
             json={"url": global_affairs_item["url"]},
             headers={"X-CSRF-Token": "carnegie-test-token"},
         )
-        self.assertEqual(global_affairs_bookmark.status_code, 403)
+        self.assertEqual(global_affairs_bookmark.status_code, 200)
+
+    def test_hidden_user_is_regular_but_only_admin_can_list_it(self):
+        self._create_first_admin()
+        page = self.client.get("/admin/users")
+        created = self.client.post(
+            "/admin/users",
+            data={
+                "csrf_token": self._csrf(page),
+                "action": "create",
+                "username": "quiet-reader",
+                "role": "hidden",
+                "password": "quiet-secret-2026",
+                "password_confirm": "quiet-secret-2026",
+            },
+        )
+        self.assertEqual(created.status_code, 302)
+        hidden = next(
+            user for user in storage.list_users(include_hidden=True)
+            if user["username"] == "quiet-reader"
+        )
+
+        self.assertEqual(hidden["role"], "user")
+        self.assertTrue(hidden["is_hidden"])
+        self.assertNotIn(hidden["id"], {user["id"] for user in storage.list_users()})
+        self.assertIn(
+            hidden["id"],
+            {user["id"] for user in storage.list_users(include_hidden=True)},
+        )
+        self.assertEqual(
+            storage.authenticate_user("quiet-reader", "quiet-secret-2026")["role"],
+            "user",
+        )
+
+        admin_page = self.client.get("/admin/users").get_data(as_text=True)
+        self.assertIn("quiet-reader", admin_page)
+        self.assertIn("Скрытый пользователь", admin_page)
+
+        visible = storage.create_user(
+            "visible-reader", "visible-secret-2026", role="user"
+        )
+        with self.client.session_transaction() as session:
+            session["user_id"] = visible["id"]
+        calendar = self.client.get("/notes?view=calendar").get_data(as_text=True)
+        collections = self.client.get("/collections").get_data(as_text=True)
+        self.assertNotIn("quiet-reader", calendar)
+        self.assertNotIn("quiet-reader", collections)
 
     def test_admin_creates_manages_and_reactivates_user(self):
         self._create_first_admin()

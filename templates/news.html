@@ -64,7 +64,7 @@
                 Информагентства
             </a>
             <a class="site-section {{'active' if source_group == 'newspapers' else ''}}" href="{{'/newspapers/found' if mode == 'found' else '/newspapers'}}">
-                Газеты
+                СМИ
             </a>
             <a class="site-section" href="/collections">
                 Подборки
@@ -151,6 +151,7 @@
                     <button class="save" type="button" aria-label="Сохранить новость" data-save="{{item.url}}"><svg viewBox="0 0 20 24" aria-hidden="true"><path d="M3 2.5h14v19l-7-4-7 4Z"/></svg></button>
                     <div class="meta">
                         {% set emblem = source_emblems.get(item.source) %}
+                        <a class="source-emblem-link" href="{{source_filter_urls.get(item.source, filter_home)}}" aria-label="Все новости источника {{item.source}}" title="Все новости источника {{item.source}}">
                         {% if emblem %}
                         <img class="source-emblem source-emblem-main"
                              src="{{url_for('static', filename='source-logos/' ~ emblem)}}?v={{asset_version|urlencode}}"
@@ -159,6 +160,7 @@
                         {% else %}
                         <span class="source-mark" aria-hidden="true">{{(item.source or '?')[:1]}}</span>
                         {% endif %}
+                        </a>
                         <span class="source-name">{{item.source}}</span><i></i>
                         {% if item.section %}<span>{{item.section}}</span><i></i>{% endif %}
                         <time>

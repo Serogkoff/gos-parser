@@ -216,7 +216,7 @@ class VpnRssMediaTests(unittest.TestCase):
         )
         self.assertTrue(all(item["source"] == "The Moscow Times" for item in items))
 
-    def test_all_sources_use_exact_feeds_domains_and_admin_visibility(self):
+    def test_all_sources_use_exact_feeds_domains_and_public_visibility(self):
         expected = {
             bbc_russian.SOURCE_NAME: ("https://feeds.bbci.co.uk/russian/rss.xml", "bbc.com"),
             moscow_times.SOURCE_NAME: ("https://ru.themoscowtimes.com/rss/news", "ru.themoscowtimes.com"),
@@ -231,7 +231,7 @@ class VpnRssMediaTests(unittest.TestCase):
                 feed, domain = expected[module.SOURCE_NAME]
                 self.assertEqual(module.CONFIG.feed_url, feed)
                 self.assertIn(domain, module.CONFIG.domains)
-                self.assertIn(module.SOURCE_NAME, ADMIN_ONLY_SOURCES)
+                self.assertNotIn(module.SOURCE_NAME, ADMIN_ONLY_SOURCES)
                 self.assertEqual(source_group(module.SOURCE_NAME), NEWSPAPERS_GROUP)
         self.assertNotIn("nproxy.org", verstka.CONFIG.feed_url)
         self.assertNotIn("nproxy.org", " ".join(verstka.CONFIG.feed_fallback_urls))

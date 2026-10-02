@@ -114,9 +114,9 @@ def load_user(user_id):
     return _USER_STORAGE.load_user(user_id)
 
 
-def list_users():
+def list_users(include_hidden=False):
     """Возвращает безопасный список пользователей без хешей паролей."""
-    return _USER_STORAGE.list_users()
+    return _USER_STORAGE.list_users(include_hidden=include_hidden)
 
 
 def set_user_password(user_id, password):

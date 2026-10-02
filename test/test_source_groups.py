@@ -367,6 +367,35 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn('class="source-emblem source-emblem-main"', article)
         self.assertIn("source-logos/yahoo.png", article)
         self.assertNotIn('class="source-mark"', article)
+        self.assertIn(
+            'class="source-emblem-link" href="/agencies?source=', article
+        )
+        self.assertIn("Все новости источника", article)
+
+    def test_sidebar_prioritizes_sources_by_unread_count(self):
+        summary = {
+            "total": 8,
+            "by_source": {"МЧС": 2, "Президент России": 6},
+            "visible_urls": [],
+        }
+        with patch.object(
+            web_app, "news_unread_summary", return_value=summary,
+        ):
+            response = web_app.app.test_client().get("/")
+
+        html = response.get_data(as_text=True)
+        source_list = html[
+            html.index('id="source-list"'):
+            html.index("</section>", html.index('id="source-list"'))
+        ]
+        self.assertLess(
+            source_list.index('data-source-name="Президент России"'),
+            source_list.index('data-source-name="МЧС"'),
+        )
+        self.assertLess(
+            source_list.index('data-source-name="МЧС"'),
+            source_list.index('data-source-name="Минсельхоз"'),
+        )
 
     def test_keyword_click_filters_all_matches_by_exact_word(self):
         self.files["found_news.json"] = [
@@ -539,7 +568,7 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertIn("Все", header)
         self.assertIn("Госструктуры", header)
         self.assertIn("Информагентства", header)
-        self.assertIn("Газеты", header)
+        self.assertIn("СМИ", header)
         self.assertNotIn(">Дата</summary>", header)
         self.assertIn('class="calendar-icon"', header)
         self.assertNotIn('class="brand"', header)
@@ -551,7 +580,7 @@ class SourceGroupPageTests(unittest.TestCase):
 
         html = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Свежие номера газет", html)
+        self.assertIn("Свежие материалы СМИ", html)
         self.assertIn("Материал свежего номера НГ", html)
         self.assertIn(
             f'/static/source-logos/ng.png?v={config.SOURCE_LOGO_VERSION}',

@@ -681,13 +681,19 @@ def admin_users():
             return redirect(url_for("admin_users", error=str(operation_error)))
         return redirect(url_for("admin_users", message=message))
 
+    users = list_users(include_hidden=True)
     return render_template(
         "settings.html",
         mode="users",
         title="Пользователи",
         subtitle="Аккаунты, роли и доступ к Монитору",
         current_user=administrator,
-        users=list_users(),
+        users=users,
+        hidden_user_ids=[
+            user["id"]
+            for user in users
+            if user.get("is_hidden")
+        ],
         csrf_token=csrf_token(),
         message=str(request.args.get("message", "")).strip(),
         error=str(request.args.get("error", "")).strip(),
@@ -699,7 +705,7 @@ def _registered_admin_sources():
     groups = (
         ("Госструктуры", GOVERNMENT_SOURCES - {"Сахалинская обл."}),
         ("Информагентства", AGENCY_SOURCES),
-        ("Газеты", NEWSPAPER_SOURCES),
+        ("СМИ", NEWSPAPER_SOURCES),
     )
     return [
         (source, group_label)
@@ -1322,6 +1328,21 @@ def _notes_redirect(view, **values):
     return redirect(url_for("notes_page", view=view, **values))
 
 
+def _visible_active_users(user):
+    """Возвращает адресатов, которых текущему пользователю разрешено видеть."""
+    return [
+        account
+        for account in list_users(include_hidden=user.get("role") == "admin")
+        if account.get("is_active") and account["id"] != user["id"]
+    ]
+
+
+def _visible_shared_user_ids(user, values):
+    """Не позволяет передать скрытого адресата в обход интерфейса."""
+    allowed = {str(account["id"]) for account in _visible_active_users(user)}
+    return [value for value in values or [] if str(value) in allowed]
+
+
 @app.route("/notes", methods=["GET", "POST"])
 def notes_page():
     """Личное рабочее пространство с отдельным разрешением на словарь."""
@@ -1349,7 +1370,9 @@ def notes_page():
                     request.form.get("event_date"), request.form.get("event_time"),
                     request.form.get("place"), request.form.get("description"),
                     request.form.get("visibility", "private"),
-                    request.form.getlist("shared_user_ids"),
+                    _visible_shared_user_ids(
+                        user, request.form.getlist("shared_user_ids")
+                    ),
                     request.form.get("event_id"),
                     color=request.form.get("color"),
                     is_bold=request.form.get("is_bold"),
@@ -1661,10 +1684,7 @@ def notes_page():
             "event_time": "", "place": "", "description": "", "color": "red",
             "is_bold": 0, "is_italic": 0, "shared_users": [],
         }
-        available_calendar_users = [
-            account for account in list_users()
-            if account.get("is_active") and account["id"] != user_id
-        ]
+        available_calendar_users = _visible_active_users(user)
         context.update(
             calendar_mode=mode,
             period_label=period_label,
@@ -2089,7 +2109,9 @@ def bookmarks_page():
                     request.form.get("name"),
                     current["description"],
                     request.form.get("visibility"),
-                    request.form.getlist("shared_user_ids"),
+                    _visible_shared_user_ids(
+                        user, request.form.getlist("shared_user_ids")
+                    ),
                 )
                 message = f"Подборка «{updated['name']}» обновлена"
                 return_folder = str(request.form.get("return_folder", "all")).strip()
@@ -2120,7 +2142,9 @@ def bookmarks_page():
                     user_id, current["id"], current["name"],
                     request.form.get("description"),
                     request.form.get("visibility"),
-                    request.form.getlist("shared_user_ids"),
+                    _visible_shared_user_ids(
+                        user, request.form.getlist("shared_user_ids")
+                    ),
                 )
                 message = "Доступ к подборке обновлён"
                 selected_folder = str(current["id"])
@@ -2289,10 +2313,7 @@ def bookmarks_page():
         selected_title = "Без папки"
     else:
         selected_title = "Все подборки"
-    active_users = [
-        account for account in list_users()
-        if account["is_active"] and account["id"] != user_id
-    ]
+    active_users = _visible_active_users(user)
     return render_template(
         "bookmarks.html",
         current_user=user,
@@ -2486,7 +2507,7 @@ def render_news_page(
 
     if source_group == ALL_GROUP:
         group_title = "Все новости"
-        group_eyebrow = "Госструктуры · Информагентства · Газеты"
+        group_eyebrow = "Госструктуры · Информагентства · СМИ"
         group_home = "/all"
         group_found = "/all/found"
     elif source_group == AGENCIES_GROUP:
@@ -2498,10 +2519,8 @@ def render_news_page(
         group_home = "/agencies"
         group_found = "/agencies/found"
     elif source_group == NEWSPAPERS_GROUP:
-        group_title = "Свежие номера газет"
-        group_eyebrow = "Коммерсантъ · Известия · РГ · Ведомости · Красная звезда · КП"
-        if not restricted_sources:
-            group_eyebrow += " · Carnegie"
+        group_title = "Свежие материалы СМИ"
+        group_eyebrow = "Коммерсантъ · Известия · РГ · Ведомости · Carnegie · Meduza"
         group_home = "/newspapers"
         group_found = "/newspapers/found"
     else:
@@ -2680,6 +2699,29 @@ def render_news_page(
         if source not in excluded_sources
     }
     unread_summary["total"] = sum(unread_counts.values())
+    sidebar_order = {
+        source: index for index, (source, _count) in enumerate(sidebar_sources)
+    }
+    sidebar_sources.sort(key=lambda item: (
+        unread_counts.get(item[0], 0) == 0,
+        -unread_counts.get(item[0], 0),
+        sidebar_order[item[0]],
+    ))
+    yahoo_order = {
+        source: index
+        for index, (source, _count, _label) in enumerate(yahoo_sources)
+    }
+    yahoo_sources.sort(key=lambda item: (
+        unread_counts.get(item[0], 0) == 0,
+        -unread_counts.get(item[0], 0),
+        yahoo_order[item[0]],
+    ))
+    source_filter_urls = {
+        source: filter_home + "?" + urlencode(
+            [*shared_query_parameters, ("source", source)], doseq=True
+        )
+        for source, _count in sources
+    }
     checkpoint("unread")
 
     response = render_template(
@@ -2714,6 +2756,7 @@ def render_news_page(
             for source, _count in sources
             if (emblem := get_source_emblem(source))
         },
+        source_filter_urls=source_filter_urls,
         defense_source=DEFENSE_SOURCE,
         asset_version=SOURCE_LOGO_VERSION,
         feed_asset_version=PROJECT_VERSION,

@@ -67,6 +67,8 @@ def create_schema(connection):
                 CHECK(is_active IN (0, 1)),
             can_use_dictionary INTEGER NOT NULL DEFAULT 0
                 CHECK(can_use_dictionary IN (0, 1)),
+            is_hidden INTEGER NOT NULL DEFAULT 0
+                CHECK(is_hidden IN (0, 1)),
             created_at TEXT NOT NULL,
             last_login_at TEXT NOT NULL DEFAULT ''
         );
@@ -403,6 +405,11 @@ def create_schema(connection):
     if "can_use_dictionary" not in user_columns:
         connection.execute(
             "ALTER TABLE users ADD COLUMN can_use_dictionary "
+            "INTEGER NOT NULL DEFAULT 0"
+        )
+    if "is_hidden" not in user_columns:
+        connection.execute(
+            "ALTER TABLE users ADD COLUMN is_hidden "
             "INTEGER NOT NULL DEFAULT 0"
         )
 

@@ -31,6 +31,7 @@ def _user_from_row(row):
         "role": row["role"],
         "is_active": bool(row["is_active"]),
         "can_use_dictionary": bool(row["can_use_dictionary"]),
+        "is_hidden": bool(row["is_hidden"]),
         "created_at": row["created_at"],
         "last_login_at": row["last_login_at"],
     }
@@ -52,9 +53,11 @@ class UserStorage:
         """Создаёт пользователя с хешем пароля; открытый пароль не хранится."""
         username = _validate_username(username)
         password = _validate_password(password)
-        role = str(role or "user").strip().casefold()
-        if role not in {"admin", "user"}:
+        requested_role = str(role or "user").strip().casefold()
+        if requested_role not in {"admin", "user", "hidden"}:
             raise ValueError("Неизвестная роль пользователя")
+        role = "user" if requested_role == "hidden" else requested_role
+        is_hidden = requested_role == "hidden"
 
         self._initialize_database()
         created_at = datetime.now().isoformat(timespec="seconds")
@@ -63,13 +66,15 @@ class UserStorage:
                 cursor = connection.execute(
                     """
                     INSERT INTO users(
-                        username, password_hash, role, is_active, created_at
-                    ) VALUES (?, ?, ?, 1, ?)
+                        username, password_hash, role, is_active, is_hidden,
+                        created_at
+                    ) VALUES (?, ?, ?, 1, ?, ?)
                     """,
                     (
                         username,
                         generate_password_hash(password),
                         role,
+                        int(is_hidden),
                         created_at,
                     ),
                 )
@@ -89,6 +94,7 @@ class UserStorage:
             row = connection.execute(
                 """
                 SELECT id, username, role, is_active, can_use_dictionary,
+                       is_hidden,
                        created_at, last_login_at
                 FROM users WHERE id = ?
                 """,
@@ -96,18 +102,21 @@ class UserStorage:
             ).fetchone()
         return _user_from_row(row)
 
-    def list_users(self):
+    def list_users(self, include_hidden=False):
         """Возвращает безопасный список пользователей без хешей паролей."""
         self._initialize_database()
         with self._connection_factory() as connection:
             rows = connection.execute(
                 """
                 SELECT id, username, role, is_active, can_use_dictionary,
+                       is_hidden,
                        created_at, last_login_at
                 FROM users
+                WHERE is_hidden = 0 OR ? = 1
                 ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END,
                          username COLLATE NOCASE
-                """
+                """,
+                (int(bool(include_hidden)),),
             ).fetchall()
         return [_user_from_row(row) for row in rows]
 
@@ -126,9 +135,11 @@ class UserStorage:
 
     def set_user_role(self, user_id, role):
         """Меняет роль, не позволяя убрать последнего активного администратора."""
-        role = str(role or "").strip().casefold()
-        if role not in {"admin", "user"}:
+        requested_role = str(role or "").strip().casefold()
+        if requested_role not in {"admin", "user", "hidden"}:
             raise ValueError("Неизвестная роль пользователя")
+        role = "user" if requested_role == "hidden" else requested_role
+        is_hidden = requested_role == "hidden"
         try:
             user_id = int(user_id)
         except (TypeError, ValueError) as error:
@@ -150,8 +161,8 @@ class UserStorage:
                 if active_admins <= 1:
                     raise ValueError("Нельзя понизить последнего активного администратора")
             connection.execute(
-                "UPDATE users SET role = ? WHERE id = ?",
-                (role, user_id),
+                "UPDATE users SET role = ?, is_hidden = ? WHERE id = ?",
+                (role, int(is_hidden), user_id),
             )
         return self.load_user(user_id)
 
@@ -244,7 +255,7 @@ class UserStorage:
             row = connection.execute(
                 """
                 SELECT id, username, password_hash, role, is_active,
-                       can_use_dictionary,
+                       can_use_dictionary, is_hidden,
                        created_at, last_login_at
                 FROM users WHERE username = ? COLLATE NOCASE
                 """,
