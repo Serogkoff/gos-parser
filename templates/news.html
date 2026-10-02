@@ -187,7 +187,7 @@
             {% endfor %}
             </div>
             {% if page_count > 1 %}
-            <nav class="pagination" aria-label="Страницы новостей">
+            <nav class="pagination" aria-label="Страницы новостей" data-feed-pagination>
                 {% if previous_url %}
                 <a class="page-link" href="{{previous_url}}" rel="prev">←</a>
                 {% endif %}
@@ -238,10 +238,13 @@
                         <button class="source-link" type="button" data-source-filter="{{src}}" aria-disabled="{{'true' if src in muted_sources else 'false'}}">
                             {% set emblem = source_emblems.get(src) %}
                             {% if emblem %}
-                            <img class="source-emblem source-emblem-compact"
-                                 src="{{url_for('static', filename='source-logos/' ~ emblem)}}?v={{asset_version|urlencode}}"
-                                 width="24" height="24" loading="lazy" decoding="async"
-                                 alt="">
+                            <span class="source-emblem-choice">
+                                <img class="source-emblem source-emblem-compact"
+                                     src="{{url_for('static', filename='source-logos/' ~ emblem)}}?v={{asset_version|urlencode}}"
+                                     width="24" height="24" loading="lazy" decoding="async"
+                                     alt="">
+                                <span class="source-selected-badge" aria-hidden="true">✓</span>
+                            </span>
                             {% else %}
                             <span class="check">{{'✓' if src in source_filters else (src or '?')[:1]}}</span>
                             {% endif %}
@@ -257,7 +260,10 @@
                     {% if yahoo_sources %}
                     <div class="source-row yahoo-source-header {{'active' if yahoo_active else ''}} {{'source-muted' if yahoo_all_muted else ''}}">
                         <button class="source-link yahoo-source-toggle" id="yahoo-source-toggle" type="button" aria-pressed="{{'true' if yahoo_all_active else ('mixed' if yahoo_active else 'false')}}" aria-expanded="{{'true' if yahoo_expanded else 'false'}}" aria-controls="yahoo-source-items" title="Выбрать или снять все разделы Yahoo! JAPAN">
-                            <img class="source-emblem source-emblem-compact" src="{{url_for('static', filename='source-logos/' ~ source_emblems.get(yahoo_sources[0][0]))}}?v={{asset_version|urlencode}}" width="24" height="24" loading="lazy" decoding="async" alt="">
+                            <span class="source-emblem-choice">
+                                <img class="source-emblem source-emblem-compact" src="{{url_for('static', filename='source-logos/' ~ source_emblems.get(yahoo_sources[0][0]))}}?v={{asset_version|urlencode}}" width="24" height="24" loading="lazy" decoding="async" alt="">
+                                <span class="source-selected-badge" aria-hidden="true">✓</span>
+                            </span>
                             <span>Yahoo! JAPAN</span>
                             <span class="unread-count" data-unread-source="__yahoo__">{{('+' ~ yahoo_unread_count) if yahoo_unread_count else ''}}</span>
                             <span class="yahoo-chevron" aria-hidden="true">⌄</span>
@@ -272,7 +278,10 @@
                     <div class="source-row sortable-source yahoo-source-row {{'active' if src in source_filters else ''}} {{'source-muted' if src in muted_sources else ''}}" data-source-row data-source-name="{{src}}">
                         <span class="source-drag-handle" aria-hidden="true">⋮⋮</span>
                         <button class="source-link" type="button" data-source-filter="{{src}}" aria-disabled="{{'true' if src in muted_sources else 'false'}}">
-                            <img class="source-emblem source-emblem-compact" src="{{url_for('static', filename='source-logos/' ~ source_emblems.get(src))}}?v={{asset_version|urlencode}}" width="24" height="24" loading="lazy" decoding="async" alt="">
+                            <span class="source-emblem-choice">
+                                <img class="source-emblem source-emblem-compact" src="{{url_for('static', filename='source-logos/' ~ source_emblems.get(src))}}?v={{asset_version|urlencode}}" width="24" height="24" loading="lazy" decoding="async" alt="">
+                                <span class="source-selected-badge" aria-hidden="true">✓</span>
+                            </span>
                             <span>{{label}}</span>
                             <span class="unread-count" data-unread-source="{{src}}">{{('+' ~ unread_counts.get(src, 0)) if unread_counts.get(src, 0) else ''}}</span>
                         </button>

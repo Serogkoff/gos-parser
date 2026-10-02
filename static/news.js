@@ -754,6 +754,11 @@ async function navigateToFeed(value, options = {}){
             window.history.pushState({feedNavigation:true}, '', target.href);
         }
         initializeNewsPage();
+        if(options.resetFeedScroll && window.matchMedia('(max-width:920px)').matches){
+            const feed = document.querySelector('.feed');
+            feed?.scrollTo({top:0, left:0, behavior:'auto'});
+            feed?.scrollIntoView({block:'start', behavior:'auto'});
+        }
     }catch(error){
         if(error.name === 'AbortError') return;
         window.location.assign(target.href);
@@ -773,7 +778,9 @@ document.addEventListener('click', event => {
     const link = event.target.closest('a[href]');
     if(!link || link.target || link.hasAttribute('download') || !isFeedUrl(link.href)) return;
     event.preventDefault();
-    navigateToFeed(link.href);
+    navigateToFeed(link.href, {
+        resetFeedScroll:Boolean(link.closest('[data-feed-pagination]'))
+    });
 });
 
 window.addEventListener('popstate', () => {

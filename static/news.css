@@ -198,6 +198,16 @@
         .source-link>span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .check{width:16px;height:16px;display:grid;place-items:center;color:#fff;border:1px solid #bdb5a9;border-radius:3px;font-size:11px}
         .source-row.active .check{border-color:var(--coral);background:var(--coral)}
+        .source-emblem-choice{
+            position:relative;width:24px;height:24px;display:grid;place-items:center
+        }
+        .source-selected-badge{
+            position:absolute;top:-4px;right:-4px;width:13px;height:13px;
+            display:grid;place-items:center;border:2px solid #fff;border-radius:50%;
+            color:#fff;background:var(--coral);font:700 8px/1 Inter,"Segoe UI",Arial,sans-serif;
+            opacity:0;pointer-events:none;transform:scale(.72);transition:opacity .15s ease,transform .15s ease
+        }
+        .source-row.active .source-selected-badge{opacity:1;transform:scale(1)}
         .yahoo-source-toggle{width:100%;border:0;color:inherit;background:transparent}
         .yahoo-source-toggle.source-link{grid-template-columns:20px minmax(0,1fr) auto auto}
         .yahoo-chevron{color:var(--muted);font-size:14px;transition:transform .2s}
@@ -516,12 +526,7 @@
         }
         .source-row.active .check{color:#fff;background:var(--coral)}
         .source-emblem-compact{
-            position:relative;width:24px;height:24px
-        }
-        .source-row.active .source-emblem-compact:after{
-            content:"✓";position:absolute;right:-3px;bottom:-2px;width:11px;height:11px;
-            display:grid;place-items:center;border:1px solid #fff;border-radius:50%;
-            color:#fff;background:var(--coral);font:700 7px/1 Inter,"Segoe UI",Arial,sans-serif
+            width:24px;height:24px
         }
         .unread-count{
             min-width:0;padding:0;border-radius:0;

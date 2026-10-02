@@ -102,6 +102,9 @@ class WebTemplateTests(unittest.TestCase):
             ".slice(0, limit)",
             "image.decoding = 'sync'",
             "initializeNewsPage();",
+            "if(options.resetFeedScroll && window.matchMedia('(max-width:920px)').matches)",
+            "feed?.scrollTo({top:0, left:0, behavior:'auto'})",
+            "resetFeedScroll:Boolean(link.closest('[data-feed-pagination]'))",
         ):
             with self.subTest(partial_navigation_marker=marker):
                 self.assertIn(marker, javascript)
@@ -117,6 +120,9 @@ class WebTemplateTests(unittest.TestCase):
             'class="source-mark"',
             'class="source-emblem source-emblem-main',
             'class="source-emblem source-emblem-compact',
+            'class="source-emblem-choice"',
+            'class="source-selected-badge" aria-hidden="true">✓</span>',
+            'data-feed-pagination',
             "filename='source-logos/' ~ emblem",
             'class="news-summary"',
             'Найдено {{page_total_display}} материалов',
@@ -176,6 +182,8 @@ class WebTemplateTests(unittest.TestCase):
         self.assertNotIn('class="mobile-search-jump"', template)
         self.assertIn('.rail-icon{margin-left:4px}', stylesheet)
         self.assertIn('align-self:start;transform:translateY(-5px)', stylesheet)
+        self.assertIn('.source-row.active .source-selected-badge', stylesheet)
+        self.assertNotIn('.source-row.active .source-emblem-compact:after', stylesheet)
 
     def test_desktop_navigation_separates_notes_tools(self):
         template_folder = Path(web_app.app.template_folder)
