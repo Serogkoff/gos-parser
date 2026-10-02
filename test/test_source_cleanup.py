@@ -10,6 +10,7 @@ from utils.article_reader import (
     _is_mvd_url,
     _paragraphs,
     extract_article,
+    mnr_article_is_polluted,
 )
 
 
@@ -160,6 +161,48 @@ class ArticleCleanupTests(unittest.TestCase):
                 "сессии ЮНЕСКО в ходе рабочего заседания."
             ],
         )
+
+    def test_mnr_rejects_waf_page_instead_of_returning_it_as_article(self):
+        blocked = BeautifulSoup(
+            """
+            <html><body><main>
+                <p>Forbidden</p>
+                <p>Transaction ID: 851f3571-549d-4716-b25f-bf444afcc1c5</p>
+            </main></body></html>
+            """,
+            "html.parser",
+        )
+        with (
+            patch(
+                "utils.article_reader.fetch_soup_js",
+                return_value=blocked,
+            ) as browser,
+            patch("utils.article_reader.fetch_soup", return_value=None),
+        ):
+            article = extract_article(
+                "https://www.mnr.gov.ru/press/news/test_article/",
+                "Тестовая публикация Минприроды",
+            )
+
+        self.assertEqual(article["paragraphs"], [])
+        self.assertTrue(article["error"])
+        browser.assert_called_once()
+        self.assertNotIn("proxy_url", browser.call_args.kwargs)
+        self.assertTrue(browser.call_args.kwargs["browser_like"])
+        self.assertTrue(browser.call_args.kwargs["reject_http_errors"])
+
+    def test_recognizes_polluted_mnr_cache(self):
+        self.assertTrue(mnr_article_is_polluted({
+            "paragraphs": [
+                "Forbidden Transaction ID: "
+                "851f3571-549d-4716-b25f-bf444afcc1c5",
+            ],
+        }))
+        self.assertFalse(mnr_article_is_polluted({
+            "paragraphs": [
+                "Минприроды сообщило о выполнении годового плана региона.",
+            ],
+        }))
 
     def test_verified_source_extracts_only_article_body(self):
         soup = BeautifulSoup(

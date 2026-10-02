@@ -303,6 +303,12 @@ MVD_FOOTER_STARTS = (
     "это разрешение в равной степени распространяется",
 )
 
+BLOCK_PAGE_MARKERS = (
+    "forbidden transaction id",
+    "access denied request id",
+    "request rejected transaction id",
+)
+
 
 def extract_article(url, fallback_title=""):
     if _is_dynamic_verified_url(url):
@@ -344,9 +350,16 @@ def extract_article(url, fallback_title=""):
         soup = fetch_soup_js(
             fetch_url,
             "Просмотр Минприроды",
-            wait_ms=2500,
+            wait_ms=1800,
             timeout_ms=45000,
+            wait_until="domcontentloaded",
+            use_partial_on_timeout=True,
+            warmup_url="https://www.mnr.gov.ru/press/news/",
+            browser_like=True,
+            reject_http_errors=True,
         )
+        if _soup_is_block_page(soup):
+            soup = None
         if soup is None:
             soup = fetch_soup(
                 fetch_url,
@@ -354,6 +367,8 @@ def extract_article(url, fallback_title=""):
                 timeout=30,
                 verify=False,
             )
+            if _soup_is_block_page(soup):
+                soup = None
     elif _is_ng_url(url):
         soup = fetch_soup(
             fetch_url,
@@ -439,6 +454,13 @@ def extract_article(url, fallback_title=""):
         article = _extract_mnr_article(soup, fallback_title)
         if article:
             return article
+        # Не запускаем общий извлекатель для Минприроды: защитная страница
+        # ведомства раньше превращалась в текст "Forbidden Transaction ID".
+        return {
+            "title": fallback_title,
+            "paragraphs": [],
+            "error": "Минприроды временно не отдало текст публикации.",
+        }
 
     if _is_interfax_url(url):
         article = _extract_interfax_article(soup, fallback_title)
@@ -528,6 +550,29 @@ def yahoo_article_is_polluted(article):
         for paragraph in paragraphs
     )
     return numbered_ranking_rows >= 3
+
+
+def mnr_article_is_polluted(article):
+    """Узнаёт ошибочный кэш со страницей защиты Минприроды."""
+    paragraphs = [
+        " ".join(str(value).split())
+        for value in (article or {}).get("paragraphs", [])
+        if " ".join(str(value).split())
+    ]
+    return _text_is_block_page(" ".join(paragraphs))
+
+
+def _soup_is_block_page(soup):
+    if soup is None:
+        return False
+    return _text_is_block_page(soup.get_text(" ", strip=True))
+
+
+def _text_is_block_page(text):
+    normalized = " ".join(str(text or "").casefold().split())
+    if not normalized or len(normalized) > 1200:
+        return False
+    return any(marker in normalized for marker in BLOCK_PAGE_MARKERS)
 
 
 def _is_minobrnauki_url(url):

@@ -875,6 +875,56 @@ class SourceGroupPageTests(unittest.TestCase):
         self.assertNotIn("ランキングの別の記事", html)
         extractor.assert_called_once()
 
+    def test_mnr_waf_cache_is_automatically_refreshed(self):
+        url = "https://www.mnr.gov.ru/press/news/test_mnr_article/"
+        self.files["all_news.json"].append({
+            "source": "Минприроды",
+            "title": "Тестовая публикация Минприроды",
+            "url": url,
+            "date": "2026-10-02",
+        })
+        polluted = {
+            "title": "Тестовая публикация Минприроды",
+            "paragraphs": [
+                "Forbidden Transaction ID: "
+                "851f3571-549d-4716-b25f-bf444afcc1c5",
+            ],
+            "error": "",
+        }
+        cleaned = {
+            "title": "Тестовая публикация Минприроды",
+            "paragraphs": [
+                "Минприроды сообщило полный текст официальной публикации.",
+            ],
+            "error": "",
+        }
+        with patch.object(
+            web_app,
+            "load_json",
+            side_effect=self._load_json,
+        ), patch.object(
+            web_app,
+            "load_cached_article",
+            return_value=polluted,
+        ), patch.object(
+            web_app,
+            "extract_article",
+            return_value=cleaned,
+        ) as extractor, patch.object(
+            web_app,
+            "save_cached_article",
+            return_value=None,
+        ):
+            response = web_app.app.test_client().get(
+                "/article?url=https%3A%2F%2Fwww.mnr.gov.ru%2Fpress%2Fnews%2Ftest_mnr_article%2F"
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("полный текст официальной публикации", html)
+        self.assertNotIn("Transaction ID", html)
+        extractor.assert_called_once_with(url, "Тестовая публикация Минприроды")
+
     def test_kremlin_article_uses_full_atom_text(self):
         with patch.object(web_app, "load_json", side_effect=self._load_json):
             response = web_app.app.test_client().get(

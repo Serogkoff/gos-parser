@@ -26,6 +26,9 @@ def fetch_soup_js(
     use_partial_on_timeout=False,
     proxy_url="",
     parser="html.parser",
+    warmup_url="",
+    browser_like=False,
+    reject_http_errors=False,
 ):
     """
     Открывает страницу в headless-браузере (для сайтов, которые
@@ -37,22 +40,79 @@ def fetch_soup_js(
     try:
         with sync_playwright() as p:
             launch_options = {"headless": True}
+            if browser_like:
+                launch_options["args"] = [
+                    "--disable-blink-features=AutomationControlled",
+                ]
             proxy = playwright_proxy(proxy_url)
             if proxy:
                 launch_options["proxy"] = proxy
             browser = p.chromium.launch(**launch_options)
-            context = browser.new_context(ignore_https_errors=True)
+            context_options = {"ignore_https_errors": True}
+            if browser_like:
+                context_options.update({
+                    "locale": "ru-RU",
+                    "timezone_id": "Europe/Moscow",
+                    "user_agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/140.0.0.0 Safari/537.36"
+                    ),
+                    "viewport": {"width": 1440, "height": 900},
+                    "extra_http_headers": {
+                        "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.7",
+                    },
+                })
+            context = browser.new_context(**context_options)
             page = context.new_page()
+
+            if warmup_url:
+                try:
+                    warmup_response = page.goto(
+                        warmup_url,
+                        wait_until="domcontentloaded",
+                        timeout=timeout_ms,
+                    )
+                    if (
+                        reject_http_errors
+                        and warmup_response is not None
+                        and warmup_response.status >= 400
+                    ):
+                        logger.info(
+                            f"[{source_name}] Подготовительная страница "
+                            f"ответила HTTP {warmup_response.status}"
+                        )
+                    page.wait_for_timeout(min(wait_ms, 2500))
+                except (PlaywrightError, PlaywrightTimeoutError) as error:
+                    # Основной запрос остаётся решающим: прогрев нужен только
+                    # для cookies и не должен сам по себе отменять загрузку.
+                    logger.info(
+                        f"[{source_name}] Не удалось подготовить сессию: "
+                        f"{type(error).__name__}"
+                    )
 
             html = None
             for attempt in range(2):
                 try:
-                    page.goto(
-                        url,
-                        wait_until=wait_until,
-                        timeout=timeout_ms,
-                    )
+                    navigation_options = {
+                        "wait_until": wait_until,
+                        "timeout": timeout_ms,
+                    }
+                    if warmup_url:
+                        navigation_options["referer"] = warmup_url
+                    response = page.goto(url, **navigation_options)
                     page.wait_for_timeout(wait_ms)
+                    if (
+                        reject_http_errors
+                        and response is not None
+                        and response.status >= 400
+                    ):
+                        logger.warning(
+                            f"[{source_name}] Браузер получил HTTP "
+                            f"{response.status} на {url}"
+                        )
+                        html = None
+                        break
                     html = page.content()
                     break
                 except PlaywrightTimeoutError:

@@ -32,7 +32,11 @@ from config import (
     SOURCE_LOGO_VERSION,
 )
 from utils.auth import environment_value, load_secret_key
-from utils.article_reader import extract_article, yahoo_article_is_polluted
+from utils.article_reader import (
+    extract_article,
+    mnr_article_is_polluted,
+    yahoo_article_is_polluted,
+)
 from utils.diagnostics import alert_summary, source_alerts, system_alerts
 from utils.keywords import (
     add_keyword,
@@ -2931,6 +2935,13 @@ def article_page():
     ):
         # Версия 2026.08.17.6 могла сохранить вместе со статьёй рейтинг Yahoo.
         # Такой кэш не показываем и заменяем чистым текстом при этом открытии.
+        cached = None
+    if (
+        item.get("source") == "Минприроды"
+        and mnr_article_is_polluted(cached)
+    ):
+        # Старые версии могли принять страницу WAF с Transaction ID за статью.
+        # Не показываем такой кэш и сразу пробуем перечитать публикацию.
         cached = None
     if (
         item.get("source") == GLOBAL_AFFAIRS_SOURCE
