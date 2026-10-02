@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{article.title or item.title}} — Монитор</title>
+    <script src="{{url_for('static', filename='mobile_bottom_nav.js')}}?v={{PROJECT_VERSION|urlencode}}" defer></script>
     <style>
         :root{
             --paper:#fafaf8;--surface:#fff;--ink:#11110f;--muted:#73736f;

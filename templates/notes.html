@@ -4,6 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{'Календарь' if view == 'calendar' else 'Заметки' if view == 'records' else 'Словарь-квиз'}} — Монитор</title>
 <link rel="stylesheet" href="{{url_for('static', filename='notes.css')}}?v={{asset_version|urlencode}}">
+<script src="{{url_for('static', filename='mobile_bottom_nav.js')}}?v={{asset_version|urlencode}}" defer></script>
 </head>
 <body class="{{'mobile-dictionary-card-open' if view == 'dictionary' and dictionary_mode == 'dictionary' and dictionary_card_explicit else ''}}">
 {% macro render_mobile_agenda_day(day) %}<section class="mobile-agenda-day" id="agenda-{{day.iso}}"><header><h2>{{day.agenda_label}}</h2><button type="button" data-new-event data-date="{{day.iso}}" aria-label="Добавить событие {{day.agenda_label}}">+</button></header><div class="mobile-agenda-events">{% for event in day.events %}<a class="mobile-agenda-event color-{{event.color}} {{'event-bold' if event.is_bold else ''}} {{'event-italic' if event.is_italic else ''}} {{'shared-event' if event.is_shared else ''}}" {% if event.can_edit %}href="/notes?view=calendar&amp;mode=month&amp;selected={{event.occurrence_date}}&amp;event={{event.id}}"{% endif %}><time>{{event.event_time or 'Весь день'}}</time><span><strong>{{event.title}}</strong>{% if event.is_shared %}<small>{{event.audience_label}} · {{event.owner_username}}</small>{% elif event.place %}<small>{{event.place}}</small>{% endif %}</span></a>{% endfor %}</div></section>{% endmacro %}

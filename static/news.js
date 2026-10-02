@@ -754,6 +754,7 @@ async function navigateToFeed(value, options = {}){
             window.history.pushState({feedNavigation:true}, '', target.href);
         }
         initializeNewsPage();
+        window.syncMobileBottomNav?.();
         if(options.resetFeedScroll && window.matchMedia('(max-width:920px)').matches){
             const feed = document.querySelector('.feed');
             feed?.scrollTo({top:0, left:0, behavior:'auto'});

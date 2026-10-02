@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Монитор — новости</title>
     <link rel="stylesheet" href="{{url_for('static', filename='news.css')}}?v={{feed_asset_version|urlencode}}">
+    <script src="{{url_for('static', filename='mobile_bottom_nav.js')}}?v={{feed_asset_version|urlencode}}" defer></script>
 </head>
 <body class="mode-{{mode}}">
 <div class="app-layout">

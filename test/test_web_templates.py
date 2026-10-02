@@ -185,6 +185,43 @@ class WebTemplateTests(unittest.TestCase):
         self.assertIn('.source-row.active .source-selected-badge', stylesheet)
         self.assertNotIn('.source-row.active .source-emblem-compact:after', stylesheet)
 
+    def test_mobile_bottom_navigation_tracks_visual_viewport(self):
+        template_folder = Path(web_app.app.template_folder)
+        static_folder = Path(web_app.app.static_folder)
+        script_reference = "filename='mobile_bottom_nav.js'"
+
+        for template_name in (
+            "article.html",
+            "bookmarks.html",
+            "news.html",
+            "notes.html",
+        ):
+            template = (template_folder / template_name).read_text(
+                encoding="utf-8"
+            )
+            with self.subTest(template=template_name):
+                self.assertIn(script_reference, template)
+
+        javascript = (static_folder / "mobile_bottom_nav.js").read_text(
+            encoding="utf-8"
+        )
+        for marker in (
+            "window.visualViewport",
+            "viewport.offsetTop + viewport.height",
+            "navigation.style.setProperty('top'",
+            "navigation.style.setProperty('bottom', 'auto'",
+            "window.syncMobileBottomNav",
+            "window.visualViewport?.addEventListener('resize'",
+            "window.visualViewport?.addEventListener('scroll'",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, javascript)
+
+        news_javascript = (static_folder / "news.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("window.syncMobileBottomNav?.();", news_javascript)
+
     def test_desktop_navigation_separates_notes_tools(self):
         template_folder = Path(web_app.app.template_folder)
         chain_icon = "M10.5 13.5 13.5 10.5M8 16"
