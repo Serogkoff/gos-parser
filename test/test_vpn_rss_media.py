@@ -195,6 +195,60 @@ class VpnRssMediaTests(unittest.TestCase):
         browser_fetch.assert_called_once()
         load_page.assert_not_called()
 
+    def test_direct_feed_fallback_rewrites_mirror_urls_to_original_domain(self):
+        feed = BeautifulSoup(
+            """
+            <rss xmlns:content="http://purl.org/rss/1.0/modules/content/">
+              <channel><item>
+                <title>Редакция сообщила подробности нового события</title>
+                <link>https://verstka-media.nproxy.org/news/original</link>
+                <pubDate>Mon, 20 Oct 2026 09:00:00 +0300</pubDate>
+                <content:encoded><![CDATA[
+                  <p>Первый большой абзац полного текста публикации содержит важные подробности нового события.</p>
+                  <p>Второй большой абзац продолжает публикацию и добавляет необходимые факты для читателя.</p>
+                  <p>Третий большой абзац объясняет контекст события и содержит дополнительную информацию.</p>
+                  <p>Четвёртый большой абзац нужен для проверки достаточного размера полного текста публикации.</p>
+                  <p>Пятый большой абзац подтверждает получение материала из резервного RSS редакции.</p>
+                  <p>Шестой большой абзац завершает проверочный материал и содержит итоговые подробности.</p>
+                ]]></content:encoded>
+              </item></channel>
+            </rss>
+            """,
+            "xml",
+        )
+        source = VpnRssSource(
+            name="Вёрстка",
+            feed_url="https://verstka.media/feed/",
+            domains=("verstka.media",),
+            article_selectors=("article",),
+            rss_full_text_fallback=True,
+            prefer_rss_full_text=True,
+            direct_feed_fallback_urls=(
+                "https://verstka-media.nproxy.org/feed/",
+            ),
+            feed_url_rewrites=(
+                ("verstka-media.nproxy.org", "verstka.media"),
+            ),
+        )
+        with (
+            patch("parsers.sites.vpn_rss.kyodo_proxy_url", return_value="vpn-route"),
+            patch(
+                "parsers.sites.vpn_rss.fetch_soup",
+                side_effect=(None, feed),
+            ) as fetch,
+            patch("parsers.sites.vpn_rss.load_source_url_aliases", return_value={}),
+            patch("parsers.sites.vpn_rss.load_article") as load_page,
+        ):
+            items = parse_source(source)
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["url"], "https://verstka.media/news/original")
+        self.assertGreaterEqual(len(items[0]["article_paragraphs"]), 6)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(fetch.call_args_list[0].kwargs["proxy_url"], "vpn-route")
+        self.assertEqual(fetch.call_args_list[1].kwargs["proxy_url"], "")
+        load_page.assert_not_called()
+
     def test_moscow_times_combines_ru_and_english_feeds_as_one_source(self):
         russian = [{"source": moscow_times.SOURCE_NAME, "url": "https://ru.themoscowtimes.com/a/1"}]
         english = [{"source": moscow_times.SOURCE_NAME, "url": "https://www.themoscowtimes.com/a/2"}]
@@ -235,7 +289,11 @@ class VpnRssMediaTests(unittest.TestCase):
                 self.assertEqual(source_group(module.SOURCE_NAME), NEWSPAPERS_GROUP)
         self.assertNotIn("nproxy.org", verstka.CONFIG.feed_url)
         self.assertNotIn("nproxy.org", " ".join(verstka.CONFIG.feed_fallback_urls))
-        self.assertTrue(verstka.CONFIG.browser_fallback)
+        self.assertIn(
+            "https://verstka-media.nproxy.org/feed/",
+            verstka.CONFIG.direct_feed_fallback_urls,
+        )
+        self.assertFalse(verstka.CONFIG.browser_fallback)
         self.assertTrue(verstka.CONFIG.prefer_rss_full_text)
         self.assertEqual(
             moscow_times.CONFIG_EN.feed_url,

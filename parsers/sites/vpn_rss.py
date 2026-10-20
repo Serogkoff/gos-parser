@@ -50,6 +50,8 @@ class VpnRssSource:
     rss_full_text_fallback: bool = False
     prefer_rss_full_text: bool = False
     feed_fallback_urls: tuple = ()
+    direct_feed_fallback_urls: tuple = ()
+    feed_url_rewrites: tuple = ()
     browser_fallback: bool = False
     browser_warmup_url: str = ""
 
@@ -108,7 +110,10 @@ def parse_feed(soup, config, now=None):
     for entry in soup.find_all("item")[: config.max_items]:
         title = _tag_text(entry, "title")
         url = clean_url(
-            _tag_text(entry, "link") or _tag_text(entry, "guid"),
+            _rewrite_feed_url(
+                _tag_text(entry, "link") or _tag_text(entry, "guid"),
+                config.feed_url_rewrites,
+            ),
             config.domains,
         )
         if not url or len(title) < 5 or is_junk(title):
@@ -341,6 +346,22 @@ def _load_feed(config, proxy_url):
         if feed is not None and feed.find("item") is not None:
             return feed
 
+    # Некоторые редакции публикуют аварийное зеркало RSS для сетей, где
+    # основной домен блокируется или закрыт Cloudflare. Такие адреса читаем
+    # напрямую и только после попытки получить официальный RSS через VPN.
+    for feed_url in config.direct_feed_fallback_urls:
+        feed = fetch_soup(
+            feed_url,
+            f"{config.name} · резервный RSS",
+            timeout=30,
+            verify=True,
+            parser="xml",
+            attempts=1,
+            proxy_url="",
+        )
+        if feed is not None and feed.find("item") is not None:
+            return feed
+
     if not config.browser_fallback:
         return None
     for feed_url in feed_urls:
@@ -356,6 +377,20 @@ def _load_feed(config, proxy_url):
         if feed is not None and feed.find("item") is not None:
             return feed
     return None
+
+
+def _rewrite_feed_url(value, rewrites):
+    """Возвращает ссылку зеркала на канонический домен редакции."""
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    parts = urlsplit(value)
+    hostname = (parts.hostname or "").casefold()
+    for alias, canonical in rewrites:
+        alias = str(alias or "").casefold()
+        if hostname == alias or hostname.endswith(f".{alias}"):
+            return urlunsplit(("https", canonical, parts.path, parts.query, ""))
+    return value
 
 
 def _proxy_url(source_name):

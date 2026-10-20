@@ -10,9 +10,12 @@ CONFIG = VpnRssSource(
     article_selectors=(".vm-single-post-content", "article", "main"),
     rss_full_text_fallback=True,
     prefer_rss_full_text=True,
-    feed_fallback_urls=("https://verstka.media/?feed=rss2",),
-    browser_fallback=True,
-    browser_warmup_url="https://verstka.media/",
+    # Оригинальный домен остаётся главным и запрашивается через VPN. Сейчас
+    # Cloudflare отвечает этому VPN кодом 403, а прямое соединение из РФ
+    # обрывается на TLS. Зеркало используется только для обнаружения новых
+    # публикаций; все ссылки сразу возвращаются на канонический домен.
+    direct_feed_fallback_urls=("https://verstka-media.nproxy.org/feed/",),
+    feed_url_rewrites=(("verstka-media.nproxy.org", "verstka.media"),),
 )
 
 
