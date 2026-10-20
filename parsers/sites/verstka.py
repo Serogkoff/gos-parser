@@ -14,7 +14,7 @@ CONFIG = VpnRssSource(
     # Cloudflare отвечает этому VPN кодом 403, а прямое соединение из РФ
     # обрывается на TLS. Зеркало используется только для обнаружения новых
     # публикаций; все ссылки сразу возвращаются на канонический домен.
-    direct_feed_fallback_urls=("https://verstka-media.nproxy.org/feed/",),
+    feed_fallback_urls=("https://verstka-media.nproxy.org/feed/",),
     feed_url_rewrites=(("verstka-media.nproxy.org", "verstka.media"),),
 )
 

@@ -288,11 +288,11 @@ class VpnRssMediaTests(unittest.TestCase):
                 self.assertNotIn(module.SOURCE_NAME, ADMIN_ONLY_SOURCES)
                 self.assertEqual(source_group(module.SOURCE_NAME), NEWSPAPERS_GROUP)
         self.assertNotIn("nproxy.org", verstka.CONFIG.feed_url)
-        self.assertNotIn("nproxy.org", " ".join(verstka.CONFIG.feed_fallback_urls))
         self.assertIn(
             "https://verstka-media.nproxy.org/feed/",
-            verstka.CONFIG.direct_feed_fallback_urls,
+            verstka.CONFIG.feed_fallback_urls,
         )
+        self.assertEqual(verstka.CONFIG.direct_feed_fallback_urls, ())
         self.assertFalse(verstka.CONFIG.browser_fallback)
         self.assertTrue(verstka.CONFIG.prefer_rss_full_text)
         self.assertEqual(
