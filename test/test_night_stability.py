@@ -24,6 +24,9 @@ def _broken_parser():
 
 
 class NightStabilityTests(unittest.TestCase):
+    def test_worker_does_not_load_every_saved_url_before_each_group(self):
+        self.assertNotIn("load_existing_urls", main.run_once.__code__.co_names)
+
     def test_carnegie_uses_its_own_hourly_schedule(self):
         carnegie_names = [name for name, _parser in main.CARNEGIE_SITES]
         daily_names = [name for name, _parser in main.DAILY_NEWSPAPER_SITES]

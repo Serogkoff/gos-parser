@@ -58,6 +58,17 @@ class NewsPersistenceStorageTests(unittest.TestCase):
             {item["url"] for item in items},
         )
 
+    def test_save_detects_existing_item_without_full_url_snapshot(self):
+        item = self._item(1)
+        storage.save_results([item], [])
+
+        with patch("builtins.print") as output:
+            storage.save_results([item], [])
+
+        messages = [str(call.args[0]) for call in output.call_args_list]
+        self.assertTrue(any("✅ Новых: 0" in message for message in messages))
+        self.assertEqual(len(storage.load_all_news()), 1)
+
     def test_replacing_collection_keeps_first_seen_timestamp(self):
         item = self._item(1, summary="Первая версия")
         storage.save_results([item], [], set())
