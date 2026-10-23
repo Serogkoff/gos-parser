@@ -2,13 +2,16 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 ERROR_LOG_FILE = PROJECT_DIR / "parser_errors.log"
 SYSTEM_PERFORMANCE_LOG_FILE = PROJECT_DIR / "system_performance.log"
 WEB_PERFORMANCE_LOG_FILE = PROJECT_DIR / "web_performance.log"
+SOURCE_PERFORMANCE_LOG_FILE = PROJECT_DIR / "source_performance.log"
 PERFORMANCE_LOG_MAX_BYTES = 2_000_000
+SOURCE_PERFORMANCE_LOG_LOCK = Lock()
 
 
 def get_logger(name):
@@ -119,5 +122,25 @@ def write_web_performance(line):
             file.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} | {line}\n")
     except OSError:
         # Диагностика не должна задерживать или ломать пользовательскую страницу.
+        return False
+    return True
+
+
+def write_source_performance(line):
+    """Writes lightweight source timing without allowing an unbounded log."""
+    try:
+        with SOURCE_PERFORMANCE_LOG_LOCK:
+            if (
+                SOURCE_PERFORMANCE_LOG_FILE.exists()
+                and SOURCE_PERFORMANCE_LOG_FILE.stat().st_size
+                > PERFORMANCE_LOG_MAX_BYTES
+            ):
+                SOURCE_PERFORMANCE_LOG_FILE.write_text("", encoding="utf-8")
+            with SOURCE_PERFORMANCE_LOG_FILE.open("a", encoding="utf-8") as file:
+                file.write(
+                    f"{datetime.now():%Y-%m-%d %H:%M:%S} | {line}\n"
+                )
+    except OSError:
+        # Diagnostics must never stop the parser worker.
         return False
     return True

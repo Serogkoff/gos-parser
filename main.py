@@ -36,6 +36,7 @@ from utils.storage import (
     sync_source_incidents,
 )
 from utils.keywords import search_keywords
+from utils.logger import write_source_performance
 
 from parsers.sites.mid import parse as mid
 from parsers.sites.government import parse as gov
@@ -178,6 +179,27 @@ SITES = [
 
 SOURCE_RUN_LOCKS = {name: Lock() for name, _parser in SITES}
 
+# Playwright is intentionally serialized across all scheduler threads.  One
+# browser is enough for a source, while several simultaneous Chromium trees
+# caused short CPU/disk spikes and loud cooling on the Windows host.
+BROWSER_SOURCE_NAMES = {
+    "Берлинский центр Карнеги",
+    "Россия в глобальной политике",
+    "Известия",
+    "Киодо (共同通信)",
+    "Минобороны РФ",
+    "Минприроды",
+    "Минпромторг",
+    "Минспорт",
+    "Минцифры",
+    "Минэнерго",
+    "Российская газета",
+    "Красная звезда",
+    "СК РФ",
+    "Вёрстка",
+}
+BROWSER_RUN_LOCK = Lock()
+
 
 def safe_parse(parser_func, max_retries=2, timeout_seconds=SOURCE_TIMEOUT_SECONDS):
     last_error = ""
@@ -240,7 +262,28 @@ def run_once(
             print("  ℹ️ Источник уже обновляется — повторный запуск пропущен")
             continue
         started = time.perf_counter()
+        started_at = datetime.now()
+        uses_browser = name in BROWSER_SOURCE_NAMES
+        browser_wait_started = None
+        browser_lock_acquired = False
+        write_source_performance(
+            f"START group={group_name} source={name} "
+            f"browser={int(uses_browser)}"
+        )
         try:
+            if uses_browser:
+                browser_wait_started = time.perf_counter()
+                if not BROWSER_RUN_LOCK.acquire(blocking=False):
+                    print("  ⏳ Ожидание свободного браузерного слота")
+                    BROWSER_RUN_LOCK.acquire()
+                browser_lock_acquired = True
+                browser_wait_ms = (
+                    time.perf_counter() - browser_wait_started
+                ) * 1000
+                write_source_performance(
+                    f"BROWSER_SLOT group={group_name} source={name} "
+                    f"wait={browser_wait_ms:.1f}ms"
+                )
             news, error = safe_parse(
                 parser_func,
                 max_retries=MAX_RETRIES,
@@ -250,8 +293,16 @@ def run_once(
                 ),
             )
         finally:
+            if browser_lock_acquired:
+                BROWSER_RUN_LOCK.release()
             source_lock.release()
         duration = time.perf_counter() - started
+        write_source_performance(
+            f"END group={group_name} source={name} "
+            f"status={'error' if error else ('ok' if news else 'empty')} "
+            f"items={len(news)} duration={duration * 1000:.1f}ms "
+            f"started={started_at:%H:%M:%S}"
+        )
         all_news.extend(news)
         matches = search_keywords(news)
         print(f"  📰 Новостей: {len(news)}")

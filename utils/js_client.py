@@ -1,3 +1,5 @@
+import time
+
 from playwright.sync_api import (
     Error as PlaywrightError,
     TimeoutError as PlaywrightTimeoutError,
@@ -15,6 +17,29 @@ TRANSIENT_BROWSER_ERRORS = (
     "ERR_EMPTY_RESPONSE",
     "ERR_TIMED_OUT",
 )
+BLOCKED_RESOURCE_TYPES = frozenset({"image", "media", "font"})
+
+
+def _install_lightweight_routes(page):
+    """Prevents Chromium from downloading assets irrelevant to HTML parsing."""
+    def handle(route):
+        if route.request.resource_type in BLOCKED_RESOURCE_TYPES:
+            route.abort()
+        else:
+            route.continue_()
+
+    page.route("**/*", handle)
+
+
+def _close_browser_resources(context, browser):
+    """Best-effort cleanup used on successful, failed and timed-out loads."""
+    for resource in (context, browser):
+        if resource is None:
+            continue
+        try:
+            resource.close()
+        except Exception:
+            pass
 
 
 def fetch_soup_js(
@@ -37,13 +62,28 @@ def fetch_soup_js(
     Возвращает None при ошибке - и пишет причину в лог, вместо
     того чтобы молча проглотить исключение.
     """
+    browser = None
+    context = None
+    started = time.perf_counter()
+    logger.info(f"[{source_name}] Браузер START {url}")
     try:
         with sync_playwright() as p:
-            launch_options = {"headless": True}
+            launch_options = {
+                "headless": True,
+                "args": [
+                    "--disable-background-networking",
+                    "--disable-component-update",
+                    "--disable-default-apps",
+                    "--disable-extensions",
+                    "--disable-sync",
+                    "--mute-audio",
+                    "--no-first-run",
+                ],
+            }
             if browser_like:
-                launch_options["args"] = [
-                    "--disable-blink-features=AutomationControlled",
-                ]
+                launch_options["args"].append(
+                    "--disable-blink-features=AutomationControlled"
+                )
             proxy = playwright_proxy(proxy_url)
             if proxy:
                 launch_options["proxy"] = proxy
@@ -65,6 +105,7 @@ def fetch_soup_js(
                 })
             context = browser.new_context(**context_options)
             page = context.new_page()
+            _install_lightweight_routes(page)
 
             if warmup_url:
                 try:
@@ -141,18 +182,19 @@ def fetch_soup_js(
                     raise
 
             if html is None:
-                context.close()
-                browser.close()
                 return None
-
-            context.close()
-            browser.close()
     except Exception as error:
         logger.warning(
             f"[{source_name}] Ошибка браузера при открытии {url}: "
             f"{type(error).__name__}: {error}"
         )
         return None
+    finally:
+        _close_browser_resources(context, browser)
+        logger.info(
+            f"[{source_name}] Браузер END "
+            f"{(time.perf_counter() - started) * 1000:.1f}ms {url}"
+        )
 
     return BeautifulSoup(html, parser)
 
@@ -173,11 +215,24 @@ def fetch_response_soup_js(
     narrow fallback for public sites that reject the requests client while
     still serving a normal browser through the same configured proxy.
     """
+    browser = None
+    context = None
+    started = time.perf_counter()
+    logger.info(f"[{source_name}] Браузер RSS START {url}")
     try:
         with sync_playwright() as p:
             launch_options = {
                 "headless": True,
-                "args": ["--disable-blink-features=AutomationControlled"],
+                "args": [
+                    "--disable-background-networking",
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-component-update",
+                    "--disable-default-apps",
+                    "--disable-extensions",
+                    "--disable-sync",
+                    "--mute-audio",
+                    "--no-first-run",
+                ],
             }
             proxy = playwright_proxy(proxy_url)
             if proxy:
@@ -193,6 +248,7 @@ def fetch_response_soup_js(
                 ),
             )
             page = context.new_page()
+            _install_lightweight_routes(page)
 
             if warmup_url:
                 try:
@@ -220,18 +276,20 @@ def fetch_response_soup_js(
                     f"[{source_name}] Браузер получил HTTP {response.status} "
                     f"на {url}"
                 )
-                context.close()
-                browser.close()
                 return None
             body = response.body()
-            context.close()
-            browser.close()
     except Exception as error:
         logger.warning(
             f"[{source_name}] Ошибка браузерной загрузки ответа {url}: "
             f"{type(error).__name__}: {error}"
         )
         return None
+    finally:
+        _close_browser_resources(context, browser)
+        logger.info(
+            f"[{source_name}] Браузер RSS END "
+            f"{(time.perf_counter() - started) * 1000:.1f}ms {url}"
+        )
 
     if not body:
         logger.warning(f"[{source_name}] Браузер вернул пустой ответ: {url}")

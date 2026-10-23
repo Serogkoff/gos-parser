@@ -43,6 +43,24 @@ class ErrorLogTests(unittest.TestCase):
         self.assertNotIn("старые замеры", content)
         self.assertIn("Лента route=/found total=12.3ms", content)
 
+    def test_source_performance_log_is_separate_and_bounded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "source_performance.log"
+            path.write_text("старые замеры", encoding="utf-8")
+            with (
+                patch.object(logger, "SOURCE_PERFORMANCE_LOG_FILE", path),
+                patch.object(logger, "PERFORMANCE_LOG_MAX_BYTES", 1),
+            ):
+                result = logger.write_source_performance(
+                    "END group=Госструктуры source=Минэнерго "
+                    "status=ok items=20 duration=1234.5ms"
+                )
+            content = path.read_text(encoding="utf-8")
+
+        self.assertTrue(result)
+        self.assertNotIn("старые замеры", content)
+        self.assertIn("source=Минэнерго", content)
+
 
 if __name__ == "__main__":
     unittest.main()

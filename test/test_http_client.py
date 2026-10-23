@@ -4,7 +4,10 @@ from unittest.mock import Mock, patch
 import requests
 
 from utils.http_client import fetch_json, fetch_soup
-from utils.js_client import _is_transient_browser_error
+from utils.js_client import (
+    _install_lightweight_routes,
+    _is_transient_browser_error,
+)
 from utils.proxy import kyodo_proxy_url, playwright_proxy
 
 
@@ -72,6 +75,24 @@ class HttpClientRetryTests(unittest.TestCase):
 
 
 class BrowserRetryTests(unittest.TestCase):
+    def test_browser_blocks_only_heavy_assets(self):
+        page = Mock()
+        _install_lightweight_routes(page)
+        pattern, handler = page.route.call_args.args
+        self.assertEqual(pattern, "**/*")
+
+        image_route = Mock()
+        image_route.request.resource_type = "image"
+        handler(image_route)
+        image_route.abort.assert_called_once()
+        image_route.continue_.assert_not_called()
+
+        document_route = Mock()
+        document_route.request.resource_type = "document"
+        handler(document_route)
+        document_route.continue_.assert_called_once()
+        document_route.abort.assert_not_called()
+
     def test_retries_only_temporary_browser_network_errors(self):
         self.assertTrue(_is_transient_browser_error(
             "Page.goto: net::ERR_NETWORK_CHANGED"

@@ -50,6 +50,15 @@ class NightStabilityTests(unittest.TestCase):
             ["BBC Russian", "The Moscow Times", "Важные истории", "Вёрстка"],
         )
 
+    def test_browser_sources_are_marked_for_serial_execution(self):
+        self.assertIn("Минэнерго", main.BROWSER_SOURCE_NAMES)
+        self.assertIn("Минспорт", main.BROWSER_SOURCE_NAMES)
+        self.assertIn("Минцифры", main.BROWSER_SOURCE_NAMES)
+        self.assertIn("СК РФ", main.BROWSER_SOURCE_NAMES)
+        self.assertIn("Вёрстка", main.BROWSER_SOURCE_NAMES)
+        self.assertNotIn("РИА Новости", main.BROWSER_SOURCE_NAMES)
+        self.assertNotIn("ТАСС", main.BROWSER_SOURCE_NAMES)
+
     def test_parser_result_crosses_process_boundary(self):
         self.assertEqual(
             run_parser_with_timeout(_quick_parser, 3),
