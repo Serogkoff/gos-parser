@@ -31,6 +31,7 @@ def parse():
     news, seen = [], set()
     date_cache = _load_date_cache()
     cache_changed = False
+    browser_fallback_used = False
 
     # Первая страница содержит текущую десятку публикаций.
     # Дополнительные страницы раньше создавали лишнюю нагрузку на сайт.
@@ -59,10 +60,16 @@ def parse():
             )
             cached_date = date_cache.get(full_url, "")
             date_str = cached_date
-            # Даты свежих материалов СК перепроверяем: сайт иногда вместо
-            # статьи отдаёт общую страницу новостей, и раньше случайная дата
-            # из неё навсегда попадала в кэш.
-            if not cached_date or _should_recheck_date(cached_date):
+            # Дата привязана к конкретной карточке списка, поэтому её можно
+            # безопасно сохранить сразу. Раньше дата карточки использовалась
+            # только в текущем результате, но не попадала в кэш. Из-за этого
+            # одни и те же материалы каждые пять минут снова открывались через
+            # Chromium, если сайт не отдавал нормальную страницу статьи.
+            if not cached_date and card_date:
+                date_str = card_date
+                date_cache[full_url] = card_date
+                cache_changed = True
+            elif not cached_date:
                 detail = fetch_soup(
                     full_url,
                     SOURCE_NAME,
@@ -73,7 +80,11 @@ def parse():
                     detail,
                     expected_title=t,
                 )
-                if not detail_date:
+                # Один цикл СК может содержать несколько новых материалов без
+                # даты. Разрешаем не более одного тяжёлого browser fallback,
+                # чтобы недоступный сайт не запускал Chromium десять раз подряд.
+                if not detail_date and not browser_fallback_used:
+                    browser_fallback_used = True
                     browser_detail = fetch_soup_js(
                         full_url,
                         f"{SOURCE_NAME} — дата статьи",
@@ -88,11 +99,8 @@ def parse():
                     )
                 if detail_date:
                     date_str = detail_date
-                    if date_cache.get(full_url) != detail_date:
-                        date_cache[full_url] = detail_date
-                        cache_changed = True
-                elif not cached_date:
-                    date_str = card_date
+                    date_cache[full_url] = detail_date
+                    cache_changed = True
                 time.sleep(DETAIL_REQUEST_PAUSE)
 
             news.append({
@@ -245,15 +253,6 @@ def _walk_json_ld(value):
     elif isinstance(value, list):
         for child in value:
             yield from _walk_json_ld(child)
-
-
-def _should_recheck_date(date_str, days=2):
-    """Свежий кэш СК считаем предварительным и быстро перепроверяем."""
-    try:
-        cached = datetime.strptime(date_str, "%Y-%m-%d").date()
-    except (TypeError, ValueError):
-        return True
-    return cached >= (datetime.now().date() - timedelta(days=days))
 
 
 def _date_from_matching_card(

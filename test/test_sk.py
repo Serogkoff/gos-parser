@@ -13,9 +13,109 @@ from parsers.sites.sk import (
     _load_date_cache,
     _save_date_cache,
 )
+from parsers.sites import sk
 
 
 class SkPublicationDateTests(unittest.TestCase):
+    def test_parse_caches_card_date_without_opening_article(self):
+        soup = BeautifulSoup(
+            """
+            <div class="news-item">
+                <div class="news-item__data">23 октября 2026</div>
+                <a href="/news/item/300/">
+                    Новая публикация Следственного комитета России
+                </a>
+            </div>
+            """,
+            "html.parser",
+        )
+        saved_cache = {}
+
+        with (
+            patch.object(sk, "fetch_soup", return_value=soup) as fetch_http,
+            patch.object(sk, "fetch_soup_js") as fetch_browser,
+            patch.object(sk, "_load_date_cache", return_value={}),
+            patch.object(
+                sk,
+                "_save_date_cache",
+                side_effect=lambda cache: saved_cache.update(cache),
+            ),
+        ):
+            items = sk.parse()
+
+        self.assertEqual(items[0]["date"], "2026-10-23")
+        self.assertEqual(fetch_http.call_count, 1)
+        fetch_browser.assert_not_called()
+        self.assertEqual(
+            saved_cache["https://sledcom.ru/news/item/300/"],
+            "2026-10-23",
+        )
+
+    def test_parse_never_rechecks_cached_date(self):
+        soup = BeautifulSoup(
+            """
+            <div class="news-item">
+                <a href="/news/item/301/">
+                    Известная публикация Следственного комитета России
+                </a>
+            </div>
+            """,
+            "html.parser",
+        )
+
+        with (
+            patch.object(sk, "fetch_soup", return_value=soup) as fetch_http,
+            patch.object(sk, "fetch_soup_js") as fetch_browser,
+            patch.object(
+                sk,
+                "_load_date_cache",
+                return_value={
+                    "https://sledcom.ru/news/item/301/": "2026-10-23",
+                },
+            ),
+            patch.object(sk, "_save_date_cache") as save_cache,
+        ):
+            items = sk.parse()
+
+        self.assertEqual(items[0]["date"], "2026-10-23")
+        self.assertEqual(fetch_http.call_count, 1)
+        fetch_browser.assert_not_called()
+        save_cache.assert_not_called()
+
+    def test_parse_limits_browser_date_fallback_to_one_article(self):
+        soup = BeautifulSoup(
+            """
+            <div class="news-item">
+                <a href="/news/item/302/">
+                    Первая публикация Следственного комитета России
+                </a>
+            </div>
+            <div class="news-item">
+                <a href="/news/item/303/">
+                    Вторая публикация Следственного комитета России
+                </a>
+            </div>
+            """,
+            "html.parser",
+        )
+
+        with (
+            patch.object(
+                sk,
+                "fetch_soup",
+                side_effect=[soup, None, None],
+            ) as fetch_http,
+            patch.object(sk, "fetch_soup_js", return_value=None) as browser,
+            patch.object(sk, "_load_date_cache", return_value={}),
+            patch.object(sk, "_save_date_cache"),
+            patch.object(sk.time, "sleep"),
+        ):
+            items = sk.parse()
+
+        self.assertEqual(len(items), 2)
+        self.assertEqual(fetch_http.call_count, 3)
+        self.assertEqual(browser.call_count, 1)
+
     def test_relative_sk_dates(self):
         now = datetime(2026, 8, 6, 13, 0)
         self.assertEqual(
