@@ -742,13 +742,13 @@ def load_source_url_aliases(source):
     return _NEWS_PERSISTENCE.load_source_url_aliases(source)
 
 
-def save_results(all_news, found_news, existing_urls=None):
+def save_results(all_news, found_news, existing_urls):
     return _NEWS_PERSISTENCE.save_results(
         all_news, found_news, existing_urls
     )
 
 
-def _save_results(all_news, found_news, existing_urls=None):
+def _save_results(all_news, found_news, existing_urls):
     return _NEWS_PERSISTENCE._save_results(
         all_news, found_news, existing_urls
     )

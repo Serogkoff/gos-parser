@@ -29,6 +29,7 @@ from utils.storage import (
     claim_next_parser_job,
     ensure_daily_backup,
     finish_parser_job,
+    load_existing_urls,
     prepare_database,
     save_results,
     source_is_enabled,
@@ -228,11 +229,12 @@ def run_once(
     wait_for_busy=False,
 ):
     sites = SITES if sites is None else sites
+    existing_urls = load_existing_urls()
 
     print("=" * 70)
     print(
         f"🚀 {group_name} · v{PROJECT_VERSION} | "
-        f"{datetime.now():%Y-%m-%d %H:%M:%S}"
+        f"{datetime.now():%Y-%m-%d %H:%M:%S} | В базе: {len(existing_urls)}"
     )
     print("=" * 70)
 
@@ -347,7 +349,7 @@ def run_once(
             f"{type(error).__name__}: {error}"
         )
     print_status_table(parser_statuses)
-    new_found = save_results(all_news, found_news)
+    new_found = save_results(all_news, found_news, existing_urls)
     try:
         ensure_daily_backup(retention=DATABASE_BACKUP_RETENTION)
     except Exception as error:

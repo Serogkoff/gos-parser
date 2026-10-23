@@ -226,14 +226,32 @@ class NewsPersistenceStorage:
                     aliases[candidate] = state
         return aliases
 
-    def save_results(self, all_news, found_news, existing_urls=None):
+    def save_results(self, all_news, found_news, existing_urls):
         with self._lock:
             return self._save_results(all_news, found_news, existing_urls)
 
-    def _save_results(self, all_news, found_news, existing_urls=None):
+    def _save_results(self, all_news, found_news, existing_urls):
         self._initialize_database()
         all_news = deduplicate_news(all_news)
         found_news = deduplicate_news(found_news)
+        new_all = [
+            item
+            for item in all_news
+            if normalize_url(item.get("url", "")) not in existing_urls
+        ]
+        new_found = [
+            item
+            for item in found_news
+            if normalize_url(item.get("url", "")) not in existing_urls
+        ]
+
+        parsed_at = self._now().strftime("%Y-%m-%d %H:%M")
+        for item in new_all:
+            if not item.get("parsed_date"):
+                item["parsed_date"] = parsed_at
+        for item in new_found:
+            if not item.get("parsed_date"):
+                item["parsed_date"] = parsed_at
 
         # Фоновые группы запускаются каждые 3–10 минут. Загружать и сортировать
         # всю многолетнюю базу для каждой такой группы не требуется: достаточно
@@ -247,25 +265,6 @@ class NewsPersistenceStorage:
             old_found = self.load_candidate_items(
                 connection, "found_items", candidates,
             )
-            old_all_keys = {self.news_key(item) for item in old_all}
-            old_found_keys = {self.news_key(item) for item in old_found}
-            new_all = [
-                item for item in all_news
-                if self.news_key(item) not in old_all_keys
-            ]
-            new_found = [
-                item for item in found_news
-                if self.news_key(item) not in old_found_keys
-            ]
-
-            parsed_at = self._now().strftime("%Y-%m-%d %H:%M")
-            for item in new_all:
-                if not item.get("parsed_date"):
-                    item["parsed_date"] = parsed_at
-            for item in new_found:
-                if not item.get("parsed_date"):
-                    item["parsed_date"] = parsed_at
-
             merged_all = merge_news(old_all, all_news)
             merged_found = merge_news(old_found, found_news)
             if merged_all != old_all or merged_found != old_found:
