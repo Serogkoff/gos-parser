@@ -201,6 +201,21 @@ BROWSER_RUN_LOCK = Lock()
 BROWSER_COOLDOWN_SECONDS = 20
 BROWSER_LAST_FINISHED_AT = 0.0
 
+# Worker startup used to wake every recurring group in the same second.  Even
+# with serialized Chromium runs, the combined HTTP parsing processes could
+# briefly saturate the host.  These offsets spread only the first run; each
+# group keeps its normal interval afterwards.
+STARTUP_GROUP_DELAYS = {
+    "Информагентства": 0,
+    "Госструктуры": 30,
+    "Yahoo! JAPAN": 60,
+    "Киодо": 90,
+    "Газеты · VPN · 5 минут": 120,
+    "Газеты · VPN · 10 минут": 150,
+    "Газеты · Carnegie": 180,
+    "Газеты · Россия в глобальной политике": 210,
+}
+
 
 def _wait_for_browser_cooldown(group_name, source_name):
     """Leaves a quiet interval between separate Chromium launches.
@@ -462,7 +477,20 @@ def run_schedule(
     stop_event,
     failure_backoff=False,
     max_backoff_seconds=None,
+    initial_delay=0,
 ):
+    if initial_delay > 0:
+        print(
+            f"\n🌿 {group_name}: первый запуск через "
+            f"{initial_delay} с."
+        )
+        write_source_performance(
+            f"GROUP_START_DELAY group={group_name} "
+            f"wait={initial_delay * 1000:.1f}ms"
+        )
+        if stop_event.wait(initial_delay):
+            return
+
     consecutive_failures = 0
     while not stop_event.is_set():
         statuses = []
@@ -642,6 +670,9 @@ def main(argv=None):
             "Yahoo! JAPAN",
             YAHOO_UPDATE_INTERVAL,
             stop_event,
+            False,
+            None,
+            STARTUP_GROUP_DELAYS["Yahoo! JAPAN"],
         ),
         name="yahoo-parser",
         daemon=True,
@@ -657,6 +688,7 @@ def main(argv=None):
             stop_event,
             True,
             KYODO_MAX_BACKOFF_SECONDS,
+            STARTUP_GROUP_DELAYS["Киодо"],
         ),
         name="kyodo-parser",
         daemon=True,
@@ -683,6 +715,9 @@ def main(argv=None):
             "Газеты · Carnegie",
             CARNEGIE_UPDATE_INTERVAL,
             stop_event,
+            False,
+            None,
+            STARTUP_GROUP_DELAYS["Газеты · Carnegie"],
         ),
         name="carnegie-parser",
         daemon=True,
@@ -696,6 +731,11 @@ def main(argv=None):
             "Газеты · Россия в глобальной политике",
             GLOBAL_AFFAIRS_UPDATE_INTERVAL,
             stop_event,
+            False,
+            None,
+            STARTUP_GROUP_DELAYS[
+                "Газеты · Россия в глобальной политике"
+            ],
         ),
         name="global-affairs-parser",
         daemon=True,
@@ -709,6 +749,9 @@ def main(argv=None):
             "Газеты · VPN · 5 минут",
             FAST_VPN_MEDIA_UPDATE_INTERVAL,
             stop_event,
+            False,
+            None,
+            STARTUP_GROUP_DELAYS["Газеты · VPN · 5 минут"],
         ),
         name="fast-vpn-media-parser",
         daemon=True,
@@ -722,6 +765,9 @@ def main(argv=None):
             "Газеты · VPN · 10 минут",
             VPN_MEDIA_UPDATE_INTERVAL,
             stop_event,
+            False,
+            None,
+            STARTUP_GROUP_DELAYS["Газеты · VPN · 10 минут"],
         ),
         name="vpn-media-parser",
         daemon=True,
@@ -734,6 +780,7 @@ def main(argv=None):
             "Госструктуры",
             GOVERNMENT_UPDATE_INTERVAL,
             stop_event,
+            initial_delay=STARTUP_GROUP_DELAYS["Госструктуры"],
         )
     except KeyboardInterrupt:
         print("\n🛑 Парсер остановлен пользователем")

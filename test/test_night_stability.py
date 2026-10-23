@@ -105,6 +105,50 @@ class NightStabilityTests(unittest.TestCase):
             )
         )
 
+    def test_recurring_groups_have_staggered_startup_offsets(self):
+        delays = main.STARTUP_GROUP_DELAYS
+
+        self.assertEqual(delays["Информагентства"], 0)
+        self.assertEqual(delays["Госструктуры"], 30)
+        self.assertEqual(delays["Yahoo! JAPAN"], 60)
+        self.assertEqual(delays["Киодо"], 90)
+        self.assertEqual(delays["Газеты · VPN · 5 минут"], 120)
+        self.assertEqual(delays["Газеты · VPN · 10 минут"], 150)
+        self.assertEqual(delays["Газеты · Carnegie"], 180)
+        self.assertEqual(
+            delays["Газеты · Россия в глобальной политике"],
+            210,
+        )
+
+    def test_schedule_can_stop_during_initial_delay(self):
+        class StopDuringDelay:
+            def __init__(self):
+                self.waits = []
+
+            def is_set(self):
+                return False
+
+            def wait(self, seconds):
+                self.waits.append(seconds)
+                return True
+
+        stop_event = StopDuringDelay()
+        with (
+            mock.patch.object(main, "run_once") as run_once,
+            mock.patch.object(main, "write_source_performance") as write_log,
+        ):
+            main.run_schedule(
+                [],
+                "Тестовая группа",
+                300,
+                stop_event,
+                initial_delay=45,
+            )
+
+        self.assertEqual(stop_event.waits, [45])
+        run_once.assert_not_called()
+        self.assertIn("GROUP_START_DELAY", write_log.call_args.args[0])
+
     def test_parser_result_crosses_process_boundary(self):
         self.assertEqual(
             run_parser_with_timeout(_quick_parser, 3),
