@@ -92,29 +92,29 @@ GOVERNMENT_SITES = [
     ("Президент России", kremlin),
     ("МИД РФ", mid),
     ("Правительство РФ", gov),
-    ("Трутнев", trutnev),
     ("Минпромторг", prom),
-    ("Минприроды", priroda),
+    ("Трутнев", trutnev),
     ("МВД РФ", mvd),
     ("МЧС", mchs),
+    ("Минприроды", priroda),
     ("Минкульт", kult),
     ("Минздрав", zdrav),
     ("Минтранс", trans),
+    ("СК РФ", sk),
     ("Минэкономразвития", econom),
     ("Минфин", fin),
     ("Минстрой", stroy),
+    ("Минспорт", sport),
     ("Минвостокразвития", vostok),
     ("Минюст", yust),
-    ("СК РФ", sk),
     ("Развитие Курил", kurily),
-    ("Минспорт", sport),
+    ("Минэнерго", energo),
     ("Минтруд", trud),
     ("Минпросвещения", prosv),
     ("Минсельхоз", selkhoz),
+    ("Минцифры", tsifry),
     ("Минобрнауки", obrnauki),
     ("Владивосток", vlad),
-    ("Минэнерго", energo),
-    ("Минцифры", tsifry),
     ("Сахалин", sakh),
     ("Минобороны РФ", minoborony),
 ]
@@ -198,6 +198,31 @@ BROWSER_SOURCE_NAMES = {
     "Вёрстка",
 }
 BROWSER_RUN_LOCK = Lock()
+BROWSER_COOLDOWN_SECONDS = 20
+BROWSER_LAST_FINISHED_AT = 0.0
+
+
+def _wait_for_browser_cooldown(group_name, source_name):
+    """Leaves a quiet interval between separate Chromium launches.
+
+    The caller holds ``BROWSER_RUN_LOCK``, so another scheduler thread cannot
+    start a browser while this pause is in progress.  Ordinary HTTP parsers
+    remain free to work during the interval.
+    """
+    if not BROWSER_LAST_FINISHED_AT:
+        return 0.0
+
+    elapsed = time.perf_counter() - BROWSER_LAST_FINISHED_AT
+    wait_seconds = max(0.0, BROWSER_COOLDOWN_SECONDS - elapsed)
+    if not wait_seconds:
+        return 0.0
+
+    write_source_performance(
+        f"BROWSER_COOLDOWN group={group_name} source={source_name} "
+        f"wait={wait_seconds * 1000:.1f}ms"
+    )
+    time.sleep(wait_seconds)
+    return wait_seconds
 
 
 def safe_parse(parser_func, max_retries=2, timeout_seconds=SOURCE_TIMEOUT_SECONDS):
@@ -227,6 +252,8 @@ def run_once(
     merge_status=False,
     wait_for_busy=False,
 ):
+    global BROWSER_LAST_FINISHED_AT
+
     sites = SITES if sites is None else sites
 
     print("=" * 70)
@@ -275,6 +302,15 @@ def run_once(
                     print("  ⏳ Ожидание свободного браузерного слота")
                     BROWSER_RUN_LOCK.acquire()
                 browser_lock_acquired = True
+                cooldown_seconds = _wait_for_browser_cooldown(
+                    group_name,
+                    name,
+                )
+                if cooldown_seconds:
+                    print(
+                        "  🌿 Пауза между браузерными источниками: "
+                        f"{cooldown_seconds:.0f} с"
+                    )
                 browser_wait_ms = (
                     time.perf_counter() - browser_wait_started
                 ) * 1000
@@ -292,6 +328,7 @@ def run_once(
             )
         finally:
             if browser_lock_acquired:
+                BROWSER_LAST_FINISHED_AT = time.perf_counter()
                 BROWSER_RUN_LOCK.release()
             source_lock.release()
         duration = time.perf_counter() - started

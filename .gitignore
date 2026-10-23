@@ -12,6 +12,7 @@ backups/
 parser_errors.log
 system_performance.log
 web_performance.log
+source_performance.log
 night_runs/
 runtime_logs/
 kyodo_build_id.txt

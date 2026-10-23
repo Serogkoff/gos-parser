@@ -62,6 +62,49 @@ class NightStabilityTests(unittest.TestCase):
         self.assertNotIn("РИА Новости", main.BROWSER_SOURCE_NAMES)
         self.assertNotIn("ТАСС", main.BROWSER_SOURCE_NAMES)
 
+    def test_browser_runs_have_twenty_second_cooldown(self):
+        original_finished_at = main.BROWSER_LAST_FINISHED_AT
+        try:
+            main.BROWSER_LAST_FINISHED_AT = 100.0
+            with (
+                mock.patch.object(main.time, "perf_counter", return_value=105.0),
+                mock.patch.object(main.time, "sleep") as sleep,
+                mock.patch.object(main, "write_source_performance") as write_log,
+            ):
+                waited = main._wait_for_browser_cooldown(
+                    "Госструктуры",
+                    "Минспорт",
+                )
+
+            self.assertEqual(waited, 15.0)
+            sleep.assert_called_once_with(15.0)
+            self.assertIn("BROWSER_COOLDOWN", write_log.call_args.args[0])
+            self.assertIn("source=Минспорт", write_log.call_args.args[0])
+        finally:
+            main.BROWSER_LAST_FINISHED_AT = original_finished_at
+
+    def test_heavy_government_sources_are_separated_by_http_sources(self):
+        source_names = [name for name, _parser in main.GOVERNMENT_SITES]
+        heavy_positions = [
+            source_names.index(name)
+            for name in (
+                "Минпромторг",
+                "Минприроды",
+                "СК РФ",
+                "Минспорт",
+                "Минэнерго",
+                "Минцифры",
+                "Минобороны РФ",
+            )
+        ]
+
+        self.assertTrue(
+            all(
+                right - left >= 3
+                for left, right in zip(heavy_positions, heavy_positions[1:])
+            )
+        )
+
     def test_parser_result_crosses_process_boundary(self):
         self.assertEqual(
             run_parser_with_timeout(_quick_parser, 3),
