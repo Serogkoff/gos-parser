@@ -83,11 +83,17 @@ class NightStabilityTests(unittest.TestCase):
         finally:
             main.BROWSER_LAST_FINISHED_AT = original_finished_at
 
-    def test_heavy_government_sources_are_separated_by_http_sources(self):
-        source_names = [name for name, _parser in main.GOVERNMENT_SITES]
-        heavy_positions = [
-            source_names.index(name)
-            for name in (
+    def test_heavy_government_sources_have_separate_schedule(self):
+        heavy_names = [
+            name for name, _parser in main.HEAVY_GOVERNMENT_SITES
+        ]
+        frequent_names = {
+            name for name, _parser in main.FREQUENT_GOVERNMENT_SITES
+        }
+
+        self.assertEqual(
+            heavy_names,
+            [
                 "Минпромторг",
                 "Минприроды",
                 "СК РФ",
@@ -95,14 +101,24 @@ class NightStabilityTests(unittest.TestCase):
                 "Минэнерго",
                 "Минцифры",
                 "Минобороны РФ",
-            )
+            ],
+        )
+        self.assertTrue(frequent_names.isdisjoint(heavy_names))
+        self.assertEqual(
+            frequent_names | set(heavy_names),
+            {name for name, _parser in main.GOVERNMENT_SITES},
+        )
+        self.assertEqual(main.HEAVY_GOVERNMENT_UPDATE_INTERVAL, 900)
+
+    def test_heavy_government_start_offsets_are_two_minutes_apart(self):
+        delays = [
+            main.HEAVY_GOVERNMENT_START_DELAYS[name]
+            for name in main.HEAVY_GOVERNMENT_SOURCE_NAMES
         ]
 
+        self.assertEqual(delays[0], 240)
         self.assertTrue(
-            all(
-                right - left >= 3
-                for left, right in zip(heavy_positions, heavy_positions[1:])
-            )
+            all(right - left == 120 for left, right in zip(delays, delays[1:]))
         )
 
     def test_recurring_groups_have_staggered_startup_offsets(self):

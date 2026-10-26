@@ -10,6 +10,7 @@ from config import (
     DATABASE_BACKUP_RETENTION,
     FAST_VPN_MEDIA_UPDATE_INTERVAL,
     GOVERNMENT_UPDATE_INTERVAL,
+    HEAVY_GOVERNMENT_UPDATE_INTERVAL,
     GLOBAL_AFFAIRS_UPDATE_INTERVAL,
     KYODO_UPDATE_INTERVAL,
     KYODO_MAX_BACKOFF_SECONDS,
@@ -119,6 +120,30 @@ GOVERNMENT_SITES = [
     ("Минобороны РФ", minoborony),
 ]
 
+# Эти ведомства могут поднимать Chromium. Они остаются частью общей группы
+# для интерфейса и ручного обновления, но в постоянном расписании получают
+# отдельные 15-минутные циклы, разнесённые по времени.
+HEAVY_GOVERNMENT_SOURCE_NAMES = (
+    "Минпромторг",
+    "Минприроды",
+    "СК РФ",
+    "Минспорт",
+    "Минэнерго",
+    "Минцифры",
+    "Минобороны РФ",
+)
+HEAVY_GOVERNMENT_SOURCE_SET = set(HEAVY_GOVERNMENT_SOURCE_NAMES)
+FREQUENT_GOVERNMENT_SITES = [
+    site
+    for site in GOVERNMENT_SITES
+    if site[0] not in HEAVY_GOVERNMENT_SOURCE_SET
+]
+HEAVY_GOVERNMENT_SITES = [
+    site
+    for site in GOVERNMENT_SITES
+    if site[0] in HEAVY_GOVERNMENT_SOURCE_SET
+]
+
 AGENCY_SITES = [
     ("РИА Новости", ria),
     ("ТАСС", tass),
@@ -214,6 +239,14 @@ STARTUP_GROUP_DELAYS = {
     "Газеты · VPN · 10 минут": 150,
     "Газеты · Carnegie": 180,
     "Газеты · Россия в глобальной политике": 210,
+}
+
+# Две минуты между первыми запусками дают системе остыть даже с учётом
+# сторонних браузерных групп. Последующий интервал отсчитывается отдельно
+# для каждого источника, поэтому очередь не собирается снова через 15 минут.
+HEAVY_GOVERNMENT_START_DELAYS = {
+    name: 240 + index * 120
+    for index, name in enumerate(HEAVY_GOVERNMENT_SOURCE_NAMES)
 }
 
 
@@ -774,9 +807,30 @@ def main(argv=None):
     )
     vpn_media_thread.start()
 
+    heavy_government_threads = []
+    heavy_government_sites = dict(HEAVY_GOVERNMENT_SITES)
+    for index, source_name in enumerate(HEAVY_GOVERNMENT_SOURCE_NAMES):
+        source_site = (source_name, heavy_government_sites[source_name])
+        thread = Thread(
+            target=run_schedule,
+            args=(
+                [source_site],
+                f"Госструктуры · {source_name}",
+                HEAVY_GOVERNMENT_UPDATE_INTERVAL,
+                stop_event,
+                False,
+                None,
+                HEAVY_GOVERNMENT_START_DELAYS[source_name],
+            ),
+            name=f"heavy-government-{index + 1}",
+            daemon=True,
+        )
+        thread.start()
+        heavy_government_threads.append(thread)
+
     try:
         run_schedule(
-            GOVERNMENT_SITES,
+            FREQUENT_GOVERNMENT_SITES,
             "Госструктуры",
             GOVERNMENT_UPDATE_INTERVAL,
             stop_event,
@@ -794,6 +848,8 @@ def main(argv=None):
         global_affairs_thread.join(timeout=2)
         fast_vpn_media_thread.join(timeout=2)
         vpn_media_thread.join(timeout=2)
+        for thread in heavy_government_threads:
+            thread.join(timeout=2)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-PROJECT_VERSION = "2026.08.17.17.64"
+PROJECT_VERSION = "2026.08.17.17.65"
 
 # Версия эмблем меняется только вместе с самими файлами. Если привязать её к
 # версии приложения, браузер после каждого патча заново скачивает все логотипы.
@@ -30,6 +30,9 @@ YONHAP_KEYWORDS = [
 
 PAUSE_BETWEEN_REQUESTS = 2
 GOVERNMENT_UPDATE_INTERVAL = 300
+# Ведомства, которым регулярно нужен Chromium, проверяются реже и разнесены
+# по отдельным циклам. Обычные HTTP/RSS-источники сохраняют интервал 5 минут.
+HEAVY_GOVERNMENT_UPDATE_INTERVAL = 900
 AGENCY_UPDATE_INTERVAL = 180
 YAHOO_UPDATE_INTERVAL = 600
 KYODO_UPDATE_INTERVAL = 600
