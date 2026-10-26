@@ -287,7 +287,7 @@ class NotesTestModeTests(unittest.TestCase):
             '.mobile-past-agenda summary{min-height:44px',
             '.event-chip,.week-event,.day-event,.aside-event,.mobile-agenda-event{--event-fill:#fff1ee',
             '.mobile-calendar-add{position:fixed',
-            'grid-template-columns:repeat(5,minmax(0,1fr))',
+            'grid-template-columns:repeat(auto-fit,minmax(54px,1fr))',
         ):
             with self.subTest(mobile_calendar_marker=marker):
                 self.assertIn(marker, stylesheet)

@@ -139,6 +139,11 @@ def set_user_dictionary_access(user_id, is_allowed):
     return _USER_STORAGE.set_user_dictionary_access(user_id, is_allowed)
 
 
+def set_user_tv_access(user_id, is_allowed):
+    """Меняет персональный доступ обычного пользователя к разделу ТВ."""
+    return _USER_STORAGE.set_user_tv_access(user_id, is_allowed)
+
+
 def delete_user(user_id):
     """Удаляет аккаунт и связанные личные данные, сохраняя последнего администратора."""
     return _USER_STORAGE.delete_user(user_id)
