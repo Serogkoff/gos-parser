@@ -34,7 +34,10 @@ class WebTemplateTests(unittest.TestCase):
             Path(web_app.app.static_folder) / "tv.js"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('data-stream-src="{{stream_page_url}}"', template)
+        self.assertIn('data-stream-src="{{stream_embed_url}}"', template)
+        self.assertIn('href="{{stream_page_url}}"', template)
+        self.assertIn("Открыть источник", template)
+        self.assertNotIn("Открыть официальный эфир", template)
         self.assertIn('id="tv-frame"', template)
         iframe = template.split('<iframe id="tv-frame"', 1)[1].split("></iframe>", 1)[0]
         self.assertNotIn(" src=", iframe)

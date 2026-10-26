@@ -105,12 +105,20 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
         self.assertEqual(response.headers["X-Frame-Options"], "DENY")
         self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
+        self.assertIn("https://smotret.tv", response.headers["Content-Security-Policy"])
+        self.assertIn("https://rutube.ru", response.headers["Content-Security-Policy"])
 
     def test_tv_requires_admin_role_or_personal_permission(self):
         self._create_first_admin()
         admin_page = self.client.get("/tv")
         self.assertEqual(admin_page.status_code, 200)
-        self.assertIn("Россия 24", admin_page.get_data(as_text=True))
+        admin_html = admin_page.get_data(as_text=True)
+        self.assertIn("Россия 24", admin_html)
+        self.assertIn(
+            'data-stream-src="https://smotret.tv/online/rossiya-24.html"',
+            admin_html,
+        )
+        self.assertIn('href="https://smotret.tv/rossiya24"', admin_html)
 
         reader = storage.create_user("tv-reader", "reader-secret-2026")
         with self.client.session_transaction() as session:

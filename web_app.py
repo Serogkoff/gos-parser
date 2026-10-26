@@ -415,7 +415,8 @@ def add_security_headers(response):
         "connect-src 'self'; "
         "form-action 'self'; "
         "frame-ancestors 'none'; "
-        "frame-src https://smotrim.ru https://*.smotrim.ru; "
+        "frame-src https://smotret.tv https://*.smotret.tv "
+        "https://rutube.ru https://*.rutube.ru; "
         "img-src 'self' data:; "
         "object-src 'none'; "
         "script-src 'self' 'unsafe-inline'; "
@@ -641,7 +642,8 @@ def tv_page():
         "tv.html",
         current_user=user,
         csrf_token=csrf_token(),
-        stream_page_url="https://smotrim.ru/channel/3",
+        stream_embed_url="https://smotret.tv/online/rossiya-24.html",
+        stream_page_url="https://smotret.tv/rossiya24",
     )
 
 

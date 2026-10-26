@@ -27,15 +27,15 @@
     <main class="tv-main">
         <header class="tv-topbar"><a class="tv-mobile-brand" href="/all">Монитор</a><h1>ТВ</h1><div class="tv-clocks"><div>Москва <time data-clock="Europe/Moscow">--:--</time></div><div>Токио <time data-clock="Asia/Tokyo">--:--</time></div></div></header>
         <section class="tv-page">
-            <div class="tv-heading"><div><span class="tv-live"><i></i> LIVE</span><h2>Россия 24</h2><p>Эфир запускается только по вашему нажатию.</p></div><a class="tv-external" href="{{stream_page_url}}" target="_blank" rel="noopener noreferrer">Открыть официальный эфир ↗</a></div>
+            <div class="tv-heading"><div><span class="tv-live"><i></i> LIVE</span><h2>Россия 24</h2><p>Эфир запускается только по вашему нажатию.</p></div><a class="tv-external" href="{{stream_page_url}}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a></div>
             <div class="tv-grid">
                 <section class="tv-player-card">
-                    <div class="tv-player" id="tv-player" data-stream-src="{{stream_page_url}}">
+                    <div class="tv-player" id="tv-player" data-stream-src="{{stream_embed_url}}">
                         <div class="tv-placeholder" id="tv-placeholder"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7Z"/></svg><strong>Нажмите для запуска эфира</strong><span>До запуска страница вещателя не загружается</span></div>
                         <iframe id="tv-frame" title="Прямой эфир Россия 24" loading="lazy" allow="autoplay; fullscreen; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" hidden></iframe>
                     </div>
                     <div class="tv-player-actions"><button class="tv-primary" id="tv-play" type="button">▶ Запустить эфир</button><button class="tv-secondary" id="tv-stop" type="button" disabled>Остановить эфир</button></div>
-                    <p class="tv-player-note">Если вещатель запретит показ внутри страницы, используйте ссылку «Открыть официальный эфир».</p>
+                    <p class="tv-player-note">Если встроенный эфир временно недоступен, используйте ссылку «Открыть источник».</p>
                 </section>
                 <aside class="tv-recorder-card">
                     <span class="tv-kicker">Запись аудио</span><h3 id="record-state">Не запущена</h3><div class="tv-record-time" id="record-time">00:00</div>
