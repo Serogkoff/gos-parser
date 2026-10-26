@@ -33,6 +33,9 @@ class WebTemplateTests(unittest.TestCase):
         javascript = (
             Path(web_app.app.static_folder) / "tv.js"
         ).read_text(encoding="utf-8")
+        mp3_worker = (
+            Path(web_app.app.static_folder) / "tv_mp3_worker.js"
+        ).read_text(encoding="utf-8")
         stylesheet = (
             Path(web_app.app.static_folder) / "tv.css"
         ).read_text(encoding="utf-8")
@@ -43,6 +46,9 @@ class WebTemplateTests(unittest.TestCase):
         self.assertNotIn("Открыть официальный эфир", template)
         self.assertIn(".tv-player [hidden]{display:none!important}", stylesheet)
         self.assertIn('id="tv-frame"', template)
+        self.assertIn("data-mp3-worker-url", template)
+        self.assertIn("data-mp3-encoder-url", template)
+        self.assertIn("vendor/lame.min.js", template)
         iframe = template.split('<iframe id="tv-frame"', 1)[1].split("></iframe>", 1)[0]
         self.assertNotIn(" src=", iframe)
         for marker in (
@@ -52,9 +58,21 @@ class WebTemplateTests(unittest.TestCase):
             "window.addEventListener('beforeunload'",
             "window.addEventListener('pagehide'",
             "stopRecording(false)",
+            "convertToMp3",
+            "audio/mpeg",
+            "Конвертация в MP3",
         ):
             with self.subTest(tv_marker=marker):
                 self.assertIn(marker, javascript)
+
+        for marker in (
+            "importScripts(encoderUrl)",
+            "new lamejs.Mp3Encoder",
+            "encoder.encodeBuffer",
+            "encoder.flush",
+        ):
+            with self.subTest(mp3_worker_marker=marker):
+                self.assertIn(marker, mp3_worker)
 
     def test_admin_pages_share_monitor_layout(self):
         base = (

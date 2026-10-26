@@ -30,7 +30,7 @@
             <div class="tv-heading"><div><span class="tv-live"><i></i> LIVE</span><h2>Россия 24</h2><p>Эфир запускается только по вашему нажатию.</p></div><a class="tv-external" href="{{stream_page_url}}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a></div>
             <div class="tv-grid">
                 <section class="tv-player-card">
-                    <div class="tv-player" id="tv-player" data-stream-src="{{stream_embed_url}}">
+                    <div class="tv-player" id="tv-player" data-stream-src="{{stream_embed_url}}" data-mp3-worker-url="{{url_for('static', filename='tv_mp3_worker.js')}}?v={{PROJECT_VERSION}}" data-mp3-encoder-url="{{url_for('static', filename='vendor/lame.min.js')}}?v=1.2.1">
                         <div class="tv-placeholder" id="tv-placeholder"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7Z"/></svg><strong>Нажмите для запуска эфира</strong><span>До запуска страница вещателя не загружается</span></div>
                         <iframe id="tv-frame" title="Прямой эфир Россия 24" loading="lazy" allow="autoplay; fullscreen; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" hidden></iframe>
                     </div>
@@ -39,10 +39,10 @@
                 </section>
                 <aside class="tv-recorder-card">
                     <span class="tv-kicker">Запись аудио</span><h3 id="record-state">Не запущена</h3><div class="tv-record-time" id="record-time">00:00</div>
-                    <p>Запись идёт только в браузере. Выберите вкладку с эфиром и включите передачу её звука.</p>
+                    <p>Запись идёт только в браузере. Выберите вкладку с эфиром и включите передачу её звука. После остановки запись будет преобразована в MP3.</p>
                     <button class="tv-record" id="record-start" type="button">● Начать запись</button><button class="tv-record-stop" id="record-stop" type="button" disabled>■ Остановить и сохранить</button>
                     <p class="tv-message" id="tv-message" role="status" aria-live="polite"></p>
-                    <div class="tv-privacy"><strong>Без нагрузки на сервер</strong><span>Файл сохраняется только на ваше устройство. Микрофон не используется.</span></div>
+                    <div class="tv-privacy"><strong>Без нагрузки на сервер</strong><span>MP3 создаётся и сохраняется только на вашем устройстве. Микрофон не используется.</span></div>
                 </aside>
             </div>
         </section>

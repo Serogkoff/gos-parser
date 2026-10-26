@@ -17,6 +17,8 @@
     let timer = null;
     let startedAt = 0;
     let saveWhenStopped = false;
+    let conversionWorker = null;
+    let isConverting = false;
 
     function updateClocks() {
         document.querySelectorAll('[data-clock]').forEach((clock) => {
@@ -52,19 +54,108 @@
         recordStopButton.disabled = true;
     }
 
-    function downloadRecording() {
-        if (!recordedChunks.length) return;
-        const mimeType = mediaRecorder?.mimeType || 'audio/webm';
-        const blob = new Blob(recordedChunks, {type: mimeType});
+    function downloadBlob(blob, extension) {
         const link = document.createElement('a');
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
         link.href = URL.createObjectURL(blob);
-        link.download = `rossiya-24-${stamp}.webm`;
+        link.download = `rossiya-24-${stamp}.${extension}`;
         document.body.appendChild(link);
         link.click();
         link.remove();
         setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-        setMessage('Запись сохранена на устройство.');
+    }
+
+    function floatToMonoPcm(audioBuffer) {
+        const channels = Array.from(
+            {length: audioBuffer.numberOfChannels},
+            (_, index) => audioBuffer.getChannelData(index),
+        );
+        const pcm = new Int16Array(audioBuffer.length);
+        for (let index = 0; index < audioBuffer.length; index += 1) {
+            let sample = 0;
+            channels.forEach((channel) => {
+                sample += channel[index];
+            });
+            sample = Math.max(-1, Math.min(1, sample / channels.length));
+            pcm[index] = sample < 0 ? sample * 32768 : sample * 32767;
+        }
+        return pcm;
+    }
+
+    async function convertToMp3(sourceBlob) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass || !window.Worker) {
+            throw new Error('MP3 conversion is not supported');
+        }
+
+        isConverting = true;
+        recordState.textContent = 'Конвертация в MP3';
+        recordButton.disabled = true;
+        recordStopButton.disabled = true;
+        setMessage('Подготавливаем MP3… Не закрывайте страницу.');
+
+        const audioContext = new AudioContextClass();
+        let audioBuffer;
+        try {
+            audioBuffer = await audioContext.decodeAudioData(await sourceBlob.arrayBuffer());
+        } finally {
+            await audioContext.close();
+        }
+        const pcm = floatToMonoPcm(audioBuffer);
+
+        return new Promise((resolve, reject) => {
+            conversionWorker = new Worker(player.dataset.mp3WorkerUrl);
+            conversionWorker.addEventListener('message', (event) => {
+                if (event.data.type === 'progress') {
+                    setMessage(`Конвертация в MP3: ${event.data.value}%`);
+                    return;
+                }
+                if (event.data.type === 'complete') {
+                    const blob = new Blob([event.data.buffer], {type: 'audio/mpeg'});
+                    conversionWorker.terminate();
+                    conversionWorker = null;
+                    resolve(blob);
+                    return;
+                }
+                if (event.data.type === 'error') {
+                    conversionWorker.terminate();
+                    conversionWorker = null;
+                    reject(new Error(event.data.message));
+                }
+            });
+            conversionWorker.addEventListener('error', (event) => {
+                conversionWorker?.terminate();
+                conversionWorker = null;
+                reject(new Error(event.message || 'MP3 worker failed'));
+            }, {once: true});
+            conversionWorker.postMessage({
+                samples: pcm.buffer,
+                sampleRate: audioBuffer.sampleRate,
+                bitRate: 128,
+                encoderUrl: player.dataset.mp3EncoderUrl,
+            }, [pcm.buffer]);
+        });
+    }
+
+    async function downloadRecording() {
+        if (!recordedChunks.length) return;
+        const mimeType = mediaRecorder?.mimeType || 'audio/webm';
+        const sourceBlob = new Blob(recordedChunks, {type: mimeType});
+
+        if (mimeType.startsWith('audio/mpeg')) {
+            downloadBlob(sourceBlob, 'mp3');
+            setMessage('MP3 сохранён на устройство.');
+            return;
+        }
+
+        try {
+            const mp3Blob = await convertToMp3(sourceBlob);
+            downloadBlob(mp3Blob, 'mp3');
+            setMessage('MP3 сохранён на устройство.');
+        } catch (error) {
+            downloadBlob(sourceBlob, 'webm');
+            setMessage('MP3 создать не удалось. Исходная запись сохранена в WebM.');
+        }
     }
 
     function stopRecording(saveFile = true) {
@@ -73,7 +164,7 @@
             mediaRecorder.stop();
         } else {
             stopTracks();
-            resetRecorderUi();
+            if (!isConverting) resetRecorderUi();
         }
     }
 
@@ -121,11 +212,15 @@
             mediaRecorder.addEventListener('dataavailable', (event) => {
                 if (event.data.size) recordedChunks.push(event.data);
             });
-            mediaRecorder.addEventListener('stop', () => {
+            mediaRecorder.addEventListener('stop', async () => {
                 stopTracks();
-                if (saveWhenStopped) downloadRecording();
-                recordedChunks = [];
-                resetRecorderUi();
+                try {
+                    if (saveWhenStopped) await downloadRecording();
+                } finally {
+                    recordedChunks = [];
+                    isConverting = false;
+                    resetRecorderUi();
+                }
             }, {once: true});
             captureStream.getTracks().forEach((track) => track.addEventListener('ended', () => stopRecording(true), {once: true}));
             mediaRecorder.start(1000);
@@ -146,13 +241,17 @@
 
     recordStopButton.addEventListener('click', () => stopRecording(true));
     window.addEventListener('beforeunload', (event) => {
-        if (mediaRecorder?.state === 'recording') {
+        if (mediaRecorder?.state === 'recording' || isConverting) {
             stopRecording(false);
             event.preventDefault();
             event.returnValue = '';
         }
     });
-    window.addEventListener('pagehide', () => stopRecording(false));
+    window.addEventListener('pagehide', () => {
+        conversionWorker?.terminate();
+        conversionWorker = null;
+        stopRecording(false);
+    });
     updateClocks();
     setInterval(updateClocks, 30000);
 })();
