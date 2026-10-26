@@ -109,15 +109,14 @@ class StorageSchemaTests(unittest.TestCase):
                 connection.commit()
                 create_schema(connection)
                 row = connection.execute(
-                    "SELECT username, can_use_dictionary, can_use_tv, is_hidden FROM users"
+                    "SELECT username, can_use_dictionary, is_hidden FROM users"
                 ).fetchone()
             finally:
                 connection.close()
 
         self.assertEqual(
             dict(row), {
-                "username": "reader", "can_use_dictionary": 0,
-                "can_use_tv": 0, "is_hidden": 0,
+                "username": "reader", "can_use_dictionary": 0, "is_hidden": 0,
             }
         )
 
