@@ -31,6 +31,7 @@ def _user_from_row(row):
         "role": row["role"],
         "is_active": bool(row["is_active"]),
         "can_use_dictionary": bool(row["can_use_dictionary"]),
+        "can_use_tv": bool(row["can_use_tv"]),
         "is_hidden": bool(row["is_hidden"]),
         "created_at": row["created_at"],
         "last_login_at": row["last_login_at"],
@@ -93,7 +94,7 @@ class UserStorage:
         with self._connection_factory() as connection:
             row = connection.execute(
                 """
-                SELECT id, username, role, is_active, can_use_dictionary,
+                SELECT id, username, role, is_active, can_use_dictionary, can_use_tv,
                        is_hidden,
                        created_at, last_login_at
                 FROM users WHERE id = ?
@@ -108,7 +109,7 @@ class UserStorage:
         with self._connection_factory() as connection:
             rows = connection.execute(
                 """
-                SELECT id, username, role, is_active, can_use_dictionary,
+                SELECT id, username, role, is_active, can_use_dictionary, can_use_tv,
                        is_hidden,
                        created_at, last_login_at
                 FROM users
@@ -219,6 +220,30 @@ class UserStorage:
             )
         return self.load_user(user_id)
 
+    def set_user_tv_access(self, user_id, is_allowed):
+        """Разрешает обычному пользователю открывать раздел с телеэфиром."""
+        try:
+            user_id = int(user_id)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Пользователь не найден") from error
+        is_allowed = bool(is_allowed)
+
+        self._initialize_database()
+        with self._lock, self._connection_factory() as connection:
+            row = connection.execute(
+                "SELECT role FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("Пользователь не найден")
+            if row["role"] == "admin":
+                raise ValueError("Администратору ТВ доступно по роли")
+            connection.execute(
+                "UPDATE users SET can_use_tv = ? WHERE id = ?",
+                (int(is_allowed), user_id),
+            )
+        return self.load_user(user_id)
+
     def delete_user(self, user_id):
         """Удаляет аккаунт и связанные личные данные, сохраняя последнего администратора."""
         try:
@@ -255,7 +280,7 @@ class UserStorage:
             row = connection.execute(
                 """
                 SELECT id, username, password_hash, role, is_active,
-                       can_use_dictionary, is_hidden,
+                       can_use_dictionary, can_use_tv, is_hidden,
                        created_at, last_login_at
                 FROM users WHERE username = ? COLLATE NOCASE
                 """,

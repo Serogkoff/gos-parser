@@ -689,7 +689,7 @@
             .mobile-bottom-nav{
                 position:fixed;z-index:50;right:0;bottom:0;left:0;
                 width:100%;height:calc(68px + env(safe-area-inset-bottom));padding:7px 8px calc(6px + env(safe-area-inset-bottom));
-                display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+                display:grid;grid-template-columns:repeat(auto-fit,minmax(54px,1fr));
                 border-top:1px solid var(--line);background:#fff;
                 -webkit-transform:translate3d(0,0,0);transform:translate3d(0,0,0);
                 -webkit-backface-visibility:hidden;backface-visibility:hidden;

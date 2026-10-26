@@ -141,6 +141,7 @@ from utils.storage import (
     mark_news_read,
     set_user_active,
     set_user_dictionary_access,
+    set_user_tv_access,
     set_user_password,
     set_user_role,
     review_dictionary_card,
@@ -404,7 +405,8 @@ def add_security_headers(response):
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault(
         "Permissions-Policy",
-        "camera=(), microphone=(), geolocation=(), payment=()",
+        "camera=(), microphone=(), geolocation=(), payment=(), "
+        "display-capture=(self)",
     )
     response.headers.setdefault(
         "Content-Security-Policy",
@@ -413,6 +415,7 @@ def add_security_headers(response):
         "connect-src 'self'; "
         "form-action 'self'; "
         "frame-ancestors 'none'; "
+        "frame-src https://smotrim.ru https://*.smotrim.ru; "
         "img-src 'self' data:; "
         "object-src 'none'; "
         "script-src 'self' 'unsafe-inline'; "
@@ -626,6 +629,22 @@ def account():
     )
 
 
+@app.get("/tv")
+def tv_page():
+    """Показывает запускаемый вручную эфир пользователям с отдельным правом."""
+    user = current_user()
+    if not user or (
+        user.get("role") != "admin" and not user.get("can_use_tv")
+    ):
+        abort(403)
+    return render_template(
+        "tv.html",
+        current_user=user,
+        csrf_token=csrf_token(),
+        stream_page_url="https://smotrim.ru/channel/3",
+    )
+
+
 @app.route("/admin/users", methods=["GET", "POST"])
 def admin_users():
     """Управляет аккаунтами и позволяет администратору удалить чужой аккаунт."""
@@ -674,6 +693,12 @@ def admin_users():
                     )
                     state = "открыт" if updated["can_use_dictionary"] else "закрыт"
                     message = f"Доступ к словарю для {updated['username']} {state}"
+                elif action == "tv_access":
+                    updated = set_user_tv_access(
+                        target["id"], not target["can_use_tv"]
+                    )
+                    state = "открыт" if updated["can_use_tv"] else "закрыт"
+                    message = f"Доступ к ТВ для {updated['username']} {state}"
                 elif action == "delete":
                     if target["id"] == administrator["id"]:
                         raise ValueError("Нельзя удалить собственный аккаунт")

@@ -106,6 +106,22 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(response.headers["X-Frame-Options"], "DENY")
         self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
 
+    def test_tv_requires_admin_role_or_personal_permission(self):
+        self._create_first_admin()
+        admin_page = self.client.get("/tv")
+        self.assertEqual(admin_page.status_code, 200)
+        self.assertIn("Россия 24", admin_page.get_data(as_text=True))
+
+        reader = storage.create_user("tv-reader", "reader-secret-2026")
+        with self.client.session_transaction() as session:
+            session["user_id"] = reader["id"]
+
+        self.assertEqual(self.client.get("/tv").status_code, 403)
+        storage.set_user_tv_access(reader["id"], True)
+        permitted_page = self.client.get("/tv")
+        self.assertEqual(permitted_page.status_code, 200)
+        self.assertIn('href="/tv"', permitted_page.get_data(as_text=True))
+
     def test_feed_uses_short_private_cache_but_account_stays_no_store(self):
         self._create_first_admin()
         with patch.object(
@@ -512,6 +528,7 @@ class AuthenticationTests(unittest.TestCase):
         )
         self.assertEqual(user["role"], "user")
         self.assertFalse(user["can_use_dictionary"])
+        self.assertFalse(user["can_use_tv"])
 
         dictionary_access = self.client.post(
             "/admin/users",
@@ -523,6 +540,17 @@ class AuthenticationTests(unittest.TestCase):
         )
         self.assertEqual(dictionary_access.status_code, 302)
         self.assertTrue(storage.load_user(user["id"])["can_use_dictionary"])
+
+        tv_access = self.client.post(
+            "/admin/users",
+            data={
+                "csrf_token": token,
+                "action": "tv_access",
+                "user_id": user["id"],
+            },
+        )
+        self.assertEqual(tv_access.status_code, 302)
+        self.assertTrue(storage.load_user(user["id"])["can_use_tv"])
 
         promoted = self.client.post(
             "/admin/users",

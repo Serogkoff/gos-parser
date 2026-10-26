@@ -18,12 +18,36 @@ class WebTemplateTests(unittest.TestCase):
             "news.html",
             "notes.html",
             "settings.html",
+            "tv.html",
         )
 
         for template_name in template_names:
             with self.subTest(template=template_name):
                 template = web_app.app.jinja_env.get_template(template_name)
                 self.assertEqual(template.name, template_name)
+
+    def test_tv_page_uses_click_to_start_and_browser_only_recording(self):
+        template = (
+            Path(web_app.app.template_folder) / "tv.html"
+        ).read_text(encoding="utf-8")
+        javascript = (
+            Path(web_app.app.static_folder) / "tv.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('data-stream-src="{{stream_page_url}}"', template)
+        self.assertIn('id="tv-frame"', template)
+        iframe = template.split('<iframe id="tv-frame"', 1)[1].split("></iframe>", 1)[0]
+        self.assertNotIn(" src=", iframe)
+        for marker in (
+            "navigator.mediaDevices.getDisplayMedia",
+            "new MediaStream(audioTracks)",
+            "new MediaRecorder",
+            "window.addEventListener('beforeunload'",
+            "window.addEventListener('pagehide'",
+            "stopRecording(false)",
+        ):
+            with self.subTest(tv_marker=marker):
+                self.assertIn(marker, javascript)
 
     def test_admin_pages_share_monitor_layout(self):
         base = (
@@ -155,7 +179,7 @@ class WebTemplateTests(unittest.TestCase):
             'class="search-tools"',
             'class="mobile-bottom-nav"',
             'aria-label="Мобильное меню"',
-            'grid-template-columns:repeat(5,minmax(0,1fr))',
+            'grid-template-columns:repeat(auto-fit,minmax(54px,1fr))',
             'class="mobile-source-open"',
             'aria-label="Управление источниками"',
             '.news-card h3{font-size:15px',
@@ -343,7 +367,7 @@ class WebTemplateTests(unittest.TestCase):
             'class="mobile-brand" href="/all">Монитор</a>',
             'class="mobile-bottom-nav"',
             'aria-label="Мобильное меню"',
-            'grid-template-columns:repeat(5,minmax(0,1fr))',
+            'grid-template-columns:repeat(auto-fit,minmax(54px,1fr))',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)
@@ -395,7 +419,7 @@ class WebTemplateTests(unittest.TestCase):
             '.folder-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))',
             '.folder-card{min-height:88px',
             'display:flex!important',
-            'grid-template-columns:repeat(5,minmax(0,1fr))',
+            'grid-template-columns:repeat(auto-fit,minmax(54px,1fr))',
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, template)
