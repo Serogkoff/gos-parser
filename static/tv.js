@@ -261,19 +261,13 @@
                     return;
                 }
                 if (event.data.type === 'error') {
-                    const detail = String(event.data.message || '').trim();
-                    transcriptStatus.textContent = detail
-                        ? `Ошибка модели: ${detail}`
-                        : 'Не удалось загрузить модель или распознать запись.';
+                    transcriptStatus.textContent = 'Не удалось загрузить модель или распознать запись.';
                     transcriptProgress.hidden = true;
                     finishTranscriptionWorker();
                 }
             });
-            transcriptionWorker.addEventListener('error', (event) => {
-                const detail = String(event.message || '').trim();
-                transcriptStatus.textContent = detail
-                    ? `Ошибка загрузчика: ${detail}`
-                    : 'Модель не загрузилась. Проверьте доступ к jsDelivr и Hugging Face.';
+            transcriptionWorker.addEventListener('error', () => {
+                transcriptStatus.textContent = 'Модель не загрузилась. Проверьте интернет и WebGPU браузера.';
                 transcriptProgress.hidden = true;
                 finishTranscriptionWorker();
             }, {once: true});
