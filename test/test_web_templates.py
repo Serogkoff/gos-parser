@@ -47,16 +47,28 @@ class WebTemplateTests(unittest.TestCase):
         self.assertIn("vendor/hls.min.js", template)
         self.assertIn('data-tv-channel="mid"', template)
         self.assertIn('data-mid-discovery-url="{{mid_discovery_url}}"', template)
-        self.assertIn("Поток идёт через компьютер RIA", template)
         self.assertIn(".tv-player [hidden]{display:none!important}", stylesheet)
         self.assertIn("grid-template-columns: 205px minmax(0, 1fr)", stylesheet)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) 248px", stylesheet)
+        self.assertIn('font: 18px Georgia, "Times New Roman", serif', stylesheet)
+        self.assertIn("<h1>ТВ</h1>", template)
         self.assertIn('id="tv-frame"', template)
         self.assertIn('id="tv-video"', template)
+        self.assertIn('class="tv-stream-toggle" id="tv-play"', template)
         self.assertIn("data-mp3-worker-url", template)
         self.assertIn("data-mp3-encoder-url", template)
         self.assertIn("vendor/lame.min.js", template)
         self.assertIn('id="record-start"', template)
         self.assertNotIn('id="record-stop"', template)
+        self.assertNotIn('id="tv-stop"', template)
+        self.assertNotIn('class="tv-heading"', template)
+        self.assertNotIn("по запросу", template)
+        self.assertNotIn("Непрерывный информационный эфир", template)
+        self.assertNotIn("Не запущена", template)
+        self.assertNotIn("Без фоновой записи", template)
+        self.assertNotIn("МИД через RIA", template)
+        self.assertNotIn("tv-transport-note", template)
+        self.assertIn("M10 10l5 3-5 3Z", template)
         iframe = template.split('<iframe id="tv-frame"', 1)[1].split("></iframe>", 1)[0]
         self.assertNotIn(" src=", iframe)
         for marker in (
@@ -67,6 +79,8 @@ class WebTemplateTests(unittest.TestCase):
             "new MediaRecorder",
             "new window.Hls",
             "payload.stream_url",
+            "setStreamButton('Остановить эфир', {running: true})",
+            "if (activePlayerKind)",
             "■ Остановить и сохранить",
             "window.addEventListener('beforeunload'",
             "window.addEventListener('pagehide'",

@@ -8,13 +8,9 @@
     const placeholderTitle = document.getElementById('tv-placeholder-title');
     const placeholderCopy = document.getElementById('tv-placeholder-copy');
     const playButton = document.getElementById('tv-play');
-    const stopButton = document.getElementById('tv-stop');
+    const playLabel = document.getElementById('tv-play-label');
     const channelButtons = Array.from(document.querySelectorAll('[data-tv-channel]'));
-    const channelTitle = document.getElementById('tv-channel-title');
-    const channelDescription = document.getElementById('tv-channel-description');
-    const liveLabel = document.getElementById('tv-live-label');
     const sourceLink = document.getElementById('tv-source-link');
-    const playerNote = document.getElementById('tv-player-note');
     const recordButton = document.getElementById('record-start');
     const recordState = document.getElementById('record-state');
     const recordTime = document.getElementById('record-time');
@@ -60,15 +56,19 @@
         message.textContent = value || '';
     }
 
-    function setLiveState(label, offline = false) {
-        liveLabel.classList.toggle('offline', offline);
-        liveLabel.querySelector('span').textContent = label;
+    function setPlaceholder(title, copy) {
+        placeholderTitle.textContent = title || '';
+        placeholderTitle.hidden = !title;
+        placeholderCopy.textContent = copy || '';
+        placeholderCopy.hidden = !copy;
+        placeholder.hidden = false;
     }
 
-    function setPlaceholder(title, copy) {
-        placeholderTitle.textContent = title;
-        placeholderCopy.textContent = copy;
-        placeholder.hidden = false;
+    function setStreamButton(label, {disabled = false, running = false} = {}) {
+        playLabel.textContent = label;
+        playButton.disabled = disabled;
+        playButton.setAttribute('aria-pressed', running ? 'true' : 'false');
+        player.classList.toggle('is-running', running);
     }
 
     function updateTimer() {
@@ -85,7 +85,7 @@
     function resetRecorderUi() {
         clearInterval(timer);
         timer = null;
-        recordState.textContent = 'Не запущена';
+        recordState.textContent = 'Запись остановлена';
         recordButton.textContent = '● Начать запись';
         recordButton.disabled = false;
         recordButton.classList.remove('recording');
@@ -229,24 +229,19 @@
         frame.hidden = true;
         destroyHlsPlayer();
         activePlayerKind = '';
-        setPlaceholder('Нажмите для запуска эфира', 'До запуска источник не загружается');
-        playButton.textContent = '▶ Запустить эфир';
-        playButton.disabled = false;
-        stopButton.disabled = true;
+        setPlaceholder('', '');
+        setStreamButton('Запустить эфир');
     }
 
     function markPlayerStarted(kind) {
         activePlayerKind = kind;
         placeholder.hidden = true;
-        playButton.textContent = 'Эфир запущен';
-        playButton.disabled = true;
-        stopButton.disabled = false;
+        setStreamButton('Остановить эфир', {running: true});
     }
 
     async function playMidStream() {
-        playButton.textContent = 'Проверяем эфир…';
-        playButton.disabled = true;
-        setPlaceholder('Проверяем трансляцию МИД', 'Компьютер RIA подключается к официальному источнику');
+        setStreamButton('Проверяем эфир…', {disabled: true});
+        setPlaceholder('', '');
         setMessage('');
 
         let response;
@@ -262,23 +257,17 @@
         }
 
         if (!response?.ok || !payload.available || !payload.stream_url) {
-            setLiveState('НЕТ ЭФИРА', true);
             setPlaceholder(
                 payload.title || 'Сейчас трансляции нет',
                 payload.reason === 'unavailable'
                     ? 'Источник временно не ответил. Можно открыть официальный видеораздел.'
                     : 'Когда МИД начнёт эфир, он появится здесь после повторной проверки.',
             );
-            playButton.textContent = '↻ Проверить снова';
-            playButton.disabled = false;
-            stopButton.disabled = true;
+            setStreamButton('Проверить снова');
             sourceLink.href = payload.external_url || activeChannel.dataset.sourceUrl;
-            playerNote.textContent = 'Также доступны официальный видеораздел МИД и канал МИД России на RUTUBE.';
             return;
         }
 
-        setLiveState('LIVE', false);
-        if (payload.title) channelDescription.textContent = payload.title;
         sourceLink.href = payload.external_url || activeChannel.dataset.sourceUrl;
         video.hidden = false;
         placeholder.hidden = true;
@@ -325,32 +314,30 @@
             });
             hls.attachMedia(video);
             markPlayerStarted('hls');
-            playerNote.textContent = 'Поток передаётся через компьютер RIA без перекодирования.';
             return;
         }
 
         video.hidden = true;
         setPlaceholder('Браузер не поддерживает HLS', 'Откройте официальный источник или используйте современный браузер.');
-        playButton.textContent = '↻ Повторить';
-        playButton.disabled = false;
+        setStreamButton('Повторить');
     }
 
     function playIframeStream() {
         frame.src = activeChannel.dataset.streamUrl || player.dataset.streamSrc;
         frame.hidden = false;
         placeholder.hidden = true;
-        setLiveState('LIVE', false);
         markPlayerStarted('iframe');
-        playerNote.textContent = 'Если встроенный эфир временно недоступен, используйте ссылку «Открыть источник».';
         setMessage('');
     }
 
     playButton.addEventListener('click', async () => {
+        if (activePlayerKind) {
+            resetPlayer({saveRecording: true});
+            return;
+        }
         if (activeChannel.dataset.streamKind === 'mid') await playMidStream();
         else playIframeStream();
     });
-
-    stopButton.addEventListener('click', () => resetPlayer({saveRecording: true}));
 
     channelButtons.forEach((button) => {
         button.addEventListener('click', () => {
@@ -358,14 +345,8 @@
             resetPlayer({saveRecording: true});
             activeChannel = button;
             channelButtons.forEach((item) => item.classList.toggle('active', item === button));
-            channelTitle.textContent = button.dataset.title;
-            channelDescription.textContent = button.dataset.description;
             sourceLink.href = button.dataset.sourceUrl;
             sourceLink.textContent = 'Открыть источник ↗';
-            playerNote.textContent = button.dataset.streamKind === 'mid'
-                ? 'Активный эфир определяется после нажатия Play; при его отсутствии откройте видеораздел МИД.'
-                : 'Если встроенный эфир временно недоступен, используйте ссылку «Открыть источник».';
-            setLiveState(button.dataset.streamKind === 'mid' ? 'ПО ЗАПРОСУ' : 'LIVE', button.dataset.streamKind === 'mid');
             setMessage('');
         });
     });
