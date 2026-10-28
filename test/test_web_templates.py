@@ -109,7 +109,7 @@ class WebTemplateTests(unittest.TestCase):
                 self.assertIn(marker, mp3_worker)
 
         for marker in (
-            "@huggingface/transformers@3.8.1",
+            "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1",
             "onnx-community/whisper-base",
             "automatic-speech-recognition",
             "language: 'russian'",
@@ -181,6 +181,7 @@ class WebTemplateTests(unittest.TestCase):
             "filename='news.css'",
             template,
         )
+        self.assertNotIn("transformers.web.min.js", transcription_worker)
         self.assertIn("feed_asset_version|urlencode", template)
         self.assertIn("filename='news.js'", template)
         self.assertIn('id="news-page-config" type="application/json"', template)
