@@ -1,6 +1,8 @@
 /* Local, desktop-only speech recognition for the TV recorder. */
 
-const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.web.min.js';
+// Use the public package entry point documented by Transformers.js. The
+// internal dist filename is not part of the CDN contract and may not exist.
+const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
 const MODEL_ID = 'onnx-community/whisper-base';
 
 let pipelinePromise = null;
