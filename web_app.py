@@ -415,6 +415,23 @@ def load_current_user():
 @app.after_request
 def add_security_headers(response):
     """Добавляет безопасные браузерные настройки ко всем ответам."""
+    static_filename = str((request.view_args or {}).get("filename", ""))
+    local_tv_transcription = (
+        request.endpoint == "tv_page"
+        or (
+            request.endpoint == "static"
+            and static_filename == "tv_transcribe_worker.js"
+        )
+    )
+    connect_sources = "'self'"
+    script_sources = "'self' 'unsafe-inline'"
+    if local_tv_transcription:
+        connect_sources += (
+            " https://huggingface.co https://*.huggingface.co"
+            " https://*.hf.co https://*.xethub.hf.co"
+            " https://cdn.jsdelivr.net"
+        )
+        script_sources += " 'wasm-unsafe-eval' https://cdn.jsdelivr.net"
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "same-origin")
@@ -427,7 +444,7 @@ def add_security_headers(response):
         "Content-Security-Policy",
         "default-src 'self'; "
         "base-uri 'self'; "
-        "connect-src 'self'; "
+        f"connect-src {connect_sources}; "
         "form-action 'self'; "
         "frame-ancestors 'none'; "
         "frame-src https://smotret.tv https://*.smotret.tv "
@@ -435,12 +452,11 @@ def add_security_headers(response):
         "img-src 'self' data:; "
         "media-src 'self' blob:; "
         "object-src 'none'; "
-        "script-src 'self' 'unsafe-inline'; "
+        f"script-src {script_sources}; "
         "style-src 'self' 'unsafe-inline'; "
         "worker-src 'self' blob:",
     )
     if request.endpoint == "static":
-        static_filename = str((request.view_args or {}).get("filename", ""))
         if (
             static_filename.startswith("source-logos/")
             or static_filename
@@ -451,6 +467,7 @@ def add_security_headers(response):
                 "tv.css",
                 "tv.js",
                 "tv_mp3_worker.js",
+                "tv_transcribe_worker.js",
                 "vendor/hls.min.js",
                 "vendor/lame.min.js",
             }

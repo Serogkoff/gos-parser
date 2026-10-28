@@ -15,6 +15,16 @@
     const recordState = document.getElementById('record-state');
     const recordTime = document.getElementById('record-time');
     const message = document.getElementById('tv-message');
+    const transcriptPanel = document.getElementById('tv-transcript');
+    const transcribeButton = document.getElementById('tv-transcribe');
+    const transcriptStatus = document.getElementById('tv-transcript-status');
+    const transcriptProgress = document.getElementById('tv-transcript-progress');
+    const transcriptProgressValue = document.getElementById('tv-transcript-progress-value');
+    const transcriptText = document.getElementById('tv-transcript-text');
+    const transcriptActions = document.getElementById('tv-transcript-actions');
+    const transcriptCopy = document.getElementById('tv-transcript-copy');
+    const transcriptDownload = document.getElementById('tv-transcript-download');
+    const desktopTranscriptionEnabled = window.matchMedia('(min-width: 921px)').matches;
 
     let activeChannel = channelButtons.find((button) => button.classList.contains('active')) || channelButtons[0];
     let activePlayerKind = '';
@@ -28,6 +38,11 @@
     let conversionWorker = null;
     let isConverting = false;
     let recordingSlug = 'tv';
+    let lastRecordingBlob = null;
+    let lastRecordingSlug = 'tv';
+    let transcriptionWorker = null;
+    let isTranscribing = false;
+    let completedTranscript = '';
 
     function updateClocks() {
         document.querySelectorAll('[data-clock]').forEach((clock) => {
@@ -105,6 +120,163 @@
         link.click();
         link.remove();
         setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }
+
+    function downloadNamedBlob(blob, filename) {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }
+
+    function resetTranscription({hide = false, discardRecording = false} = {}) {
+        transcriptionWorker?.terminate();
+        transcriptionWorker = null;
+        isTranscribing = false;
+        completedTranscript = '';
+        if (discardRecording) lastRecordingBlob = null;
+        if (!transcriptPanel) return;
+        transcriptPanel.hidden = hide || !desktopTranscriptionEnabled || !lastRecordingBlob;
+        transcribeButton.disabled = false;
+        transcribeButton.textContent = 'Расшифровать';
+        transcriptStatus.textContent = 'Готово к запуску на этом компьютере.';
+        transcriptProgress.hidden = true;
+        transcriptProgressValue.style.width = '0%';
+        transcriptText.hidden = true;
+        transcriptText.value = '';
+        transcriptActions.hidden = true;
+    }
+
+    function prepareTranscription(sourceBlob) {
+        if (!desktopTranscriptionEnabled || !transcriptPanel) return;
+        lastRecordingBlob = sourceBlob;
+        lastRecordingSlug = recordingSlug;
+        resetTranscription();
+        transcriptPanel.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+    }
+
+    function formatTimestamp(value) {
+        const seconds = Math.max(0, Math.round(Number(value) || 0));
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const remainder = String(seconds % 60).padStart(2, '0');
+        return hours
+            ? `${hours}:${String(minutes).padStart(2, '0')}:${remainder}`
+            : `${String(minutes).padStart(2, '0')}:${remainder}`;
+    }
+
+    function formatTranscript(text, chunks) {
+        const timestamped = (chunks || []).map((chunk) => {
+            const start = chunk?.timestamp?.[0];
+            const end = chunk?.timestamp?.[1];
+            const copy = String(chunk?.text || '').trim();
+            if (!copy) return '';
+            if (!Number.isFinite(start)) return copy;
+            const endCopy = Number.isFinite(end) ? `–${formatTimestamp(end)}` : '';
+            return `[${formatTimestamp(start)}${endCopy}] ${copy}`;
+        }).filter(Boolean);
+        return timestamped.length ? timestamped.join('\n\n') : String(text || '').trim();
+    }
+
+    async function decodeAudioForTranscription(blob) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        const OfflineAudioContextClass = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        if (!AudioContextClass || !OfflineAudioContextClass) {
+            throw new Error('Браузер не поддерживает локальную обработку аудио.');
+        }
+
+        transcriptStatus.textContent = 'Подготавливаем аудио…';
+        const audioContext = new AudioContextClass();
+        let decoded;
+        try {
+            decoded = await audioContext.decodeAudioData(await blob.arrayBuffer());
+        } finally {
+            await audioContext.close();
+        }
+        if (decoded.duration > 30 * 60) {
+            throw new Error('Для пробного режима запись должна быть не длиннее 30 минут.');
+        }
+
+        const sampleRate = 16000;
+        const frameCount = Math.max(1, Math.ceil(decoded.duration * sampleRate));
+        const offlineContext = new OfflineAudioContextClass(1, frameCount, sampleRate);
+        const source = offlineContext.createBufferSource();
+        source.buffer = decoded;
+        source.connect(offlineContext.destination);
+        source.start(0);
+        const rendered = await offlineContext.startRendering();
+        return new Float32Array(rendered.getChannelData(0));
+    }
+
+    function finishTranscriptionWorker() {
+        transcriptionWorker?.terminate();
+        transcriptionWorker = null;
+        isTranscribing = false;
+        transcribeButton.disabled = false;
+        transcribeButton.textContent = 'Расшифровать снова';
+    }
+
+    async function startTranscription() {
+        if (!desktopTranscriptionEnabled || !lastRecordingBlob || isTranscribing) return;
+        isTranscribing = true;
+        completedTranscript = '';
+        transcribeButton.disabled = true;
+        transcribeButton.textContent = 'Обрабатываем…';
+        transcriptText.hidden = true;
+        transcriptActions.hidden = true;
+        transcriptProgress.hidden = false;
+        transcriptProgressValue.style.width = '2%';
+
+        try {
+            const audio = await decodeAudioForTranscription(lastRecordingBlob);
+            transcriptionWorker = new Worker(player.dataset.transcriptionWorkerUrl, {type: 'module'});
+            transcriptionWorker.addEventListener('message', (event) => {
+                if (event.data.type === 'model-progress') {
+                    if (Number.isFinite(event.data.value)) {
+                        transcriptProgressValue.style.width = `${Math.max(2, event.data.value)}%`;
+                        transcriptStatus.textContent = `Загружаем модель: ${event.data.value}%`;
+                    }
+                    return;
+                }
+                if (event.data.type === 'status') {
+                    transcriptStatus.textContent = event.data.message;
+                    if (event.data.message === 'Распознаём речь…') {
+                        transcriptProgressValue.style.width = '100%';
+                    }
+                    return;
+                }
+                if (event.data.type === 'complete') {
+                    completedTranscript = formatTranscript(event.data.text, event.data.chunks);
+                    transcriptText.value = completedTranscript || 'Речь не распознана.';
+                    transcriptText.hidden = false;
+                    transcriptActions.hidden = !completedTranscript;
+                    transcriptProgress.hidden = true;
+                    transcriptStatus.textContent = completedTranscript
+                        ? 'Расшифровка готова.'
+                        : 'В записи не удалось распознать речь.';
+                    finishTranscriptionWorker();
+                    return;
+                }
+                if (event.data.type === 'error') {
+                    transcriptStatus.textContent = 'Не удалось загрузить модель или распознать запись.';
+                    transcriptProgress.hidden = true;
+                    finishTranscriptionWorker();
+                }
+            });
+            transcriptionWorker.addEventListener('error', () => {
+                transcriptStatus.textContent = 'Модель не загрузилась. Проверьте интернет и WebGPU браузера.';
+                transcriptProgress.hidden = true;
+                finishTranscriptionWorker();
+            }, {once: true});
+            transcriptionWorker.postMessage({type: 'transcribe', audio: audio.buffer}, [audio.buffer]);
+        } catch (error) {
+            transcriptStatus.textContent = error?.message || 'Не удалось подготовить запись.';
+            transcriptProgress.hidden = true;
+            finishTranscriptionWorker();
+        }
     }
 
     function floatToMonoPcm(audioBuffer) {
@@ -186,6 +358,7 @@
 
         if (mimeType.startsWith('audio/mpeg')) {
             downloadBlob(sourceBlob, 'mp3');
+            prepareTranscription(sourceBlob);
             setMessage('MP3 сохранён на устройство.');
             return;
         }
@@ -193,9 +366,11 @@
         try {
             const mp3Blob = await convertToMp3(sourceBlob);
             downloadBlob(mp3Blob, 'mp3');
+            prepareTranscription(sourceBlob);
             setMessage('MP3 сохранён на устройство.');
         } catch (error) {
             downloadBlob(sourceBlob, 'webm');
+            prepareTranscription(sourceBlob);
             setMessage('MP3 создать не удалось. Исходная запись сохранена в WebM.');
         }
     }
@@ -386,6 +561,7 @@
 
     async function startRecording() {
         setMessage('');
+        resetTranscription({hide: true, discardRecording: true});
         if (!activePlayerKind) {
             setMessage('Сначала запустите эфир.');
             return;
@@ -457,6 +633,28 @@
         await startRecording();
     });
 
+    transcribeButton?.addEventListener('click', startTranscription);
+    transcriptCopy?.addEventListener('click', async () => {
+        if (!completedTranscript) return;
+        try {
+            await navigator.clipboard.writeText(completedTranscript);
+            transcriptStatus.textContent = 'Текст скопирован.';
+        } catch (error) {
+            transcriptText.hidden = false;
+            transcriptText.focus();
+            transcriptText.select();
+            transcriptStatus.textContent = 'Текст выделен — нажмите Ctrl+C.';
+        }
+    });
+    transcriptDownload?.addEventListener('click', () => {
+        if (!completedTranscript) return;
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        downloadNamedBlob(
+            new Blob([completedTranscript], {type: 'text/plain;charset=utf-8'}),
+            `${lastRecordingSlug}-${stamp}.txt`,
+        );
+    });
+
     window.addEventListener('beforeunload', (event) => {
         if (mediaRecorder?.state === 'recording' || isConverting) {
             stopRecording(false);
@@ -467,6 +665,8 @@
     window.addEventListener('pagehide', () => {
         conversionWorker?.terminate();
         conversionWorker = null;
+        transcriptionWorker?.terminate();
+        transcriptionWorker = null;
         stopRecording(false);
         destroyHlsPlayer();
     });

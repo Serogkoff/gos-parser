@@ -36,6 +36,9 @@ class WebTemplateTests(unittest.TestCase):
         mp3_worker = (
             Path(web_app.app.static_folder) / "tv_mp3_worker.js"
         ).read_text(encoding="utf-8")
+        transcription_worker = (
+            Path(web_app.app.static_folder) / "tv_transcribe_worker.js"
+        ).read_text(encoding="utf-8")
         stylesheet = (
             Path(web_app.app.static_folder) / "tv.css"
         ).read_text(encoding="utf-8")
@@ -57,6 +60,7 @@ class WebTemplateTests(unittest.TestCase):
         self.assertIn('class="tv-stream-toggle" id="tv-play"', template)
         self.assertIn("data-mp3-worker-url", template)
         self.assertIn("data-mp3-encoder-url", template)
+        self.assertIn("data-transcription-worker-url", template)
         self.assertIn("vendor/lame.min.js", template)
         self.assertIn('id="record-start"', template)
         self.assertNotIn('id="record-stop"', template)
@@ -88,6 +92,9 @@ class WebTemplateTests(unittest.TestCase):
             "convertToMp3",
             "audio/mpeg",
             "Конвертация в MP3",
+            "decodeAudioForTranscription",
+            "new Worker(player.dataset.transcriptionWorkerUrl, {type: 'module'})",
+            "Расшифровка готова",
         ):
             with self.subTest(tv_marker=marker):
                 self.assertIn(marker, javascript)
@@ -100,6 +107,21 @@ class WebTemplateTests(unittest.TestCase):
         ):
             with self.subTest(mp3_worker_marker=marker):
                 self.assertIn(marker, mp3_worker)
+
+        for marker in (
+            "@huggingface/transformers@3.8.1",
+            "onnx-community/whisper-base",
+            "automatic-speech-recognition",
+            "language: 'russian'",
+            "chunk_length_s: 30",
+            "return_timestamps: true",
+        ):
+            with self.subTest(transcription_worker_marker=marker):
+                self.assertIn(marker, transcription_worker)
+
+        self.assertIn('id="tv-transcript" hidden', template)
+        self.assertIn('id="tv-transcribe"', template)
+        self.assertIn(".tv-transcript-card { display: none !important; }", stylesheet)
 
     def test_admin_pages_share_monitor_layout(self):
         base = (

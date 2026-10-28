@@ -114,11 +114,21 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(admin_page.status_code, 200)
         admin_html = admin_page.get_data(as_text=True)
         self.assertIn("Россия 24", admin_html)
+        tv_csp = admin_page.headers["Content-Security-Policy"]
+        self.assertIn("https://huggingface.co", tv_csp)
+        self.assertIn("https://cdn.jsdelivr.net", tv_csp)
+        self.assertIn("'wasm-unsafe-eval'", tv_csp)
         self.assertIn(
             'data-stream-src="https://smotret.tv/online/rossiya-24.html"',
             admin_html,
         )
         self.assertIn('href="https://smotret.tv/rossiya24"', admin_html)
+
+        worker = self.client.get("/static/tv_transcribe_worker.js")
+        self.assertEqual(worker.status_code, 200)
+        worker_csp = worker.headers["Content-Security-Policy"]
+        self.assertIn("https://huggingface.co", worker_csp)
+        self.assertIn("https://cdn.jsdelivr.net", worker_csp)
 
         reader = storage.create_user("tv-reader", "reader-secret-2026")
         with self.client.session_transaction() as session:
