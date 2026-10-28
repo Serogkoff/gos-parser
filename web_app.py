@@ -12,6 +12,7 @@ from urllib.parse import quote, urlencode
 
 from flask import (
     Flask,
+    Response,
     abort,
     g,
     has_request_context,
@@ -21,8 +22,10 @@ from flask import (
     request,
     send_file,
     session,
+    stream_with_context,
     url_for,
 )
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 from config import (
     DATABASE_BACKUP_RETENTION,
     DATABASE_SIZE_LIMIT_BYTES,
@@ -157,6 +160,18 @@ from utils.storage import (
     database_stats,
     purge_news_archive,
     update_bookmark,
+)
+from utils.tv_stream import (
+    MID_RUTUBE_CHANNEL_URL,
+    MID_VIDEO_PAGE_URL,
+    STREAM_CHUNK_BYTES,
+    TvStreamUnavailable,
+    discover_mid_stream,
+    fetch_stream_resource,
+    is_hls_manifest,
+    is_safe_stream_url,
+    read_manifest,
+    rewrite_hls_manifest,
 )
 
 
@@ -418,15 +433,27 @@ def add_security_headers(response):
         "frame-src https://smotret.tv https://*.smotret.tv "
         "https://rutube.ru https://*.rutube.ru; "
         "img-src 'self' data:; "
+        "media-src 'self' blob:; "
         "object-src 'none'; "
         "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'; "
+        "worker-src 'self' blob:",
     )
     if request.endpoint == "static":
         static_filename = str((request.view_args or {}).get("filename", ""))
         if (
             static_filename.startswith("source-logos/")
-            or static_filename in {"news.css", "news.js", "notes.css"}
+            or static_filename
+            in {
+                "news.css",
+                "news.js",
+                "notes.css",
+                "tv.css",
+                "tv.js",
+                "tv_mp3_worker.js",
+                "vendor/hls.min.js",
+                "vendor/lame.min.js",
+            }
         ):
             response.headers["Cache-Control"] = (
                 "public, max-age=31536000, immutable"
@@ -633,17 +660,138 @@ def account():
 @app.get("/tv")
 def tv_page():
     """Показывает запускаемый вручную эфир пользователям с отдельным правом."""
-    user = current_user()
-    if not user or (
-        user.get("role") != "admin" and not user.get("can_use_tv")
-    ):
-        abort(403)
+    user = _tv_user()
     return render_template(
         "tv.html",
         current_user=user,
         csrf_token=csrf_token(),
         stream_embed_url="https://smotret.tv/online/rossiya-24.html",
         stream_page_url="https://smotret.tv/rossiya24",
+        mid_discovery_url=url_for("tv_mid_stream"),
+        mid_page_url=MID_VIDEO_PAGE_URL,
+        mid_channel_url=MID_RUTUBE_CHANNEL_URL,
+    )
+
+
+def _tv_user():
+    user = current_user()
+    if not user or (
+        user.get("role") != "admin" and not user.get("can_use_tv")
+    ):
+        abort(403)
+    return user
+
+
+def _tv_stream_serializer():
+    return URLSafeTimedSerializer(
+        app.config["SECRET_KEY"],
+        salt="gos-parser-tv-hls-v1",
+    )
+
+
+def _tv_relay_url(upstream_url):
+    token = _tv_stream_serializer().dumps({"url": upstream_url})
+    return url_for("tv_hls_proxy", token=token)
+
+
+@app.get("/api/tv/mid-stream")
+def tv_mid_stream():
+    """Discovers the current MID live only after the user requests it."""
+    _tv_user()
+    result = discover_mid_stream()
+    public_result = {
+        key: value
+        for key, value in result.items()
+        if key not in {"hls_url", "poster_url"}
+    }
+    hls_url = str(result.get("hls_url", "")).strip()
+    if result.get("available") and hls_url:
+        if not is_safe_stream_url(hls_url):
+            return jsonify(
+                available=False,
+                reason="unavailable",
+                title="Источник вернул небезопасный адрес потока",
+                external_url=MID_VIDEO_PAGE_URL,
+                channel_url=MID_RUTUBE_CHANNEL_URL,
+            ), 502
+        public_result["stream_url"] = _tv_relay_url(hls_url)
+        public_result["transport"] = "ria"
+    status_code = 502 if public_result.get("reason") == "unavailable" else 200
+    return jsonify(public_result), status_code
+
+
+@app.route("/api/tv/hls/<token>", methods=["GET", "HEAD"])
+def tv_hls_proxy(token):
+    """Relays one signed HLS resource without decoding or transcoding it."""
+    _tv_user()
+    try:
+        payload = _tv_stream_serializer().loads(token, max_age=2 * 60 * 60)
+    except BadSignature:
+        abort(404)
+    upstream_url = str(payload.get("url", "")).strip() if isinstance(payload, dict) else ""
+    if not is_safe_stream_url(upstream_url):
+        abort(404)
+
+    try:
+        upstream = fetch_stream_resource(
+            upstream_url,
+            range_header=request.headers.get("Range", ""),
+        )
+    except TvStreamUnavailable:
+        abort(403)
+    except Exception as error:
+        security_logger.warning("Ошибка HLS relay для ТВ: %s", error)
+        return Response("Источник трансляции не ответил", status=502)
+
+    if is_hls_manifest(upstream, upstream_url):
+        try:
+            manifest = rewrite_hls_manifest(
+                read_manifest(upstream),
+                str(upstream.url or upstream_url),
+                _tv_relay_url,
+            )
+        except TvStreamUnavailable as error:
+            security_logger.warning("Отклонён HLS-плейлист ТВ: %s", error)
+            return Response("Некорректный плейлист", status=502)
+        finally:
+            upstream.close()
+        response = Response(
+            "" if request.method == "HEAD" else manifest,
+            status=upstream.status_code,
+            content_type="application/vnd.apple.mpegurl; charset=utf-8",
+        )
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
+
+    forwarded_headers = {}
+    for header_name in ("Content-Length", "Content-Range", "Accept-Ranges"):
+        value = upstream.headers.get(header_name)
+        if value:
+            forwarded_headers[header_name] = value
+    forwarded_headers["Cache-Control"] = "private, max-age=15"
+    if request.method == "HEAD":
+        upstream.close()
+        return Response(
+            status=upstream.status_code,
+            headers=forwarded_headers,
+            content_type=upstream.headers.get("Content-Type", "application/octet-stream"),
+        )
+
+    @stream_with_context
+    def generate():
+        try:
+            for chunk in upstream.iter_content(chunk_size=STREAM_CHUNK_BYTES):
+                if chunk:
+                    yield chunk
+        finally:
+            upstream.close()
+
+    return Response(
+        generate(),
+        status=upstream.status_code,
+        headers=forwarded_headers,
+        content_type=upstream.headers.get("Content-Type", "application/octet-stream"),
+        direct_passthrough=True,
     )
 
 

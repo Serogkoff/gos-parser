@@ -5,48 +5,94 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>ТВ — Монитор</title>
     <link rel="stylesheet" href="{{url_for('static', filename='tv.css')}}?v={{PROJECT_VERSION}}">
+    <script src="{{url_for('static', filename='vendor/hls.min.js')}}?v=1.7.3" defer></script>
     <script src="{{url_for('static', filename='mobile_bottom_nav.js')}}?v={{PROJECT_VERSION}}" defer></script>
     <script src="{{url_for('static', filename='tv.js')}}?v={{PROJECT_VERSION}}" defer></script>
 </head>
 <body>
-<div class="tv-layout">
+<div class="tv-app">
     <aside class="tv-rail" aria-label="Главное меню">
         <a class="tv-brand" href="/all">Монитор</a>
         <nav class="tv-nav">
-            <a class="tv-nav-link" href="/all"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Лента новостей</a>
-            <a class="tv-nav-link" href="/all/found"><svg viewBox="0 0 24 24"><path d="M10.5 13.5 13.5 10.5M8 16l-1.5 1.5a3.2 3.2 0 0 1-4.5-4.5L6.5 8.5A3.2 3.2 0 0 1 11 8M16 8l1.5-1.5A3.2 3.2 0 0 1 22 11l-4.5 4.5A3.2 3.2 0 0 1 13 16"/></svg>Совпадения</a>
-            <a class="tv-nav-link" href="/collections"><svg viewBox="0 0 24 24"><path d="M3.5 7.5h6l2-2h3l2 2h4v10.75A1.75 1.75 0 0 1 18.75 20H5.25a1.75 1.75 0 0 1-1.75-1.75Z"/><path d="M3.5 10h17"/></svg>Подборки</a>
-            <a class="tv-nav-link" href="/notes?view=records"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>Заметки</a>
-            <a class="tv-nav-link" href="/notes?view=calendar"><svg viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="15" rx="2"/><path d="M7 3v5M17 3v5M3.5 10h17"/></svg>Календарь</a>
-            {% if current_user.role == 'admin' or current_user.can_use_dictionary %}<a class="tv-nav-link" href="/notes?view=dictionary"><svg viewBox="0 0 24 24"><path d="M7 4h10a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M10 9a2 2 0 1 1 3 1.7c-.7.4-1 .8-1 1.5M12 16h.01"/></svg>Словарь-квиз</a>{% endif %}
-            <a class="tv-nav-link active" href="/tv"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="m9 2 3 4 3-4M8 11l6 3-6 3Z"/></svg>ТВ</a>
-            {% if current_user.role == 'admin' %}<a class="tv-nav-link" href="/admin/users"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2"/><path d="M3 20v-2a5 5 0 0 1 10 0v2M14 15a4 4 0 0 1 7 3v2"/></svg>Пользователи</a><a class="tv-nav-link" href="/admin/system"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-7"/></svg>Статус системы</a>{% endif %}
+            <a class="tv-nav-link" href="/all"><span class="tv-nav-icon"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span>Лента новостей</span></a>
+            <a class="tv-nav-link" href="/all/found"><span class="tv-nav-icon"><svg viewBox="0 0 24 24"><path d="M10.5 13.5 13.5 10.5M8 16l-1.5 1.5a3.2 3.2 0 0 1-4.5-4.5L6.5 8.5A3.2 3.2 0 0 1 11 8M16 8l1.5-1.5A3.2 3.2 0 0 1 22 11l-4.5 4.5A3.2 3.2 0 0 1 13 16"/></svg></span><span>Совпадения</span></a>
+            <a class="tv-nav-link" href="/collections"><span class="tv-nav-icon"><svg viewBox="0 0 24 24"><path d="M3.5 7.5h6l2-2h3l2 2h4v10.75A1.75 1.75 0 0 1 18.75 20H5.25a1.75 1.75 0 0 1-1.75-1.75Z"/><path d="M3.5 10h17"/></svg></span><span>Подборки</span></a>
+            <a class="tv-nav-link" href="/notes?view=records"><span class="tv-nav-icon"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span><span>Заметки</span></a>
+            <a class="tv-nav-link" href="/notes?view=calendar"><span class="tv-nav-icon"><svg viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="15" rx="2"/><path d="M7 3v5M17 3v5M3.5 10h17"/></svg></span><span>Календарь</span></a>
+            {% if current_user.role == 'admin' or current_user.can_use_dictionary %}<a class="tv-nav-link" href="/notes?view=dictionary"><span class="tv-nav-icon"><svg viewBox="0 0 24 24"><path d="M7 4h10a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M10 9a2 2 0 1 1 3 1.7c-.7.4-1 .8-1 1.5M12 16h.01"/></svg></span><span>Словарь-квиз</span></a>{% endif %}
+            <a class="tv-nav-link active" href="/tv"><span class="tv-nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="m9 2 3 4 3-4M8 11l6 3-6 3Z"/></svg></span><span>ТВ</span></a>
+            {% if current_user.role == 'admin' %}<a class="tv-nav-link" href="/admin/users"><span class="tv-nav-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2"/><path d="M3 20v-2a5 5 0 0 1 10 0v2M14 15a4 4 0 0 1 7 3v2"/></svg></span><span>Пользователи</span></a><a class="tv-nav-link" href="/admin/system"><span class="tv-nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-7"/></svg></span><span>Статус системы</span></a>{% endif %}
         </nav>
-        <div class="tv-profile"><a href="/account"><span class="tv-avatar">●</span><span><strong>{{current_user.username}}</strong><small>{{'Администратор' if current_user.role == 'admin' else 'Пользователь'}}</small></span></a><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><button type="submit" aria-label="Выйти">↪</button></form></div>
+        <div class="tv-rail-bottom">
+            <div class="tv-profile">
+                <a class="tv-profile-link" href="/account"><span class="tv-avatar">●</span><span class="tv-profile-copy"><strong>{{current_user.username}}</strong><small>{{'Администратор' if current_user.role == 'admin' else 'Пользователь'}}</small></span></a>
+                <form class="tv-logout-form" method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{csrf_token}}"><button class="tv-logout" type="submit" aria-label="Выйти" title="Выйти"><svg viewBox="0 0 24 24"><path d="M10 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H10M14 8l4 4-4 4M18 12H9"/></svg></button></form>
+            </div>
+        </div>
     </aside>
-    <main class="tv-main">
-        <header class="tv-topbar"><a class="tv-mobile-brand" href="/all">Монитор</a><h1>ТВ</h1><div class="tv-clocks"><div>Москва <time data-clock="Europe/Moscow">--:--</time></div><div>Токио <time data-clock="Asia/Tokyo">--:--</time></div></div></header>
-        <section class="tv-page">
-            <div class="tv-heading"><div><span class="tv-live"><i></i> LIVE</span><h2>Россия 24</h2><p>Эфир запускается только по вашему нажатию.</p></div><a class="tv-external" href="{{stream_page_url}}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a></div>
-            <div class="tv-grid">
-                <section class="tv-player-card">
-                    <div class="tv-player" id="tv-player" data-stream-src="{{stream_embed_url}}" data-mp3-worker-url="{{url_for('static', filename='tv_mp3_worker.js')}}?v={{PROJECT_VERSION}}" data-mp3-encoder-url="{{url_for('static', filename='vendor/lame.min.js')}}?v=1.2.1">
-                        <div class="tv-placeholder" id="tv-placeholder"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7Z"/></svg><strong>Нажмите для запуска эфира</strong><span>До запуска страница вещателя не загружается</span></div>
-                        <iframe id="tv-frame" title="Прямой эфир Россия 24" loading="lazy" allow="autoplay; fullscreen; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" hidden></iframe>
+
+    <main class="tv-shell">
+        <header class="tv-topbar">
+            <a class="tv-mobile-brand" href="/all">Монитор</a>
+            <h1>ТВ</h1>
+            <div class="tv-clocks">
+                <div class="tv-clock" data-clock="Europe/Moscow"><span>Москва</span><time class="tv-clock-time">--:--</time><time class="tv-clock-date">--.--.----</time></div>
+                <div class="tv-clock" data-clock="Asia/Tokyo"><span>Токио</span><time class="tv-clock-time">--:--</time><time class="tv-clock-date">--.--.----</time></div>
+            </div>
+        </header>
+
+        <section class="tv-workspace">
+            <nav class="tv-channel-tabs" aria-label="Телеканалы">
+                <button class="tv-channel-tab active" type="button" data-tv-channel="russia24" data-title="Россия 24" data-description="Непрерывный информационный эфир. Запускается только по вашему нажатию." data-source-url="{{stream_page_url}}" data-stream-kind="iframe" data-stream-url="{{stream_embed_url}}">Россия 24 <span>LIVE</span></button>
+                <button class="tv-channel-tab" type="button" data-tv-channel="mid" data-title="МИД России" data-description="Прямые трансляции брифингов и выступлений. Поток идёт через компьютер RIA." data-source-url="{{mid_page_url}}" data-channel-url="{{mid_channel_url}}" data-stream-kind="mid" data-discovery-url="{{mid_discovery_url}}">МИД России <span>по запросу</span></button>
+            </nav>
+
+            <div class="tv-scroll">
+                <header class="tv-heading">
+                    <div>
+                        <span class="tv-live" id="tv-live-label"><i></i><span>LIVE</span></span>
+                        <h2 id="tv-channel-title">Россия 24</h2>
+                        <p id="tv-channel-description">Непрерывный информационный эфир. Запускается только по вашему нажатию.</p>
                     </div>
-                    <div class="tv-player-actions"><button class="tv-primary" id="tv-play" type="button">▶ Запустить эфир</button><button class="tv-secondary" id="tv-stop" type="button" disabled>Остановить эфир</button></div>
-                    <p class="tv-player-note">Если встроенный эфир временно недоступен, используйте ссылку «Открыть источник».</p>
+                    <a class="tv-external" id="tv-source-link" href="{{stream_page_url}}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a>
+                </header>
+
+                <div class="tv-grid">
+                    <section class="tv-player-card">
+                        <div class="tv-player" id="tv-player" data-stream-src="{{stream_embed_url}}" data-mid-discovery-url="{{mid_discovery_url}}" data-mid-page-url="{{mid_page_url}}" data-mp3-worker-url="{{url_for('static', filename='tv_mp3_worker.js')}}?v={{PROJECT_VERSION}}" data-mp3-encoder-url="{{url_for('static', filename='vendor/lame.min.js')}}?v=1.2.1">
+                            <div class="tv-placeholder" id="tv-placeholder">
+                                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7Z"/></svg>
+                                <strong id="tv-placeholder-title">Нажмите для запуска эфира</strong>
+                                <span id="tv-placeholder-copy">До запуска страница вещателя не загружается</span>
+                            </div>
+                            <iframe id="tv-frame" title="Прямой эфир Россия 24" loading="lazy" allow="autoplay; fullscreen; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" hidden></iframe>
+                            <video id="tv-video" controls playsinline preload="none" hidden></video>
+                        </div>
+                        <div class="tv-player-actions">
+                            <button class="tv-primary" id="tv-play" type="button">▶ Запустить эфир</button>
+                            <button class="tv-secondary" id="tv-stop" type="button" disabled>Остановить эфир</button>
+                        </div>
+                        <p class="tv-player-note" id="tv-player-note">Если встроенный эфир временно недоступен, используйте ссылку «Открыть источник».</p>
+                    </section>
+
+                    <aside class="tv-recorder-card">
+                        <span class="tv-kicker">Запись аудио</span>
+                        <div class="tv-recorder-state"><h3 id="record-state">Не запущена</h3><div class="tv-record-time" id="record-time">00:00</div></div>
+                        <p>Одна кнопка запускает и останавливает запись. Для потока МИД звук берётся прямо из плеера; для внешнего эфира браузер попросит выбрать текущую вкладку и включить передачу её звука.</p>
+                        <button class="tv-record" id="record-start" type="button" aria-pressed="false">● Начать запись</button>
+                        <p class="tv-message" id="tv-message" role="status" aria-live="polite"></p>
+                        <div class="tv-privacy"><strong>Без фоновой записи</strong><span>MP3 создаётся только на вашем устройстве. При закрытии страницы запись прекращается, микрофон не используется.</span></div>
+                    </aside>
+                </div>
+
+                <section class="tv-transport-note">
+                    <strong>МИД через RIA</strong>
+                    <span>Проверка и передача потока начинаются только после нажатия Play. Сервер не перекодирует видео и перестаёт передавать его после остановки плеера.</span>
                 </section>
-                <aside class="tv-recorder-card">
-                    <span class="tv-kicker">Запись аудио</span><h3 id="record-state">Не запущена</h3><div class="tv-record-time" id="record-time">00:00</div>
-                    <p>Запись идёт только в браузере. Выберите вкладку с эфиром и включите передачу её звука. После остановки запись будет преобразована в MP3.</p>
-                    <button class="tv-record" id="record-start" type="button">● Начать запись</button><button class="tv-record-stop" id="record-stop" type="button" disabled>■ Остановить и сохранить</button>
-                    <p class="tv-message" id="tv-message" role="status" aria-live="polite"></p>
-                    <div class="tv-privacy"><strong>Без нагрузки на сервер</strong><span>MP3 создаётся и сохраняется только на вашем устройстве. Микрофон не используется.</span></div>
-                </aside>
             </div>
         </section>
     </main>
+
     <nav class="mobile-bottom-nav" aria-label="Мобильное меню">
         <a class="mobile-bottom-link" href="/all"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Лента</span></a>
         <a class="mobile-bottom-link" href="/all/found"><svg viewBox="0 0 24 24"><path d="M10.5 13.5 13.5 10.5M8 16l-1.5 1.5a3.2 3.2 0 0 1-4.5-4.5L6.5 8.5A3.2 3.2 0 0 1 11 8M16 8l1.5-1.5A3.2 3.2 0 0 1 22 11l-4.5 4.5A3.2 3.2 0 0 1 13 16"/></svg><span>Совпадения</span></a>

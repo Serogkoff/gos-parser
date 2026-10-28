@@ -44,17 +44,30 @@ class WebTemplateTests(unittest.TestCase):
         self.assertIn('href="{{stream_page_url}}"', template)
         self.assertIn("Открыть источник", template)
         self.assertNotIn("Открыть официальный эфир", template)
+        self.assertIn("vendor/hls.min.js", template)
+        self.assertIn('data-tv-channel="mid"', template)
+        self.assertIn('data-mid-discovery-url="{{mid_discovery_url}}"', template)
+        self.assertIn("Поток идёт через компьютер RIA", template)
         self.assertIn(".tv-player [hidden]{display:none!important}", stylesheet)
+        self.assertIn("grid-template-columns: 205px minmax(0, 1fr)", stylesheet)
         self.assertIn('id="tv-frame"', template)
+        self.assertIn('id="tv-video"', template)
         self.assertIn("data-mp3-worker-url", template)
         self.assertIn("data-mp3-encoder-url", template)
         self.assertIn("vendor/lame.min.js", template)
+        self.assertIn('id="record-start"', template)
+        self.assertNotIn('id="record-stop"', template)
         iframe = template.split('<iframe id="tv-frame"', 1)[1].split("></iframe>", 1)[0]
         self.assertNotIn(" src=", iframe)
         for marker in (
             "navigator.mediaDevices.getDisplayMedia",
+            "preferCurrentTab: true",
+            "video.captureStream || video.mozCaptureStream",
             "new MediaStream(audioTracks)",
             "new MediaRecorder",
+            "new window.Hls",
+            "payload.stream_url",
+            "■ Остановить и сохранить",
             "window.addEventListener('beforeunload'",
             "window.addEventListener('pagehide'",
             "stopRecording(false)",
