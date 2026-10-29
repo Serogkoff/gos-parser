@@ -278,6 +278,9 @@ button:focus-visible, a:focus-visible, video:focus-visible {
 .tv-transcript-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .tv-transcript-head h2 { margin: 0; font: 18px Georgia, "Times New Roman", serif; }
 .tv-transcript-head p { margin: 5px 0 0; color: var(--muted); font-size: 10px; }
+.tv-transcript-controls { display: flex; align-items: flex-end; gap: 8px; }
+.tv-transcript-controls label { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
+.tv-transcript-controls select { min-height: 38px; padding: 0 28px 0 10px; border: 1px solid var(--line); border-radius: 3px; color: #343430; background: #fff; font-size: 11px; }
 .tv-transcribe { min-width: 138px; min-height: 38px; padding: 0 14px; border: 1px solid var(--coral); border-radius: 3px; color: #fff; background: var(--coral); font-size: 11px; font-weight: 700; }
 .tv-transcribe:hover { background: var(--coral-dark); }
 .tv-transcribe:disabled { cursor: wait; opacity: .55; }
@@ -287,6 +290,12 @@ button:focus-visible, a:focus-visible, video:focus-visible {
 .tv-transcript-actions { margin-top: 10px; display: flex; justify-content: flex-end; gap: 8px; }
 .tv-transcript-actions button { min-height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 3px; color: #343430; background: #fff; font-size: 10px; font-weight: 700; }
 .tv-transcript-actions button:hover { color: var(--coral-dark); border-color: #efaaa5; }
+.tv-transcriber-setup { margin-top: 10px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+.tv-transcriber-setup div { display: grid; gap: 3px; }
+.tv-transcriber-setup strong { font-size: 11px; }
+.tv-transcriber-setup span { color: var(--muted); font-size: 9px; }
+.tv-transcriber-setup.is-ready span { color: #367650; }
+.tv-transcriber-setup a { min-height: 34px; padding: 0 12px; display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 3px; color: var(--coral-dark); background: #fff; font-size: 10px; font-weight: 700; text-decoration: none; }
 .mobile-bottom-nav { display: none; }
 
 @keyframes tv-pulse { 50% { opacity: .72; } }
@@ -321,6 +330,7 @@ button:focus-visible, a:focus-visible, video:focus-visible {
     .tv-grid { grid-template-columns: minmax(0, 1fr); }
     .tv-recorder-card { min-height: 0; padding: 18px; }
     .tv-transcript-card { display: none !important; }
+    .tv-transcriber-setup { display: none !important; }
     .mobile-bottom-nav {
         position: fixed;
         z-index: 50;

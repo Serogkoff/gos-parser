@@ -24,6 +24,10 @@
     const transcriptActions = document.getElementById('tv-transcript-actions');
     const transcriptCopy = document.getElementById('tv-transcript-copy');
     const transcriptDownload = document.getElementById('tv-transcript-download');
+    const transcriptMode = document.getElementById('tv-transcript-mode');
+    const transcriberSetup = document.getElementById('tv-transcriber-setup');
+    const transcriberState = document.getElementById('tv-transcriber-state');
+    const transcriberDownload = document.getElementById('tv-transcriber-download');
     const desktopTranscriptionEnabled = window.matchMedia('(min-width: 921px)').matches;
 
     let activeChannel = channelButtons.find((button) => button.classList.contains('active')) || channelButtons[0];
@@ -42,7 +46,7 @@
     let recordingSlug = 'tv';
     let lastRecordingBlob = null;
     let lastRecordingSlug = 'tv';
-    let transcriptionWorker = null;
+    let localTranscriptionJob = '';
     let isTranscribing = false;
     let completedTranscript = '';
 
@@ -135,8 +139,7 @@
     }
 
     function resetTranscription({hide = false, discardRecording = false} = {}) {
-        transcriptionWorker?.terminate();
-        transcriptionWorker = null;
+        cancelLocalTranscription();
         isTranscribing = false;
         completedTranscript = '';
         if (discardRecording) lastRecordingBlob = null;
@@ -144,7 +147,7 @@
         transcriptPanel.hidden = hide || !desktopTranscriptionEnabled || !lastRecordingBlob;
         transcribeButton.disabled = false;
         transcribeButton.textContent = 'Расшифровать';
-        transcriptStatus.textContent = 'GigaAM обработает запись на этом компьютере.';
+        transcriptStatus.textContent = 'Локальный GigaAM обработает запись на этом компьютере.';
         transcriptProgress.hidden = true;
         transcriptProgressValue.style.width = '0%';
         transcriptText.hidden = true;
@@ -158,29 +161,6 @@
         lastRecordingSlug = recordingSlug;
         resetTranscription();
         transcriptPanel.scrollIntoView({block: 'nearest', behavior: 'smooth'});
-    }
-
-    function formatTimestamp(value) {
-        const seconds = Math.max(0, Math.round(Number(value) || 0));
-        const hours = Math.floor(seconds / 3600);
-        const minutes = Math.floor((seconds % 3600) / 60);
-        const remainder = String(seconds % 60).padStart(2, '0');
-        return hours
-            ? `${hours}:${String(minutes).padStart(2, '0')}:${remainder}`
-            : `${String(minutes).padStart(2, '0')}:${remainder}`;
-    }
-
-    function formatTranscript(text, chunks) {
-        const timestamped = (chunks || []).map((chunk) => {
-            const start = chunk?.timestamp?.[0];
-            const end = chunk?.timestamp?.[1];
-            const copy = String(chunk?.text || '').trim();
-            if (!copy) return '';
-            if (!Number.isFinite(start)) return copy;
-            const endCopy = Number.isFinite(end) ? `–${formatTimestamp(end)}` : '';
-            return `[${formatTimestamp(start)}${endCopy}] ${copy}`;
-        }).filter(Boolean);
-        return timestamped.length ? timestamped.join('\n\n') : String(text || '').trim();
     }
 
     async function decodeAudioForTranscription(blob) {
@@ -198,8 +178,8 @@
         } finally {
             await audioContext.close();
         }
-        if (decoded.duration > 30 * 60) {
-            throw new Error('Для пробного режима запись должна быть не длиннее 30 минут.');
+        if (decoded.duration > 4 * 60 * 60) {
+            throw new Error('Одна запись должна быть не длиннее четырёх часов.');
         }
 
         const sampleRate = 16000;
@@ -213,12 +193,125 @@
         return new Float32Array(rendered.getChannelData(0));
     }
 
-    function finishTranscriptionWorker() {
-        transcriptionWorker?.terminate();
-        transcriptionWorker = null;
+    function finishTranscription() {
         isTranscribing = false;
         transcribeButton.disabled = false;
         transcribeButton.textContent = 'Расшифровать снова';
+    }
+
+    function pcmToWav(samples, sampleRate = 16000) {
+        const buffer = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(buffer);
+        const write = (offset, value) => {
+            for (let index = 0; index < value.length; index += 1) {
+                view.setUint8(offset + index, value.charCodeAt(index));
+            }
+        };
+        write(0, 'RIFF');
+        view.setUint32(4, 36 + samples.length * 2, true);
+        write(8, 'WAVE');
+        write(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        write(36, 'data');
+        view.setUint32(40, samples.length * 2, true);
+        for (let index = 0; index < samples.length; index += 1) {
+            const sample = Math.max(-1, Math.min(1, samples[index]));
+            view.setInt16(44 + index * 2, sample < 0 ? sample * 32768 : sample * 32767, true);
+        }
+        return new Blob([buffer], {type: 'audio/wav'});
+    }
+
+    async function localRequest(path, options = {}) {
+        const response = await fetch(`${player.dataset.localTranscriberUrl}${path}`, {
+            mode: 'cors',
+            credentials: 'omit',
+            cache: 'no-store',
+            ...options,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `Локальный сервис ответил ${response.status}`);
+        return payload;
+    }
+
+    async function cancelLocalTranscription() {
+        const jobId = localTranscriptionJob;
+        localTranscriptionJob = '';
+        if (!jobId) return;
+        try {
+            await localRequest(`/jobs/${jobId}`, {method: 'DELETE'});
+        } catch (_) {
+            // The helper may already be closed; its temporary files are cleaned later.
+        }
+    }
+
+    async function uploadToLocalTranscriber(wavBlob) {
+        await localRequest('/health');
+        const job = await localRequest('/jobs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                filename: `${lastRecordingSlug}.wav`,
+                size: wavBlob.size,
+                mode: transcriptMode?.value || 'fast',
+            }),
+        });
+        localTranscriptionJob = job.job_id;
+        const chunkSize = 5 * 1024 * 1024;
+        for (let offset = 0; offset < wavBlob.size; offset += chunkSize) {
+            const chunk = wavBlob.slice(offset, Math.min(offset + chunkSize, wavBlob.size));
+            await localRequest(`/jobs/${job.job_id}/upload`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'X-Upload-Offset': String(offset),
+                },
+                body: chunk,
+            });
+            const uploaded = Math.round(Math.min(offset + chunk.size, wavBlob.size) / wavBlob.size * 100);
+            transcriptProgressValue.style.width = `${uploaded}%`;
+            transcriptStatus.textContent = `Передаём запись локально: ${uploaded}%`;
+        }
+        await localRequest(`/jobs/${job.job_id}/start`, {method: 'POST'});
+        return job.job_id;
+    }
+
+    function wait(milliseconds) {
+        return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+    }
+
+    async function checkLocalTranscriber() {
+        if (!desktopTranscriptionEnabled || !transcriberSetup) return;
+        try {
+            const health = await localRequest('/health');
+            transcriberSetup.classList.add('is-ready');
+            transcriberState.textContent = `${health.engine || 'GigaAM'} готов к работе.`;
+            transcriberDownload.textContent = 'Переустановить';
+        } catch (_) {
+            transcriberSetup.classList.remove('is-ready');
+            transcriberState.textContent = 'Не установлен — скачайте и запустите установщик.';
+            transcriberDownload.textContent = 'Скачать для Windows';
+        }
+    }
+
+    async function waitForLocalTranscript(jobId) {
+        while (localTranscriptionJob === jobId) {
+            const job = await localRequest(`/jobs/${jobId}`);
+            if (job.status === 'complete') return job;
+            if (job.status === 'error') throw new Error(job.error || 'Локальное распознавание завершилось с ошибкой.');
+            const progress = Math.max(1, Number(job.progress) || 1);
+            transcriptProgressValue.style.width = `${progress}%`;
+            transcriptStatus.textContent = job.status === 'queued'
+                ? 'Запись в локальной очереди…'
+                : `Распознаём фрагмент ${job.fragment || 1}: ${progress}%`;
+            await wait(750);
+        }
+        throw new Error('Расшифровка отменена.');
     }
 
     async function startTranscription() {
@@ -233,58 +326,29 @@
         transcriptProgressValue.style.width = '2%';
 
         try {
+            transcriptStatus.textContent = 'Подготавливаем WAV для локального GigaAM…';
             const audio = await decodeAudioForTranscription(lastRecordingBlob);
-            transcriptionWorker = new Worker(player.dataset.transcriptionWorkerUrl, {type: 'module'});
-            transcriptionWorker.addEventListener('message', (event) => {
-                if (event.data.type === 'model-progress') {
-                    if (Number.isFinite(event.data.value)) {
-                        transcriptProgressValue.style.width = `${Math.max(2, event.data.value)}%`;
-                        transcriptStatus.textContent = event.data.message
-                            || `Подготавливаем GigaAM: ${event.data.value}%`;
-                    }
-                    return;
-                }
-                if (event.data.type === 'status') {
-                    transcriptStatus.textContent = event.data.message;
-                    if (event.data.message === 'GigaAM распознаёт речь…') {
-                        transcriptProgressValue.style.width = '100%';
-                    }
-                    return;
-                }
-                if (event.data.type === 'complete') {
-                    completedTranscript = formatTranscript(event.data.text, event.data.chunks);
-                    transcriptText.value = completedTranscript || 'Речь не распознана.';
-                    transcriptText.hidden = false;
-                    transcriptActions.hidden = !completedTranscript;
-                    transcriptProgress.hidden = true;
-                    transcriptStatus.textContent = completedTranscript
-                        ? 'Расшифровка готова.'
-                        : 'В записи не удалось распознать речь.';
-                    finishTranscriptionWorker();
-                    return;
-                }
-                if (event.data.type === 'error') {
-                    const detail = String(event.data.message || '').trim();
-                    transcriptStatus.textContent = detail
-                        ? detail
-                        : 'Не удалось загрузить GigaAM или распознать запись.';
-                    transcriptProgress.hidden = true;
-                    finishTranscriptionWorker();
-                }
-            });
-            transcriptionWorker.addEventListener('error', (event) => {
-                const detail = String(event.message || '').trim();
-                transcriptStatus.textContent = detail
-                    ? `Ошибка загрузчика: ${detail}`
-                    : 'GigaAM не загрузилась. Проверьте доступ к jsDelivr и Hugging Face.';
-                transcriptProgress.hidden = true;
-                finishTranscriptionWorker();
-            }, {once: true});
-            transcriptionWorker.postMessage({type: 'transcribe', audio: audio.buffer}, [audio.buffer]);
-        } catch (error) {
-            transcriptStatus.textContent = error?.message || 'Не удалось подготовить запись.';
+            const wavBlob = pcmToWav(audio);
+            const jobId = await uploadToLocalTranscriber(wavBlob);
+            const result = await waitForLocalTranscript(jobId);
+            completedTranscript = String(result.text || '').trim();
+            transcriptText.value = completedTranscript || 'Речь не распознана.';
+            transcriptText.hidden = false;
+            transcriptActions.hidden = !completedTranscript;
             transcriptProgress.hidden = true;
-            finishTranscriptionWorker();
+            transcriptStatus.textContent = completedTranscript
+                ? `Расшифровка готова: ${result.segments?.length || 0} фрагментов.`
+                : 'В записи не удалось распознать речь.';
+            await cancelLocalTranscription();
+            finishTranscription();
+        } catch (error) {
+            const detail = String(error?.message || '');
+            transcriptStatus.textContent = detail.includes('Failed to fetch')
+                ? 'Локальный распознаватель не запущен. Установите его из пакета 17.77.'
+                : detail || 'Не удалось подготовить запись.';
+            transcriptProgress.hidden = true;
+            await cancelLocalTranscription();
+            finishTranscription();
         }
     }
 
@@ -375,7 +439,7 @@
         try {
             const mp3Blob = await convertToMp3(sourceBlob);
             downloadBlob(mp3Blob, 'mp3');
-            prepareTranscription(sourceBlob);
+            prepareTranscription(mp3Blob);
             setMessage('MP3 сохранён на устройство.');
         } catch (error) {
             downloadBlob(sourceBlob, 'webm');
@@ -774,12 +838,12 @@
     window.addEventListener('pagehide', () => {
         conversionWorker?.terminate();
         conversionWorker = null;
-        transcriptionWorker?.terminate();
-        transcriptionWorker = null;
+        cancelLocalTranscription();
         stopRecording(false);
         destroyHlsPlayer();
     });
 
     updateClocks();
+    checkLocalTranscriber();
     setInterval(updateClocks, 30000);
 })();

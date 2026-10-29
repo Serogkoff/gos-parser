@@ -54,7 +54,7 @@
 
                 <div class="tv-grid">
                     <section class="tv-player-card">
-                        <div class="tv-player" id="tv-player" data-russia24-discovery-url="{{russia24_discovery_url}}" data-mid-discovery-url="{{mid_discovery_url}}" data-mid-page-url="{{mid_page_url}}" data-mp3-worker-url="{{url_for('static', filename='tv_mp3_worker.js')}}?v={{PROJECT_VERSION}}" data-mp3-encoder-url="{{url_for('static', filename='vendor/lame.min.js')}}?v=1.2.1" data-transcription-worker-url="{{url_for('static', filename='tv_gigaam_worker.js')}}?v={{PROJECT_VERSION}}">
+                        <div class="tv-player" id="tv-player" data-russia24-discovery-url="{{russia24_discovery_url}}" data-mid-discovery-url="{{mid_discovery_url}}" data-mid-page-url="{{mid_page_url}}" data-mp3-worker-url="{{url_for('static', filename='tv_mp3_worker.js')}}?v={{PROJECT_VERSION}}" data-mp3-encoder-url="{{url_for('static', filename='vendor/lame.min.js')}}?v=1.2.1" data-local-transcriber-url="http://127.0.0.1:8765">
                             <div class="tv-placeholder" id="tv-placeholder">
                                 <strong id="tv-placeholder-title" hidden></strong>
                                 <span id="tv-placeholder-copy" hidden></span>
@@ -82,9 +82,17 @@
                     <div class="tv-transcript-head">
                         <div>
                             <h2>Расшифровка записи</h2>
-                            <p id="tv-transcript-status" role="status" aria-live="polite">GigaAM обработает запись на этом компьютере.</p>
+                            <p id="tv-transcript-status" role="status" aria-live="polite">Локальный GigaAM обработает запись на этом компьютере.</p>
                         </div>
-                        <button class="tv-transcribe" id="tv-transcribe" type="button">Расшифровать</button>
+                        <div class="tv-transcript-controls">
+                            <label>Режим
+                                <select id="tv-transcript-mode">
+                                    <option value="fast">Быстро</option>
+                                    <option value="accurate">Точно (медленнее)</option>
+                                </select>
+                            </label>
+                            <button class="tv-transcribe" id="tv-transcribe" type="button">Расшифровать</button>
+                        </div>
                     </div>
                     <div class="tv-transcript-progress" id="tv-transcript-progress" hidden><i id="tv-transcript-progress-value"></i></div>
                     <textarea class="tv-transcript-text" id="tv-transcript-text" readonly hidden aria-label="Текст расшифровки"></textarea>
@@ -92,6 +100,14 @@
                         <button type="button" id="tv-transcript-copy">Копировать</button>
                         <button type="button" id="tv-transcript-download">Скачать TXT</button>
                     </div>
+                </section>
+
+                <section class="tv-transcriber-setup" id="tv-transcriber-setup">
+                    <div>
+                        <strong>Расшифровка на этом компьютере</strong>
+                        <span id="tv-transcriber-state" role="status">Проверяем локальный GigaAM…</span>
+                    </div>
+                    <a id="tv-transcriber-download" href="{{url_for('tv_transcriber_installer')}}">Скачать для Windows</a>
                 </section>
             </div>
         </section>

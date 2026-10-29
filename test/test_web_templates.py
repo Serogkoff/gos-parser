@@ -36,9 +36,6 @@ class WebTemplateTests(unittest.TestCase):
         mp3_worker = (
             Path(web_app.app.static_folder) / "tv_mp3_worker.js"
         ).read_text(encoding="utf-8")
-        transcription_worker = (
-            Path(web_app.app.static_folder) / "tv_gigaam_worker.js"
-        ).read_text(encoding="utf-8")
         stylesheet = (
             Path(web_app.app.static_folder) / "tv.css"
         ).read_text(encoding="utf-8")
@@ -60,7 +57,7 @@ class WebTemplateTests(unittest.TestCase):
         self.assertIn('class="tv-stream-toggle" id="tv-play"', template)
         self.assertIn("data-mp3-worker-url", template)
         self.assertIn("data-mp3-encoder-url", template)
-        self.assertIn("data-transcription-worker-url", template)
+        self.assertIn('data-local-transcriber-url="http://127.0.0.1:8765"', template)
         self.assertIn("vendor/lame.min.js", template)
         self.assertIn('id="record-start"', template)
         self.assertNotIn('id="record-stop"', template)
@@ -99,7 +96,10 @@ class WebTemplateTests(unittest.TestCase):
             "audio/mpeg",
             "Конвертация в MP3",
             "decodeAudioForTranscription",
-            "new Worker(player.dataset.transcriptionWorkerUrl, {type: 'module'})",
+            "const chunkSize = 5 * 1024 * 1024",
+            "X-Upload-Offset",
+            "Локальный распознаватель не запущен",
+            "pcmToWav",
             "Расшифровка готова",
         ):
             with self.subTest(tv_marker=marker):
@@ -114,22 +114,16 @@ class WebTemplateTests(unittest.TestCase):
             with self.subTest(mp3_worker_marker=marker):
                 self.assertIn(marker, mp3_worker)
 
-        for marker in (
-            "https://cdn.jsdelivr.net/npm/onnx-asr-web@0.1.3/browser/+esm",
-            "istupakov/gigaam-v3-onnx",
-            "onnx-community/silero-vad",
-            "version: 'v3_e2e'",
-            "loadLocalModel",
-            "transcribeSamples",
-        ):
-            with self.subTest(transcription_worker_marker=marker):
-                self.assertIn(marker, transcription_worker)
-
-        self.assertNotIn("transformers.web.min.js", transcription_worker)
-        self.assertNotIn("whisper", transcription_worker.lower())
+        self.assertNotIn("tv_gigaam_worker.js", template)
+        self.assertNotIn("onnx-asr-web", javascript)
 
         self.assertIn('id="tv-transcript" hidden', template)
         self.assertIn('id="tv-transcribe"', template)
+        self.assertIn('id="tv-transcript-mode"', template)
+        self.assertIn("Скачать для Windows", template)
+        self.assertIn("tv_transcriber_installer", template)
+        self.assertIn("checkLocalTranscriber", javascript)
+        self.assertIn("mode: transcriptMode?.value || 'fast'", javascript)
         self.assertIn(".tv-transcript-card { display: none !important; }", stylesheet)
 
     def test_admin_pages_share_monitor_layout(self):

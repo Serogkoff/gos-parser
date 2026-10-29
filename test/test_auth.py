@@ -2,7 +2,9 @@ import re
 import sqlite3
 import tempfile
 import unittest
+import zipfile
 from contextlib import closing
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -115,27 +117,29 @@ class AuthenticationTests(unittest.TestCase):
         admin_html = admin_page.get_data(as_text=True)
         self.assertIn("Россия 24", admin_html)
         tv_csp = admin_page.headers["Content-Security-Policy"]
-        self.assertIn("https://huggingface.co", tv_csp)
-        self.assertIn("https://cdn.jsdelivr.net", tv_csp)
-        self.assertIn("'wasm-unsafe-eval'", tv_csp)
+        self.assertIn("http://127.0.0.1:8765", tv_csp)
+        self.assertNotIn("https://huggingface.co", tv_csp)
+        self.assertNotIn("'wasm-unsafe-eval'", tv_csp)
         self.assertIn('data-stream-kind="russia24"', admin_html)
         self.assertIn('href="https://smotrim.ru/live/21"', admin_html)
-
-        worker = self.client.get("/static/tv_gigaam_worker.js")
-        self.assertEqual(worker.status_code, 200)
-        worker_csp = worker.headers["Content-Security-Policy"]
-        self.assertIn("https://huggingface.co", worker_csp)
-        self.assertIn("https://cdn.jsdelivr.net", worker_csp)
+        installer = self.client.get("/tv/transcriber-installer")
+        self.assertEqual(installer.status_code, 200)
+        self.assertEqual(installer.mimetype, "application/zip")
+        with zipfile.ZipFile(BytesIO(installer.data)) as archive:
+            self.assertIn("install-local-transcriber.ps1", archive.namelist())
+            self.assertIn("local_transcriber/server.py", archive.namelist())
 
         reader = storage.create_user("tv-reader", "reader-secret-2026")
         with self.client.session_transaction() as session:
             session["user_id"] = reader["id"]
 
         self.assertEqual(self.client.get("/tv").status_code, 403)
+        self.assertEqual(self.client.get("/tv/transcriber-installer").status_code, 403)
         storage.set_user_tv_access(reader["id"], True)
         permitted_page = self.client.get("/tv")
         self.assertEqual(permitted_page.status_code, 200)
         self.assertIn('href="/tv"', permitted_page.get_data(as_text=True))
+        self.assertEqual(self.client.get("/tv/transcriber-installer").status_code, 200)
 
     def test_feed_uses_short_private_cache_but_account_stays_no_store(self):
         self._create_first_admin()

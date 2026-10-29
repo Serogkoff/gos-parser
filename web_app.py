@@ -3,6 +3,7 @@ import json
 import re
 import secrets
 import sqlite3
+import zipfile
 from calendar import monthrange
 from io import BytesIO
 from datetime import date, datetime, timedelta
@@ -418,23 +419,14 @@ def load_current_user():
 def add_security_headers(response):
     """Добавляет безопасные браузерные настройки ко всем ответам."""
     static_filename = str((request.view_args or {}).get("filename", ""))
-    local_tv_transcription = (
-        request.endpoint == "tv_page"
-        or (
-            request.endpoint == "static"
-            and static_filename == "tv_gigaam_worker.js"
-        )
-    )
+    local_tv_transcription = request.endpoint == "tv_page"
     connect_sources = "'self'"
     script_sources = "'self' 'unsafe-inline'"
     if local_tv_transcription:
         connect_sources += (
-            " https://huggingface.co https://*.huggingface.co"
-            " https://*.hf.co https://*.xethub.hf.co"
-            " https://cdn.jsdelivr.net"
+            " http://127.0.0.1:8765"
             " https://smotrim.ru https://*.smotrim.ru"
         )
-        script_sources += " 'wasm-unsafe-eval' https://cdn.jsdelivr.net"
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "same-origin")
@@ -469,7 +461,6 @@ def add_security_headers(response):
                 "tv.css",
                 "tv.js",
                 "tv_mp3_worker.js",
-                "tv_gigaam_worker.js",
                 "vendor/hls.min.js",
                 "vendor/lame.min.js",
             }
@@ -689,6 +680,39 @@ def tv_page():
         mid_discovery_url=url_for("tv_mid_stream"),
         mid_page_url=MID_VIDEO_PAGE_URL,
         mid_channel_url=MID_RUTUBE_CHANNEL_URL,
+    )
+
+
+@app.get("/tv/transcriber-installer")
+def tv_transcriber_installer():
+    """Builds the small per-user Windows helper package on demand."""
+    _tv_user()
+    output = BytesIO()
+    files = {
+        "install-local-transcriber.ps1": (
+            PROJECT_DIR / "deploy" / "windows" / "install_local_transcriber.ps1"
+        ),
+        "local_transcriber/server.py": PROJECT_DIR / "local_transcriber" / "server.py",
+        "local_transcriber/preload.py": PROJECT_DIR / "local_transcriber" / "preload.py",
+        "local_transcriber/requirements.txt": (
+            PROJECT_DIR / "local_transcriber" / "requirements.txt"
+        ),
+    }
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for archive_name, path in files.items():
+            archive.writestr(archive_name, path.read_bytes())
+        archive.writestr(
+            "README.txt",
+            "Extract the archive and run install-local-transcriber.ps1 "
+            "in PowerShell. The fast model is downloaded once.\r\n",
+        )
+    output.seek(0)
+    return send_file(
+        output,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="gos-parser-transcriber-windows-17.77.zip",
+        max_age=0,
     )
 
 

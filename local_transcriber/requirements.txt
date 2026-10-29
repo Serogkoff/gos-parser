@@ -1,0 +1,1 @@
+onnx-asr[cpu,hub]==0.12.0
