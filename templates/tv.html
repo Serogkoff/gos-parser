@@ -78,11 +78,18 @@
                     </aside>
                 </div>
 
-                <section class="tv-transcript-card" id="tv-transcript" hidden>
+                <section class="tv-transcript-card" id="tv-transcript">
                     <div class="tv-transcript-head">
                         <div>
-                            <h2>Расшифровка записи</h2>
-                            <p id="tv-transcript-status" role="status" aria-live="polite">Локальный GigaAM обработает запись на этом компьютере.</p>
+                            <div class="tv-transcript-title-row">
+                                <h2>Расшифровка</h2>
+                                <label class="tv-file-picker" for="tv-file-input">
+                                    <input id="tv-file-input" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.oga,.webm">
+                                    <span aria-hidden="true">＋</span>
+                                    <b>Выбрать аудиофайл</b>
+                                </label>
+                            </div>
+                            <p id="tv-transcript-status" role="status" aria-live="polite">Запишите эфир или выберите аудиофайл с компьютера.</p>
                         </div>
                         <div class="tv-transcript-controls">
                             <label>Режим
@@ -91,8 +98,16 @@
                                     <option value="accurate">Точно (медленнее)</option>
                                 </select>
                             </label>
-                            <button class="tv-transcribe" id="tv-transcribe" type="button">Расшифровать</button>
+                            <button class="tv-transcribe" id="tv-transcribe" type="button" disabled>Расшифровать</button>
                         </div>
+                    </div>
+                    <div class="tv-selected-file" id="tv-selected-file" hidden>
+                        <span class="tv-selected-file-icon" aria-hidden="true">♪</span>
+                        <div>
+                            <strong id="tv-selected-file-name"></strong>
+                            <span id="tv-selected-file-meta"></span>
+                        </div>
+                        <button id="tv-selected-file-clear" type="button" aria-label="Убрать выбранный файл">×</button>
                     </div>
                     <div class="tv-transcript-progress" id="tv-transcript-progress" hidden><i id="tv-transcript-progress-value"></i></div>
                     <textarea class="tv-transcript-text" id="tv-transcript-text" readonly hidden aria-label="Текст расшифровки"></textarea>

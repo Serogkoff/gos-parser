@@ -28,6 +28,11 @@
     const transcriberSetup = document.getElementById('tv-transcriber-setup');
     const transcriberState = document.getElementById('tv-transcriber-state');
     const transcriberDownload = document.getElementById('tv-transcriber-download');
+    const fileInput = document.getElementById('tv-file-input');
+    const selectedFile = document.getElementById('tv-selected-file');
+    const selectedFileName = document.getElementById('tv-selected-file-name');
+    const selectedFileMeta = document.getElementById('tv-selected-file-meta');
+    const selectedFileClear = document.getElementById('tv-selected-file-clear');
     const desktopTranscriptionEnabled = window.matchMedia('(min-width: 921px)').matches;
 
     let activeChannel = channelButtons.find((button) => button.classList.contains('active')) || channelButtons[0];
@@ -49,6 +54,8 @@
     let localTranscriptionJob = '';
     let isTranscribing = false;
     let completedTranscript = '';
+    let selectedSourceName = '';
+    let selectedSourceMeta = '';
 
     function updateClocks() {
         document.querySelectorAll('[data-clock]').forEach((clock) => {
@@ -138,29 +145,127 @@
         setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     }
 
+    function formatBytes(size) {
+        if (!Number.isFinite(size) || size <= 0) return '';
+        const units = ['Б', 'КБ', 'МБ', 'ГБ'];
+        let value = size;
+        let unit = 0;
+        while (value >= 1024 && unit < units.length - 1) {
+            value /= 1024;
+            unit += 1;
+        }
+        return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
+    }
+
+    function formatDuration(seconds) {
+        if (!Number.isFinite(seconds) || seconds <= 0) return '';
+        const total = Math.round(seconds);
+        const hours = Math.floor(total / 3600);
+        const minutes = Math.floor(total % 3600 / 60);
+        const remainder = total % 60;
+        return hours
+            ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+            : `${minutes}:${String(remainder).padStart(2, '0')}`;
+    }
+
+    function slugFromFilename(filename) {
+        const stem = String(filename || 'audio').replace(/\.[^.]+$/, '');
+        return stem
+            .normalize('NFKD')
+            .replace(/[^\p{L}\p{N}]+/gu, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 80) || 'audio';
+    }
+
+    function renderSelectedSource() {
+        if (!selectedFile) return;
+        selectedFile.hidden = !lastRecordingBlob;
+        selectedFileName.textContent = selectedSourceName || `${lastRecordingSlug}.mp3`;
+        selectedFileMeta.textContent = selectedSourceMeta || formatBytes(lastRecordingBlob?.size || 0);
+    }
+
     function resetTranscription({hide = false, discardRecording = false} = {}) {
         cancelLocalTranscription();
         isTranscribing = false;
         completedTranscript = '';
-        if (discardRecording) lastRecordingBlob = null;
+        if (discardRecording) {
+            lastRecordingBlob = null;
+            selectedSourceName = '';
+            selectedSourceMeta = '';
+            if (fileInput) fileInput.value = '';
+        }
         if (!transcriptPanel) return;
-        transcriptPanel.hidden = hide || !desktopTranscriptionEnabled || !lastRecordingBlob;
-        transcribeButton.disabled = false;
+        transcriptPanel.hidden = !desktopTranscriptionEnabled;
+        transcribeButton.disabled = !lastRecordingBlob;
         transcribeButton.textContent = 'Расшифровать';
-        transcriptStatus.textContent = 'Локальный GigaAM обработает запись на этом компьютере.';
+        transcriptStatus.textContent = lastRecordingBlob
+            ? 'Локальный GigaAM обработает выбранную запись на этом компьютере.'
+            : 'Запишите эфир или выберите аудиофайл с компьютера.';
         transcriptProgress.hidden = true;
         transcriptProgressValue.style.width = '0%';
         transcriptText.hidden = true;
         transcriptText.value = '';
         transcriptActions.hidden = true;
+        renderSelectedSource();
     }
 
-    function prepareTranscription(sourceBlob) {
+    function prepareTranscription(sourceBlob, {
+        slug = recordingSlug,
+        name = `${recordingSlug}.mp3`,
+        meta = '',
+    } = {}) {
         if (!desktopTranscriptionEnabled || !transcriptPanel) return;
         lastRecordingBlob = sourceBlob;
-        lastRecordingSlug = recordingSlug;
+        lastRecordingSlug = slug;
+        selectedSourceName = name;
+        selectedSourceMeta = meta || formatBytes(sourceBlob.size);
         resetTranscription();
         transcriptPanel.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+    }
+
+    function readAudioDuration(file) {
+        return new Promise((resolve) => {
+            const audio = document.createElement('audio');
+            const url = URL.createObjectURL(file);
+            const finish = (duration = 0) => {
+                URL.revokeObjectURL(url);
+                audio.removeAttribute('src');
+                resolve(duration);
+            };
+            audio.preload = 'metadata';
+            audio.addEventListener('loadedmetadata', () => finish(audio.duration), {once: true});
+            audio.addEventListener('error', () => finish(0), {once: true});
+            audio.src = url;
+        });
+    }
+
+    async function selectAudioFile(file) {
+        if (!file) return;
+        const extension = String(file.name || '').split('.').pop().toLowerCase();
+        const allowedExtensions = new Set(['mp3', 'wav', 'm4a', 'aac', 'ogg', 'oga', 'webm']);
+        if (!String(file.type || '').startsWith('audio/') && !allowedExtensions.has(extension)) {
+            transcriptStatus.textContent = 'Выберите аудиофайл MP3, WAV, M4A, AAC, OGG или WebM.';
+            fileInput.value = '';
+            return;
+        }
+        if (file.size <= 0 || file.size > 500 * 1024 * 1024) {
+            transcriptStatus.textContent = 'Размер аудиофайла должен быть от 1 байта до 500 МБ.';
+            fileInput.value = '';
+            return;
+        }
+
+        const size = formatBytes(file.size);
+        prepareTranscription(file, {
+            slug: slugFromFilename(file.name),
+            name: file.name,
+            meta: size,
+        });
+        transcriptStatus.textContent = 'Файл выбран. Нажмите «Расшифровать».';
+
+        const duration = await readAudioDuration(file);
+        if (file !== lastRecordingBlob) return;
+        selectedSourceMeta = [size, formatDuration(duration)].filter(Boolean).join(' · ');
+        renderSelectedSource();
     }
 
     async function decodeAudioForTranscription(blob) {
@@ -175,6 +280,8 @@
         let decoded;
         try {
             decoded = await audioContext.decodeAudioData(await blob.arrayBuffer());
+        } catch (error) {
+            throw new Error('Браузер не смог прочитать этот аудиоформат. Попробуйте MP3, WAV или WebM.');
         } finally {
             await audioContext.close();
         }
@@ -195,7 +302,7 @@
 
     function finishTranscription() {
         isTranscribing = false;
-        transcribeButton.disabled = false;
+        transcribeButton.disabled = !lastRecordingBlob;
         transcribeButton.textContent = 'Расшифровать снова';
     }
 
@@ -344,7 +451,7 @@
         } catch (error) {
             const detail = String(error?.message || '');
             transcriptStatus.textContent = detail.includes('Failed to fetch')
-                ? 'Локальный распознаватель не запущен. Установите его из пакета 17.77.'
+                ? 'Не удалось передать запись локальному распознавателю. Проверьте его состояние или переустановите пакет 17.78.'
                 : detail || 'Не удалось подготовить запись.';
             transcriptProgress.hidden = true;
             await cancelLocalTranscription();
@@ -431,7 +538,7 @@
 
         if (mimeType.startsWith('audio/mpeg')) {
             downloadBlob(sourceBlob, 'mp3');
-            prepareTranscription(sourceBlob);
+            prepareTranscription(sourceBlob, {name: `${recordingSlug}.mp3`});
             setMessage('MP3 сохранён на устройство.');
             return;
         }
@@ -439,11 +546,11 @@
         try {
             const mp3Blob = await convertToMp3(sourceBlob);
             downloadBlob(mp3Blob, 'mp3');
-            prepareTranscription(mp3Blob);
+            prepareTranscription(mp3Blob, {name: `${recordingSlug}.mp3`});
             setMessage('MP3 сохранён на устройство.');
         } catch (error) {
             downloadBlob(sourceBlob, 'webm');
-            prepareTranscription(sourceBlob);
+            prepareTranscription(sourceBlob, {name: `${recordingSlug}.webm`});
             setMessage('MP3 создать не удалось. Исходная запись сохранена в WebM.');
         }
     }
@@ -807,6 +914,10 @@
     });
 
     transcribeButton?.addEventListener('click', startTranscription);
+    fileInput?.addEventListener('change', () => selectAudioFile(fileInput.files?.[0]));
+    selectedFileClear?.addEventListener('click', () => {
+        resetTranscription({discardRecording: true});
+    });
     transcriptCopy?.addEventListener('click', async () => {
         if (!completedTranscript) return;
         try {
@@ -844,6 +955,7 @@
     });
 
     updateClocks();
+    resetTranscription();
     checkLocalTranscriber();
     setInterval(updateClocks, 30000);
 })();

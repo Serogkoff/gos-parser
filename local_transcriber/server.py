@@ -25,6 +25,7 @@ HOST = "127.0.0.1"
 PORT = int(os.getenv("GOS_TRANSCRIBER_PORT", "8765"))
 MAX_FILE_BYTES = 500 * 1024 * 1024
 MAX_CHUNK_BYTES = 5 * 1024 * 1024
+ALLOWED_REQUEST_HEADERS = "Content-Type, X-Upload-Offset"
 DEFAULT_ORIGINS = {
     "https://ria.tail196372.ts.net",
     "http://127.0.0.1:5000",
@@ -244,7 +245,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(204)
         self._cors()
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", ALLOWED_REQUEST_HEADERS)
         self.send_header("Access-Control-Max-Age", "600")
         self.end_headers()
 

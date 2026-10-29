@@ -125,9 +125,15 @@ class AuthenticationTests(unittest.TestCase):
         installer = self.client.get("/tv/transcriber-installer")
         self.assertEqual(installer.status_code, 200)
         self.assertEqual(installer.mimetype, "application/zip")
+        self.assertIn(
+            "gos-parser-transcriber-windows-17.78.zip",
+            installer.headers["Content-Disposition"],
+        )
         with zipfile.ZipFile(BytesIO(installer.data)) as archive:
             self.assertIn("install-local-transcriber.ps1", archive.namelist())
             self.assertIn("local_transcriber/server.py", archive.namelist())
+            server = archive.read("local_transcriber/server.py").decode("utf-8")
+            self.assertIn("X-Upload-Offset", server)
 
         reader = storage.create_user("tv-reader", "reader-secret-2026")
         with self.client.session_transaction() as session:

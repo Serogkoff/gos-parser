@@ -98,9 +98,12 @@ class WebTemplateTests(unittest.TestCase):
             "decodeAudioForTranscription",
             "const chunkSize = 5 * 1024 * 1024",
             "X-Upload-Offset",
-            "Локальный распознаватель не запущен",
+            "Не удалось передать запись локальному распознавателю",
             "pcmToWav",
             "Расшифровка готова",
+            "selectAudioFile",
+            "readAudioDuration",
+            "slugFromFilename",
         ):
             with self.subTest(tv_marker=marker):
                 self.assertIn(marker, javascript)
@@ -117,9 +120,13 @@ class WebTemplateTests(unittest.TestCase):
         self.assertNotIn("tv_gigaam_worker.js", template)
         self.assertNotIn("onnx-asr-web", javascript)
 
-        self.assertIn('id="tv-transcript" hidden', template)
+        self.assertIn('id="tv-transcript"', template)
+        self.assertNotIn('id="tv-transcript" hidden', template)
         self.assertIn('id="tv-transcribe"', template)
         self.assertIn('id="tv-transcript-mode"', template)
+        self.assertIn('id="tv-file-input"', template)
+        self.assertIn('accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.oga,.webm"', template)
+        self.assertIn('id="tv-selected-file"', template)
         self.assertIn("Скачать для Windows", template)
         self.assertIn("tv_transcriber_installer", template)
         self.assertIn("checkLocalTranscriber", javascript)

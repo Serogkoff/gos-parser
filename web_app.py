@@ -711,7 +711,7 @@ def tv_transcriber_installer():
         output,
         mimetype="application/zip",
         as_attachment=True,
-        download_name="gos-parser-transcriber-windows-17.77.zip",
+        download_name="gos-parser-transcriber-windows-17.78.zip",
         max_age=0,
     )
 

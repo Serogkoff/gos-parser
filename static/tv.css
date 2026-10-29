@@ -278,12 +278,26 @@ button:focus-visible, a:focus-visible, video:focus-visible {
 .tv-transcript-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .tv-transcript-head h2 { margin: 0; font: 18px Georgia, "Times New Roman", serif; }
 .tv-transcript-head p { margin: 5px 0 0; color: var(--muted); font-size: 10px; }
+.tv-transcript-title-row { display: flex; align-items: center; gap: 12px; }
+.tv-file-picker { min-height: 30px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; border: 1px solid var(--line); border-radius: 3px; color: var(--coral-dark); background: #fff; font-size: 10px; }
+.tv-file-picker:hover { border-color: #efaaa5; }
+.tv-file-picker input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.tv-file-picker span { font-size: 16px; line-height: 1; }
+.tv-file-picker b { font-weight: 700; }
 .tv-transcript-controls { display: flex; align-items: flex-end; gap: 8px; }
 .tv-transcript-controls label { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
 .tv-transcript-controls select { min-height: 38px; padding: 0 28px 0 10px; border: 1px solid var(--line); border-radius: 3px; color: #343430; background: #fff; font-size: 11px; }
 .tv-transcribe { min-width: 138px; min-height: 38px; padding: 0 14px; border: 1px solid var(--coral); border-radius: 3px; color: #fff; background: var(--coral); font-size: 11px; font-weight: 700; }
 .tv-transcribe:hover { background: var(--coral-dark); }
 .tv-transcribe:disabled { cursor: wait; opacity: .55; }
+.tv-selected-file { margin-top: 13px; padding: 9px 10px; display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; align-items: center; gap: 9px; border: 1px solid #eee8e2; border-radius: 3px; background: #fbfaf8; }
+.tv-selected-file[hidden] { display: none; }
+.tv-selected-file-icon { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--coral); font: 16px Georgia, "Times New Roman", serif; }
+.tv-selected-file div { min-width: 0; display: grid; gap: 2px; }
+.tv-selected-file strong { overflow: hidden; color: #292925; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.tv-selected-file div span { color: var(--muted); font-size: 9px; }
+.tv-selected-file button { width: 28px; height: 28px; padding: 0; border: 0; color: #8a8984; background: transparent; font-size: 18px; }
+.tv-selected-file button:hover { color: var(--coral-dark); }
 .tv-transcript-progress { height: 3px; margin-top: 14px; overflow: hidden; background: #eeeae5; }
 .tv-transcript-progress i { width: 0; height: 100%; display: block; background: var(--coral); transition: width .2s ease; }
 .tv-transcript-text { width: 100%; min-height: 180px; margin-top: 14px; padding: 13px 14px; resize: vertical; border: 1px solid var(--line); border-radius: 3px; color: #292925; background: #fbfbf9; font: 13px/1.65 Inter, Manrope, "Segoe UI", Arial, sans-serif; }

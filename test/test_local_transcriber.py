@@ -4,7 +4,11 @@ import unittest
 import wave
 from pathlib import Path
 
-from local_transcriber.server import MAX_CHUNK_BYTES, JobStore
+from local_transcriber.server import (
+    ALLOWED_REQUEST_HEADERS,
+    MAX_CHUNK_BYTES,
+    JobStore,
+)
 
 
 class FakeRecognizer:
@@ -34,6 +38,10 @@ def wav_bytes():
 
 
 class LocalTranscriberTests(unittest.TestCase):
+    def test_chunk_offset_header_is_allowed_by_cors(self):
+        self.assertIn("Content-Type", ALLOWED_REQUEST_HEADERS)
+        self.assertIn("X-Upload-Offset", ALLOWED_REQUEST_HEADERS)
+
     def test_upload_is_ordered_and_transcription_keeps_timestamps(self):
         content = wav_bytes()
         with tempfile.TemporaryDirectory() as directory:
