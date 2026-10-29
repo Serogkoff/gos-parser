@@ -429,7 +429,7 @@
         setStreamButton('Остановить эфир', {running: true});
     }
 
-    async function playHlsStream(streamUrl, {fallbackMessage = ''} = {}) {
+    async function playHlsStream(streamUrl, {fallbackMessage = '', fallbackUrl = ''} = {}) {
         frame.src = 'about:blank';
         frame.hidden = true;
         video.hidden = false;
@@ -439,6 +439,13 @@
         if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = streamUrl;
             markPlayerStarted('hls');
+            if (fallbackUrl) {
+                video.addEventListener('error', async () => {
+                    await playHlsStream(fallbackUrl, {
+                        fallbackMessage: 'Прямой поток недоступен — эфир переключён через РИА.',
+                    });
+                }, {once: true});
+            }
             try {
                 await video.play();
             } catch (error) {
@@ -450,9 +457,15 @@
         if (window.Hls?.isSupported()) {
             hls = new window.Hls({
                 enableWorker: true,
-                lowLatencyMode: true,
-                backBufferLength: 30,
-                maxBufferLength: 20,
+                lowLatencyMode: false,
+                startFragPrefetch: true,
+                backBufferLength: 60,
+                maxBufferLength: 90,
+                maxMaxBufferLength: 180,
+                manifestLoadingMaxRetry: 2,
+                levelLoadingMaxRetry: 2,
+                fragLoadingMaxRetry: 3,
+                fragLoadingRetryDelay: 750,
             });
             hls.on(window.Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(streamUrl));
             hls.on(window.Hls.Events.MANIFEST_PARSED, async () => {
@@ -465,6 +478,14 @@
             hls.on(window.Hls.Events.ERROR, (_event, data) => {
                 if (!data.fatal) return;
                 if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+                    if (fallbackUrl && streamUrl !== fallbackUrl) {
+                        hls.destroy();
+                        hls = null;
+                        playHlsStream(fallbackUrl, {
+                            fallbackMessage: 'Прямой поток недоступен — эфир переключён через РИА.',
+                        });
+                        return;
+                    }
                     hls.startLoad();
                     setMessage('Связь с эфиром прервалась — переподключаемся…');
                 } else if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
@@ -545,6 +566,32 @@
         await playHlsStream(payload.stream_url);
     }
 
+    async function playRussia24Stream() {
+        setStreamButton('Подключаемся…', {disabled: true});
+        setPlaceholder('', '');
+        setMessage('');
+        let response;
+        let payload;
+        try {
+            response = await fetch(activeChannel.dataset.discoveryUrl, {
+                credentials: 'same-origin',
+                headers: {'Accept': 'application/json'},
+            });
+            payload = await response.json();
+        } catch (error) {
+            payload = {available: false};
+        }
+        if (!response?.ok || !payload.available || !payload.stream_url) {
+            setPlaceholder('Эфир временно недоступен', 'Попробуйте повторить подключение.');
+            setStreamButton('Повторить');
+            return;
+        }
+        sourceLink.href = payload.external_url || activeChannel.dataset.sourceUrl;
+        await playHlsStream(payload.direct_stream_url || payload.stream_url, {
+            fallbackUrl: payload.direct_stream_url ? payload.stream_url : '',
+        });
+    }
+
     window.addEventListener('message', (event) => {
         if (event.origin !== 'https://rutube.ru' || event.source !== frame.contentWindow) return;
         let payload = event.data;
@@ -566,21 +613,13 @@
         }
     });
 
-    function playIframeStream() {
-        frame.src = activeChannel.dataset.streamUrl || player.dataset.streamSrc;
-        frame.hidden = false;
-        placeholder.hidden = true;
-        markPlayerStarted('iframe');
-        setMessage('');
-    }
-
     playButton.addEventListener('click', async () => {
         if (activePlayerKind) {
             resetPlayer({saveRecording: true});
             return;
         }
         if (activeChannel.dataset.streamKind === 'mid') await playMidStream();
-        else playIframeStream();
+        else await playRussia24Stream();
     });
 
     channelButtons.forEach((button) => {

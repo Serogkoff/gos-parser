@@ -43,7 +43,7 @@ class WebTemplateTests(unittest.TestCase):
             Path(web_app.app.static_folder) / "tv.css"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('data-stream-src="{{stream_embed_url}}"', template)
+        self.assertIn('data-russia24-discovery-url="{{russia24_discovery_url}}"', template)
         self.assertIn('href="{{stream_page_url}}"', template)
         self.assertIn("Открыть источник", template)
         self.assertNotIn("Открыть официальный эфир", template)
@@ -82,6 +82,9 @@ class WebTemplateTests(unittest.TestCase):
             "new MediaStream(audioTracks)",
             "new MediaRecorder",
             "new window.Hls",
+            "lowLatencyMode: false",
+            "maxBufferLength: 90",
+            "Прямой поток недоступен — эфир переключён через РИА.",
             "payload.stream_url",
             "payload.embed_url",
             "player:ready",

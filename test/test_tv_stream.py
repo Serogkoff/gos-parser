@@ -234,6 +234,15 @@ class TvStreamWebTests(unittest.TestCase):
         self.assertNotIn("hls_url", payload)
         self.assertNotIn("token=secret", response.get_data(as_text=True))
 
+    def test_russia24_returns_official_stream_and_signed_fallback(self):
+        response = self.client.get("/api/tv/russia24-stream")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["direct_stream_url"], tv_stream.RUSSIA24_HLS_URL)
+        self.assertTrue(payload["stream_url"].startswith("/api/tv/hls/"))
+        self.assertEqual(payload["transport"], "auto")
+
     def test_mid_offline_is_normal_response(self):
         discovered = {
             "available": False,

@@ -105,7 +105,7 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
         self.assertEqual(response.headers["X-Frame-Options"], "DENY")
         self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
-        self.assertIn("https://smotret.tv", response.headers["Content-Security-Policy"])
+        self.assertIn("https://smotrim.ru", response.headers["Content-Security-Policy"])
         self.assertIn("https://rutube.ru", response.headers["Content-Security-Policy"])
 
     def test_tv_requires_admin_role_or_personal_permission(self):
@@ -118,11 +118,8 @@ class AuthenticationTests(unittest.TestCase):
         self.assertIn("https://huggingface.co", tv_csp)
         self.assertIn("https://cdn.jsdelivr.net", tv_csp)
         self.assertIn("'wasm-unsafe-eval'", tv_csp)
-        self.assertIn(
-            'data-stream-src="https://smotret.tv/online/rossiya-24.html"',
-            admin_html,
-        )
-        self.assertIn('href="https://smotret.tv/rossiya24"', admin_html)
+        self.assertIn('data-stream-kind="russia24"', admin_html)
+        self.assertIn('href="https://smotrim.ru/live/21"', admin_html)
 
         worker = self.client.get("/static/tv_transcribe_worker.js")
         self.assertEqual(worker.status_code, 200)

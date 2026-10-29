@@ -43,7 +43,7 @@
 
         <section class="tv-workspace">
             <nav class="tv-channel-tabs" aria-label="Телеканалы">
-                <button class="tv-channel-tab active" type="button" data-tv-channel="russia24" data-source-url="{{stream_page_url}}" data-stream-kind="iframe" data-stream-url="{{stream_embed_url}}">Россия 24</button>
+                <button class="tv-channel-tab active" type="button" data-tv-channel="russia24" data-source-url="{{stream_page_url}}" data-stream-kind="russia24" data-discovery-url="{{russia24_discovery_url}}">Россия 24</button>
                 <button class="tv-channel-tab" type="button" data-tv-channel="mid" data-source-url="{{mid_page_url}}" data-channel-url="{{mid_channel_url}}" data-stream-kind="mid" data-discovery-url="{{mid_discovery_url}}">МИД России</button>
             </nav>
 
@@ -54,7 +54,7 @@
 
                 <div class="tv-grid">
                     <section class="tv-player-card">
-                        <div class="tv-player" id="tv-player" data-stream-src="{{stream_embed_url}}" data-mid-discovery-url="{{mid_discovery_url}}" data-mid-page-url="{{mid_page_url}}" data-mp3-worker-url="{{url_for('static', filename='tv_mp3_worker.js')}}?v={{PROJECT_VERSION}}" data-mp3-encoder-url="{{url_for('static', filename='vendor/lame.min.js')}}?v=1.2.1" data-transcription-worker-url="{{url_for('static', filename='tv_transcribe_worker.js')}}?v={{PROJECT_VERSION}}">
+                        <div class="tv-player" id="tv-player" data-russia24-discovery-url="{{russia24_discovery_url}}" data-mid-discovery-url="{{mid_discovery_url}}" data-mid-page-url="{{mid_page_url}}" data-mp3-worker-url="{{url_for('static', filename='tv_mp3_worker.js')}}?v={{PROJECT_VERSION}}" data-mp3-encoder-url="{{url_for('static', filename='vendor/lame.min.js')}}?v=1.2.1" data-transcription-worker-url="{{url_for('static', filename='tv_transcribe_worker.js')}}?v={{PROJECT_VERSION}}">
                             <div class="tv-placeholder" id="tv-placeholder">
                                 <strong id="tv-placeholder-title" hidden></strong>
                                 <span id="tv-placeholder-copy" hidden></span>

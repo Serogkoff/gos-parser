@@ -11,12 +11,14 @@ import html
 import ipaddress
 import re
 import socket
-from threading import Lock
+from threading import Lock, local
 from time import monotonic
 from urllib.parse import unquote, urljoin, urlsplit
 
 import requests
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from utils.http_client import HEADERS
 from utils.logger import get_logger
@@ -33,6 +35,8 @@ RUTUBE_OPTIONS_URL = (
     "?format=json&no_404=true&referer=https%253A%252F%252Frutube.ru&pver=v2"
 )
 RUTUBE_EMBED_URL = "https://rutube.ru/play/embed/{video_id}/?autoplay=true&q=720"
+RUSSIA24_PAGE_URL = "https://smotrim.ru/live/21"
+RUSSIA24_HLS_URL = "https://stream.smotrim.ru/hls2/russia_24/playlist_3.m3u8"
 DISCOVERY_CACHE_SECONDS = 60
 DISCOVERY_ERROR_CACHE_SECONDS = 15
 MAX_DISCOVERY_DOCUMENT_BYTES = 2_000_000
@@ -43,11 +47,13 @@ KNOWN_MEDIA_HOST_SUFFIXES = (
     "rutube.ru",
     "rtbcdn.ru",
     "rutube.video",
+    "smotrim.ru",
 )
 
 logger = get_logger("tv_stream")
 _cache_lock = Lock()
 _discovery_cache = {"expires": 0.0, "value": None}
+_stream_state = local()
 
 _HLS_URL_PATTERN = re.compile(
     r"(?P<url>(?:https?:)?//[^\s\"'<>\\]+?\.m3u8(?:\?[^\s\"'<>\\]*)?)",
@@ -76,6 +82,28 @@ def _request_headers(*, json_response=False, referer=""):
     if referer:
         headers["Referer"] = referer
     return headers
+
+
+def _stream_client():
+    """Keeps upstream TLS connections pooled per web thread."""
+    session = getattr(_stream_state, "session", None)
+    if session is not None:
+        return session
+    retry = Retry(
+        total=2,
+        connect=2,
+        read=1,
+        status=1,
+        backoff_factor=0.2,
+        status_forcelist=(429, 502, 503, 504),
+        allowed_methods=frozenset(("GET", "HEAD")),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=8, pool_maxsize=24)
+    session = requests.Session()
+    session.mount("https://", adapter)
+    _stream_state.session = session
+    return session
 
 
 def _response_text(response):
@@ -425,11 +453,17 @@ def rewrite_hls_manifest(manifest, base_url, sign_url):
     return "\n".join(rewritten) + "\n"
 
 
-def fetch_stream_resource(url, *, range_header="", client=requests):
+def fetch_stream_resource(url, *, range_header="", client=None):
     """Opens one validated HLS manifest or media segment for streaming."""
     if not is_safe_stream_url(url):
         raise TvStreamUnavailable("запрещённый адрес потока")
-    headers = _request_headers(referer=MID_RUTUBE_CHANNEL_URL)
+    client = client or _stream_client()
+    referer = (
+        RUSSIA24_PAGE_URL
+        if "smotrim.ru" in urlsplit(url).netloc
+        else MID_RUTUBE_CHANNEL_URL
+    )
+    headers = _request_headers(referer=referer)
     if range_header:
         headers["Range"] = range_header
     response = client.get(

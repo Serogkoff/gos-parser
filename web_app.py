@@ -164,6 +164,8 @@ from utils.storage import (
 from utils.tv_stream import (
     MID_RUTUBE_CHANNEL_URL,
     MID_VIDEO_PAGE_URL,
+    RUSSIA24_HLS_URL,
+    RUSSIA24_PAGE_URL,
     STREAM_CHUNK_BYTES,
     TvStreamUnavailable,
     discover_mid_stream,
@@ -430,6 +432,7 @@ def add_security_headers(response):
             " https://huggingface.co https://*.huggingface.co"
             " https://*.hf.co https://*.xethub.hf.co"
             " https://cdn.jsdelivr.net"
+            " https://smotrim.ru https://*.smotrim.ru"
         )
         script_sources += " 'wasm-unsafe-eval' https://cdn.jsdelivr.net"
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -447,10 +450,9 @@ def add_security_headers(response):
         f"connect-src {connect_sources}; "
         "form-action 'self'; "
         "frame-ancestors 'none'; "
-        "frame-src https://smotret.tv https://*.smotret.tv "
-        "https://rutube.ru https://*.rutube.ru; "
+        "frame-src https://rutube.ru https://*.rutube.ru; "
         "img-src 'self' data:; "
-        "media-src 'self' blob:; "
+        "media-src 'self' blob: https://smotrim.ru https://*.smotrim.ru; "
         "object-src 'none'; "
         f"script-src {script_sources}; "
         "style-src 'self' 'unsafe-inline'; "
@@ -682,8 +684,8 @@ def tv_page():
         "tv.html",
         current_user=user,
         csrf_token=csrf_token(),
-        stream_embed_url="https://smotret.tv/online/rossiya-24.html",
-        stream_page_url="https://smotret.tv/rossiya24",
+        stream_page_url=RUSSIA24_PAGE_URL,
+        russia24_discovery_url=url_for("tv_russia24_stream"),
         mid_discovery_url=url_for("tv_mid_stream"),
         mid_page_url=MID_VIDEO_PAGE_URL,
         mid_channel_url=MID_RUTUBE_CHANNEL_URL,
@@ -709,6 +711,22 @@ def _tv_stream_serializer():
 def _tv_relay_url(upstream_url):
     token = _tv_stream_serializer().dumps({"url": upstream_url})
     return url_for("tv_hls_proxy", token=token)
+
+
+@app.get("/api/tv/russia24-stream")
+def tv_russia24_stream():
+    """Returns the official client stream and a signed RIA fallback."""
+    _tv_user()
+    if not is_safe_stream_url(RUSSIA24_HLS_URL, resolve_unknown=False):
+        return jsonify(available=False, reason="unavailable"), 502
+    return jsonify(
+        available=True,
+        title="Россия 24",
+        external_url=RUSSIA24_PAGE_URL,
+        direct_stream_url=RUSSIA24_HLS_URL,
+        stream_url=_tv_relay_url(RUSSIA24_HLS_URL),
+        transport="auto",
+    )
 
 
 @app.get("/api/tv/mid-stream")
