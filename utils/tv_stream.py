@@ -32,6 +32,7 @@ RUTUBE_OPTIONS_URL = (
     "https://rutube.ru/api/play/options/{video_id}/"
     "?format=json&no_404=true&referer=https%253A%252F%252Frutube.ru&pver=v2"
 )
+RUTUBE_EMBED_URL = "https://rutube.ru/play/embed/{video_id}/?autoplay=true&q=720"
 DISCOVERY_CACHE_SECONDS = 60
 DISCOVERY_ERROR_CACHE_SECONDS = 15
 MAX_DISCOVERY_DOCUMENT_BYTES = 2_000_000
@@ -129,6 +130,14 @@ def extract_rutube_video_id(value):
     return match.group("video_id").casefold() if match else ""
 
 
+def rutube_embed_url(video_id):
+    """Builds an official embed URL only for a validated RUTUBE video id."""
+    normalised = str(video_id or "").strip().casefold()
+    if not re.fullmatch(r"[0-9a-f]{32}", normalised):
+        return ""
+    return RUTUBE_EMBED_URL.format(video_id=normalised)
+
+
 def _hls_url_from_options(options):
     if not isinstance(options, dict):
         return ""
@@ -207,6 +216,7 @@ def _discover_from_mid_page(client):
                     "hls_url": _rutube_stream(client, video_id),
                     "external_url": MID_VIDEO_PAGE_URL,
                     "video_id": video_id,
+                    "embed_url": rutube_embed_url(video_id),
                     "source": "mid-page-rutube",
                 }
 
@@ -236,6 +246,7 @@ def _discover_from_mid_page(client):
                 "hls_url": _rutube_stream(client, video_id),
                 "external_url": MID_VIDEO_PAGE_URL,
                 "video_id": video_id,
+                "embed_url": rutube_embed_url(video_id),
                 "source": "mid-page-rutube",
             }
     return None
@@ -291,6 +302,7 @@ def _discover_from_rutube_channel(client):
             live_item.get("thumbnail_url") or live_item.get("picture_url") or ""
         ).strip(),
         "video_id": video_id,
+        "embed_url": rutube_embed_url(video_id),
         "source": "rutube-channel",
     }
 

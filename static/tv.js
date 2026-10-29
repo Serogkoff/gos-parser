@@ -29,6 +29,8 @@
     let activeChannel = channelButtons.find((button) => button.classList.contains('active')) || channelButtons[0];
     let activePlayerKind = '';
     let hls = null;
+    let midFallbackTimer = null;
+    let pendingMidRelayUrl = '';
     let captureStream = null;
     let mediaRecorder = null;
     let recordedChunks = [];
@@ -404,11 +406,18 @@
         video.hidden = true;
     }
 
+    function clearMidFallback() {
+        if (midFallbackTimer) clearTimeout(midFallbackTimer);
+        midFallbackTimer = null;
+        pendingMidRelayUrl = '';
+    }
+
     function resetPlayer({saveRecording = true} = {}) {
         if (mediaRecorder?.state === 'recording') stopRecording(saveRecording);
         frame.src = 'about:blank';
         frame.hidden = true;
         destroyHlsPlayer();
+        clearMidFallback();
         activePlayerKind = '';
         setPlaceholder('', '');
         setStreamButton('Запустить эфир');
@@ -420,40 +429,13 @@
         setStreamButton('Остановить эфир', {running: true});
     }
 
-    async function playMidStream() {
-        setStreamButton('Проверяем эфир…', {disabled: true});
-        setPlaceholder('', '');
-        setMessage('');
-
-        let response;
-        let payload;
-        try {
-            response = await fetch(activeChannel.dataset.discoveryUrl, {
-                credentials: 'same-origin',
-                headers: {'Accept': 'application/json'},
-            });
-            payload = await response.json();
-        } catch (error) {
-            payload = {available: false, reason: 'unavailable', title: 'Не удалось проверить трансляцию'};
-        }
-
-        if (!response?.ok || !payload.available || !payload.stream_url) {
-            setPlaceholder(
-                payload.title || 'Сейчас трансляции нет',
-                payload.reason === 'unavailable'
-                    ? 'Источник временно не ответил. Можно открыть официальный видеораздел.'
-                    : 'Когда МИД начнёт эфир, он появится здесь после повторной проверки.',
-            );
-            setStreamButton('Проверить снова');
-            sourceLink.href = payload.external_url || activeChannel.dataset.sourceUrl;
-            return;
-        }
-
-        sourceLink.href = payload.external_url || activeChannel.dataset.sourceUrl;
+    async function playHlsStream(streamUrl, {fallbackMessage = ''} = {}) {
+        frame.src = 'about:blank';
+        frame.hidden = true;
         video.hidden = false;
         placeholder.hidden = true;
 
-        const streamUrl = payload.stream_url;
+        if (fallbackMessage) setMessage(fallbackMessage);
         if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = streamUrl;
             markPlayerStarted('hls');
@@ -462,7 +444,7 @@
             } catch (error) {
                 setMessage('Поток готов. Нажмите Play внутри плеера.');
             }
-            return;
+            return true;
         }
 
         if (window.Hls?.isSupported()) {
@@ -495,13 +477,94 @@
             });
             hls.attachMedia(video);
             markPlayerStarted('hls');
-            return;
+            return true;
         }
 
         video.hidden = true;
         setPlaceholder('Браузер не поддерживает HLS', 'Откройте официальный источник или используйте современный браузер.');
         setStreamButton('Повторить');
+        return false;
     }
+
+    function startMidDirect(embedUrl, relayUrl) {
+        pendingMidRelayUrl = relayUrl;
+        frame.src = embedUrl;
+        frame.hidden = false;
+        video.hidden = true;
+        placeholder.hidden = true;
+        markPlayerStarted('rutube');
+        setMessage('Открываем официальный плеер RUTUBE…');
+        midFallbackTimer = setTimeout(async () => {
+            const fallbackUrl = pendingMidRelayUrl;
+            clearMidFallback();
+            if (activeChannel?.dataset.tvChannel !== 'mid' || activePlayerKind !== 'rutube') return;
+            if (!fallbackUrl) {
+                setMessage('RUTUBE не ответил. Попробуйте открыть источник.');
+                return;
+            }
+            await playHlsStream(fallbackUrl, {
+                fallbackMessage: 'RUTUBE не ответил — эфир переключён через РИА.',
+            });
+        }, 18000);
+    }
+
+    async function playMidStream() {
+        setStreamButton('Проверяем эфир…', {disabled: true});
+        setPlaceholder('', '');
+        setMessage('');
+
+        let response;
+        let payload;
+        try {
+            response = await fetch(activeChannel.dataset.discoveryUrl, {
+                credentials: 'same-origin',
+                headers: {'Accept': 'application/json'},
+            });
+            payload = await response.json();
+        } catch (error) {
+            payload = {available: false, reason: 'unavailable', title: 'Не удалось проверить трансляцию'};
+        }
+
+        if (!response?.ok || !payload.available || (!payload.embed_url && !payload.stream_url)) {
+            setPlaceholder(
+                payload.title || 'Сейчас трансляции нет',
+                payload.reason === 'unavailable'
+                    ? 'Источник временно не ответил. Можно открыть официальный видеораздел.'
+                    : 'Когда МИД начнёт эфир, он появится здесь после повторной проверки.',
+            );
+            setStreamButton('Проверить снова');
+            sourceLink.href = payload.external_url || activeChannel.dataset.sourceUrl;
+            return;
+        }
+
+        sourceLink.href = payload.external_url || activeChannel.dataset.sourceUrl;
+        if (payload.embed_url) {
+            startMidDirect(payload.embed_url, payload.stream_url || '');
+            return;
+        }
+        await playHlsStream(payload.stream_url);
+    }
+
+    window.addEventListener('message', (event) => {
+        if (event.origin !== 'https://rutube.ru' || event.source !== frame.contentWindow) return;
+        let payload = event.data;
+        if (typeof payload === 'string') {
+            try {
+                payload = JSON.parse(payload);
+            } catch (error) {
+                return;
+            }
+        }
+        if (!payload || typeof payload !== 'object') return;
+        if (payload.type === 'player:ready') {
+            frame.contentWindow?.postMessage(JSON.stringify({type: 'player:play', data: {}}), 'https://rutube.ru');
+        }
+        const state = payload?.data?.state;
+        if (state === 'playing' || payload.type === 'player:adStart') {
+            clearMidFallback();
+            setMessage('');
+        }
+    });
 
     function playIframeStream() {
         frame.src = activeChannel.dataset.streamUrl || player.dataset.streamSrc;

@@ -61,6 +61,12 @@ class TvStreamTests(unittest.TestCase):
             ),
             "33e5364433359c6be79b89a00034e8a5",
         )
+        self.assertEqual(
+            tv_stream.rutube_embed_url("33e5364433359c6be79b89a00034e8a5"),
+            "https://rutube.ru/play/embed/33e5364433359c6be79b89a00034e8a5/"
+            "?autoplay=true&q=720",
+        )
+        self.assertEqual(tv_stream.rutube_embed_url("bad"), "")
 
     def test_discovers_hls_in_official_mid_player_iframe(self):
         page = b'<iframe src="/assets/mid_player_live.html?v=2"></iframe>'
@@ -123,6 +129,7 @@ class TvStreamTests(unittest.TestCase):
         self.assertTrue(result["available"])
         self.assertEqual(result["title"], "Брифинг")
         self.assertEqual(result["video_id"], video_id)
+        self.assertIn(video_id, result["embed_url"])
 
     def test_reports_offline_without_requesting_play_options(self):
         client = FakeClient(
@@ -212,6 +219,7 @@ class TvStreamWebTests(unittest.TestCase):
             "title": "Прямой эфир",
             "hls_url": "https://bl.rutube.ru/route/live.m3u8?token=secret",
             "external_url": tv_stream.MID_VIDEO_PAGE_URL,
+            "embed_url": "https://rutube.ru/play/embed/" + "1" * 32 + "/",
             "source": "rutube-channel",
         }
         with patch("web_app.discover_mid_stream", return_value=discovered):
@@ -222,6 +230,7 @@ class TvStreamWebTests(unittest.TestCase):
         self.assertTrue(payload["available"])
         self.assertEqual(payload["transport"], "ria")
         self.assertTrue(payload["stream_url"].startswith("/api/tv/hls/"))
+        self.assertTrue(payload["embed_url"].startswith("https://rutube.ru/play/embed/"))
         self.assertNotIn("hls_url", payload)
         self.assertNotIn("token=secret", response.get_data(as_text=True))
 
