@@ -422,7 +422,7 @@ def add_security_headers(response):
         request.endpoint == "tv_page"
         or (
             request.endpoint == "static"
-            and static_filename == "tv_transcribe_worker.js"
+            and static_filename == "tv_gigaam_worker.js"
         )
     )
     connect_sources = "'self'"
@@ -469,7 +469,7 @@ def add_security_headers(response):
                 "tv.css",
                 "tv.js",
                 "tv_mp3_worker.js",
-                "tv_transcribe_worker.js",
+                "tv_gigaam_worker.js",
                 "vendor/hls.min.js",
                 "vendor/lame.min.js",
             }

@@ -121,7 +121,7 @@ class AuthenticationTests(unittest.TestCase):
         self.assertIn('data-stream-kind="russia24"', admin_html)
         self.assertIn('href="https://smotrim.ru/live/21"', admin_html)
 
-        worker = self.client.get("/static/tv_transcribe_worker.js")
+        worker = self.client.get("/static/tv_gigaam_worker.js")
         self.assertEqual(worker.status_code, 200)
         worker_csp = worker.headers["Content-Security-Policy"]
         self.assertIn("https://huggingface.co", worker_csp)

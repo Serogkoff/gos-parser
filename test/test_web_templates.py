@@ -37,7 +37,7 @@ class WebTemplateTests(unittest.TestCase):
             Path(web_app.app.static_folder) / "tv_mp3_worker.js"
         ).read_text(encoding="utf-8")
         transcription_worker = (
-            Path(web_app.app.static_folder) / "tv_transcribe_worker.js"
+            Path(web_app.app.static_folder) / "tv_gigaam_worker.js"
         ).read_text(encoding="utf-8")
         stylesheet = (
             Path(web_app.app.static_folder) / "tv.css"
@@ -115,17 +115,18 @@ class WebTemplateTests(unittest.TestCase):
                 self.assertIn(marker, mp3_worker)
 
         for marker in (
-            "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1",
-            "onnx-community/whisper-base",
-            "automatic-speech-recognition",
-            "language: 'russian'",
-            "chunk_length_s: 30",
-            "return_timestamps: true",
+            "https://cdn.jsdelivr.net/npm/onnx-asr-web@0.1.3/browser/+esm",
+            "istupakov/gigaam-v3-onnx",
+            "onnx-community/silero-vad",
+            "version: 'v3_e2e'",
+            "loadLocalModel",
+            "transcribeSamples",
         ):
             with self.subTest(transcription_worker_marker=marker):
                 self.assertIn(marker, transcription_worker)
 
         self.assertNotIn("transformers.web.min.js", transcription_worker)
+        self.assertNotIn("whisper", transcription_worker.lower())
 
         self.assertIn('id="tv-transcript" hidden', template)
         self.assertIn('id="tv-transcribe"', template)

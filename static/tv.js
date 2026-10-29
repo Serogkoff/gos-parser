@@ -144,7 +144,7 @@
         transcriptPanel.hidden = hide || !desktopTranscriptionEnabled || !lastRecordingBlob;
         transcribeButton.disabled = false;
         transcribeButton.textContent = 'Расшифровать';
-        transcriptStatus.textContent = 'Готово к запуску на этом компьютере.';
+        transcriptStatus.textContent = 'GigaAM обработает запись на этом компьютере.';
         transcriptProgress.hidden = true;
         transcriptProgressValue.style.width = '0%';
         transcriptText.hidden = true;
@@ -239,13 +239,14 @@
                 if (event.data.type === 'model-progress') {
                     if (Number.isFinite(event.data.value)) {
                         transcriptProgressValue.style.width = `${Math.max(2, event.data.value)}%`;
-                        transcriptStatus.textContent = `Загружаем модель: ${event.data.value}%`;
+                        transcriptStatus.textContent = event.data.message
+                            || `Подготавливаем GigaAM: ${event.data.value}%`;
                     }
                     return;
                 }
                 if (event.data.type === 'status') {
                     transcriptStatus.textContent = event.data.message;
-                    if (event.data.message === 'Распознаём речь…') {
+                    if (event.data.message === 'GigaAM распознаёт речь…') {
                         transcriptProgressValue.style.width = '100%';
                     }
                     return;
@@ -265,8 +266,8 @@
                 if (event.data.type === 'error') {
                     const detail = String(event.data.message || '').trim();
                     transcriptStatus.textContent = detail
-                        ? `Ошибка модели: ${detail}`
-                        : 'Не удалось загрузить модель или распознать запись.';
+                        ? detail
+                        : 'Не удалось загрузить GigaAM или распознать запись.';
                     transcriptProgress.hidden = true;
                     finishTranscriptionWorker();
                 }
@@ -275,7 +276,7 @@
                 const detail = String(event.message || '').trim();
                 transcriptStatus.textContent = detail
                     ? `Ошибка загрузчика: ${detail}`
-                    : 'Модель не загрузилась. Проверьте доступ к jsDelivr и Hugging Face.';
+                    : 'GigaAM не загрузилась. Проверьте доступ к jsDelivr и Hugging Face.';
                 transcriptProgress.hidden = true;
                 finishTranscriptionWorker();
             }, {once: true});

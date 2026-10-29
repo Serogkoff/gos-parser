@@ -11,17 +11,22 @@ MP3 encoder. It is distributed under the GNU Lesser General Public License
 The upstream project and corresponding source code are available at the link
 above. No modifications were made to the vendored encoder.
 
-## Transformers.js 3.8.1
+## onnx-asr-web 0.1.3 and ONNX Runtime Web 1.24.3
 
 Desktop TV transcription loads the pinned browser distribution of
-[`@huggingface/transformers`](https://github.com/huggingface/transformers.js)
-from jsDelivr only after the user presses the transcription button. The
-library is distributed under the Apache License 2.0.
+[`onnx-asr-web`](https://github.com/SanderGi/onnx-asr-web) and its
+[`onnxruntime-web`](https://github.com/microsoft/onnxruntime) runtime from
+jsDelivr only after the user presses the transcription button. Both projects
+are distributed under the MIT License.
 
-## Whisper base
+## GigaAM v3 E2E RNNT and Silero VAD
 
-Speech recognition uses the multilingual
-[`onnx-community/whisper-base`](https://huggingface.co/onnx-community/whisper-base)
-model, an ONNX conversion of OpenAI Whisper for Transformers.js. Model files
-are downloaded and cached by the user's desktop browser; they are not bundled
-with or processed by the gos-parser server.
+Russian speech recognition uses the quantized ONNX files from
+[`istupakov/gigaam-v3-onnx`](https://huggingface.co/istupakov/gigaam-v3-onnx),
+based on the MIT-licensed
+[`salute-developers/GigaAM`](https://github.com/salute-developers/GigaAM)
+model, together with the MIT-licensed
+[`onnx-community/silero-vad`](https://huggingface.co/onnx-community/silero-vad)
+voice activity detector. Model files are downloaded and cached by the user's
+desktop browser; they are not bundled with or processed by the gos-parser
+server.

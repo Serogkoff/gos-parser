@@ -54,7 +54,7 @@
 
                 <div class="tv-grid">
                     <section class="tv-player-card">
-                        <div class="tv-player" id="tv-player" data-russia24-discovery-url="{{russia24_discovery_url}}" data-mid-discovery-url="{{mid_discovery_url}}" data-mid-page-url="{{mid_page_url}}" data-mp3-worker-url="{{url_for('static', filename='tv_mp3_worker.js')}}?v={{PROJECT_VERSION}}" data-mp3-encoder-url="{{url_for('static', filename='vendor/lame.min.js')}}?v=1.2.1" data-transcription-worker-url="{{url_for('static', filename='tv_transcribe_worker.js')}}?v={{PROJECT_VERSION}}">
+                        <div class="tv-player" id="tv-player" data-russia24-discovery-url="{{russia24_discovery_url}}" data-mid-discovery-url="{{mid_discovery_url}}" data-mid-page-url="{{mid_page_url}}" data-mp3-worker-url="{{url_for('static', filename='tv_mp3_worker.js')}}?v={{PROJECT_VERSION}}" data-mp3-encoder-url="{{url_for('static', filename='vendor/lame.min.js')}}?v=1.2.1" data-transcription-worker-url="{{url_for('static', filename='tv_gigaam_worker.js')}}?v={{PROJECT_VERSION}}">
                             <div class="tv-placeholder" id="tv-placeholder">
                                 <strong id="tv-placeholder-title" hidden></strong>
                                 <span id="tv-placeholder-copy" hidden></span>
@@ -82,7 +82,7 @@
                     <div class="tv-transcript-head">
                         <div>
                             <h2>Расшифровка записи</h2>
-                            <p id="tv-transcript-status" role="status" aria-live="polite">Готово к запуску на этом компьютере.</p>
+                            <p id="tv-transcript-status" role="status" aria-live="polite">GigaAM обработает запись на этом компьютере.</p>
                         </div>
                         <button class="tv-transcribe" id="tv-transcribe" type="button">Расшифровать</button>
                     </div>
