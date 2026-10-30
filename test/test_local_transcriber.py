@@ -1,3 +1,4 @@
+import os
 import tempfile
 import time
 import unittest
@@ -12,9 +13,11 @@ from local_transcriber.server import (
 
 
 class FakeRecognizer:
-    def transcribe(self, path, progress, mode="fast"):
+    def transcribe(self, path, progress, mode="fast", state=lambda *_: None):
         self.path = path
         self.mode = mode
+        state("loading_model", 2)
+        state("recognizing", 3)
         progress(1, 45)
         progress(2, 90)
         return [
@@ -38,6 +41,10 @@ def wav_bytes():
 
 
 class LocalTranscriberTests(unittest.TestCase):
+    def test_background_download_progress_is_disabled_for_pythonw(self):
+        self.assertEqual(os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS"), "1")
+        self.assertEqual(os.environ.get("TQDM_DISABLE"), "1")
+
     def test_chunk_offset_header_is_allowed_by_cors(self):
         self.assertIn("Content-Type", ALLOWED_REQUEST_HEADERS)
         self.assertIn("X-Upload-Offset", ALLOWED_REQUEST_HEADERS)
@@ -60,6 +67,7 @@ class LocalTranscriberTests(unittest.TestCase):
             self.assertEqual(job.progress, 100)
             self.assertEqual(job.text, "Первый фрагмент Второй фрагмент")
             self.assertEqual(store.recognizer.mode, "fast")
+            self.assertEqual(job.stage, "complete")
 
     def test_rejects_wrong_offset_and_non_wav(self):
         with tempfile.TemporaryDirectory() as directory:

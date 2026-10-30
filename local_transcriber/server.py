@@ -6,6 +6,7 @@ from the Monitor origins listed in ``GOS_TRANSCRIBER_ORIGINS``.
 
 from __future__ import annotations
 
+import gc
 import json
 import logging
 import os
@@ -37,6 +38,13 @@ ALLOWED_ORIGINS = {
     if item.strip()
 }
 
+# The scheduled task uses pythonw.exe, so stdout/stderr are absent.  Hugging
+# Face's tqdm progress bar crashes when it tries to write to that missing
+# stream while completing a model download.  Downloads performed by the
+# interactive installer still keep their normal progress display.
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TQDM_DISABLE", "1")
+
 
 def _duration_seconds(path: Path) -> float:
     with wave.open(str(path), "rb") as audio:
@@ -48,15 +56,23 @@ class GigaamRecognizer:
     """Lazy, reusable CPU recognizer. Model files remain in the local cache."""
 
     def __init__(self):
-        self._models = {}
+        self._model = None
+        self._mode = ""
         self._vad = None
         self._lock = threading.Lock()
 
-    def _load(self, mode):
-        if mode not in self._models:
+    def _load(self, mode, state):
+        if self._model is None or self._mode != mode:
             import onnx_asr
 
+            state("loading_model", 2)
+            logging.info("Loading local GigaAM model: mode=%s", mode)
+            if self._model is not None:
+                self._model = None
+                self._mode = ""
+                gc.collect()
             if self._vad is None:
+                state("loading_vad", 2)
                 self._vad = onnx_asr.load_vad("silero")
             model_name = (
                 "gigaam-v3-e2e-rnnt"
@@ -64,12 +80,15 @@ class GigaamRecognizer:
                 else "gigaam-v3-e2e-ctc"
             )
             base = onnx_asr.load_model(model_name, quantization="int8")
-            self._models[mode] = base.with_vad(self._vad)
-        return self._models[mode]
+            self._model = base.with_vad(self._vad)
+            self._mode = mode
+            logging.info("Local GigaAM model is ready: mode=%s", mode)
+        return self._model
 
-    def transcribe(self, path: Path, progress, mode="fast"):
+    def transcribe(self, path: Path, progress, mode="fast", state=lambda *_: None):
         with self._lock:
-            model = self._load(mode)
+            model = self._load(mode, state)
+            state("recognizing", 3)
             duration = max(0.1, _duration_seconds(path))
             segments = []
             for index, result in enumerate(model.recognize(str(path), channel="mean"), start=1):
@@ -93,6 +112,7 @@ class Job:
     mode: str = "fast"
     received: int = 0
     status: str = "uploading"
+    stage: str = "uploading"
     progress: int = 0
     fragment: int = 0
     text: str = ""
@@ -108,6 +128,7 @@ class Job:
             "mode": self.mode,
             "received": self.received,
             "status": self.status,
+            "stage": self.stage,
             "progress": self.progress,
             "fragment": self.fragment,
             "text": self.text,
@@ -175,21 +196,46 @@ class JobStore:
     def _run(self, job: Job):
         try:
             job.status = "processing"
+            logging.info(
+                "Local transcription started: job=%s mode=%s bytes=%s",
+                job.job_id,
+                job.mode,
+                job.size,
+            )
 
             def update(fragment, progress):
+                job.stage = "recognizing"
                 job.fragment = fragment
                 job.progress = progress
                 job.updated_at = time.time()
 
-            job.segments = self.recognizer.transcribe(job.path, update, job.mode)
+            def update_state(stage, progress):
+                job.stage = stage
+                job.progress = progress
+                job.updated_at = time.time()
+
+            job.segments = self.recognizer.transcribe(
+                job.path,
+                update,
+                job.mode,
+                update_state,
+            )
             job.text = " ".join(
                 item["text"].strip() for item in job.segments if item["text"].strip()
             )
             job.progress = 100
             job.status = "complete"
+            job.stage = "complete"
+            logging.info(
+                "Local transcription completed: job=%s mode=%s segments=%s",
+                job.job_id,
+                job.mode,
+                len(job.segments),
+            )
         except Exception as error:
             logging.exception("Local transcription failed")
             job.status = "error"
+            job.stage = "error"
             job.error = str(error) or type(error).__name__
         finally:
             job.updated_at = time.time()

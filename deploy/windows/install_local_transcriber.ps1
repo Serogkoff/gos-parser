@@ -22,6 +22,10 @@ if (-not (Test-Path (Join-Path $SourceDir "server.py"))) {
     throw "Local transcriber sources were not found: $SourceDir"
 }
 
+# Stop an older recognizer before updating files and loading the two models.
+# This prevents the previous ONNX session from competing for RAM during setup.
+Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+
 $PyLauncher = Get-Command "py.exe" -ErrorAction SilentlyContinue
 $Python = Get-Command "python.exe" -ErrorAction SilentlyContinue
 
@@ -54,7 +58,6 @@ Write-Host "Installing the CPU recognition engine..." -ForegroundColor Cyan
 Write-Host "Downloading GigaAM once (the files remain in the local cache)..." -ForegroundColor Cyan
 & $VenvPython (Join-Path $InstallDir "preload.py")
 
-Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 
 $Action = New-ScheduledTaskAction `

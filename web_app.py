@@ -704,14 +704,14 @@ def tv_transcriber_installer():
         archive.writestr(
             "README.txt",
             "Extract the archive and run install-local-transcriber.ps1 "
-            "in PowerShell. The fast model is downloaded once.\r\n",
+            "in PowerShell. Both recognition models are downloaded once.\r\n",
         )
     output.seek(0)
     return send_file(
         output,
         mimetype="application/zip",
         as_attachment=True,
-        download_name="gos-parser-transcriber-windows-17.78.zip",
+        download_name="gos-parser-transcriber-windows-17.79.zip",
         max_age=0,
     )
 

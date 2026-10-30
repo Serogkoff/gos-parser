@@ -407,15 +407,32 @@
     }
 
     async function waitForLocalTranscript(jobId) {
+        let lastProgressAt = Date.now();
+        let lastStage = '';
         while (localTranscriptionJob === jobId) {
             const job = await localRequest(`/jobs/${jobId}`);
             if (job.status === 'complete') return job;
             if (job.status === 'error') throw new Error(job.error || 'Локальное распознавание завершилось с ошибкой.');
             const progress = Math.max(1, Number(job.progress) || 1);
+            if (job.stage !== lastStage || progress > Number(transcriptProgressValue.dataset.progress || 0)) {
+                lastStage = job.stage;
+                lastProgressAt = Date.now();
+                transcriptProgressValue.dataset.progress = String(progress);
+            }
             transcriptProgressValue.style.width = `${progress}%`;
-            transcriptStatus.textContent = job.status === 'queued'
-                ? 'Запись в локальной очереди…'
-                : `Распознаём фрагмент ${job.fragment || 1}: ${progress}%`;
+            if (job.status === 'queued') {
+                transcriptStatus.textContent = 'Запись в локальной очереди…';
+            } else if (job.stage === 'loading_vad') {
+                transcriptStatus.textContent = 'Запускаем модуль поиска речи…';
+            } else if (job.stage === 'loading_model') {
+                const modeName = job.mode === 'accurate' ? 'точную' : 'быструю';
+                transcriptStatus.textContent = `Загружаем ${modeName} модель в память…`;
+            } else {
+                transcriptStatus.textContent = `Распознаём фрагмент ${job.fragment || 1}: ${progress}%`;
+            }
+            if (Date.now() - lastProgressAt > 10 * 60 * 1000) {
+                throw new Error('Локальный распознаватель не отвечает более 10 минут. Перезапустите его или переустановите пакет 17.79.');
+            }
             await wait(750);
         }
         throw new Error('Расшифровка отменена.');
@@ -431,6 +448,7 @@
         transcriptActions.hidden = true;
         transcriptProgress.hidden = false;
         transcriptProgressValue.style.width = '2%';
+        transcriptProgressValue.dataset.progress = '2';
 
         try {
             transcriptStatus.textContent = 'Подготавливаем WAV для локального GigaAM…';
@@ -451,7 +469,7 @@
         } catch (error) {
             const detail = String(error?.message || '');
             transcriptStatus.textContent = detail.includes('Failed to fetch')
-                ? 'Не удалось передать запись локальному распознавателю. Проверьте его состояние или переустановите пакет 17.78.'
+                ? 'Не удалось передать запись локальному распознавателю. Проверьте его состояние или переустановите пакет 17.79.'
                 : detail || 'Не удалось подготовить запись.';
             transcriptProgress.hidden = true;
             await cancelLocalTranscription();
