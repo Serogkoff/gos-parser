@@ -1,4 +1,7 @@
+import json
 import unittest
+from datetime import datetime, timezone
+from io import StringIO
 from unittest.mock import patch
 
 from bs4 import BeautifulSoup
@@ -145,6 +148,123 @@ class VpnRssMediaTests(unittest.TestCase):
         self.assertEqual(items[0]["url"], "https://example.test/news/canonical")
         fetch.assert_called_once()
         self.assertEqual(fetch.call_args.kwargs["proxy_url"], "vpn-route")
+
+    def test_empty_feed_message_can_be_suppressed_for_source_fallback(self):
+        with (
+            patch("parsers.sites.vpn_rss.kyodo_proxy_url", return_value="vpn-route"),
+            patch("parsers.sites.vpn_rss.fetch_soup", return_value=None),
+            patch("sys.stdout", new_callable=StringIO) as output,
+        ):
+            items = parse_source(self.config, print_empty=False)
+
+        self.assertEqual(items, [])
+        self.assertEqual(output.getvalue(), "")
+
+    def test_meduza_reader_restores_feed_when_both_rss_routes_fail(self):
+        screen = {
+            "documents": {
+                "news/one": {
+                    "url": "news/2026/10/30/one",
+                    "title": "Первая содержательная новость резервного канала",
+                    "datetime": 1793353772,
+                },
+                "feature/two": {
+                    "url": "feature/2026/10/30/two",
+                    "title": "Вторая содержательная публикация резервного канала",
+                    "datetime": 1793352135,
+                },
+                "advertisement": {
+                    "url": "feed_banner/shop",
+                    "title": "Рекламный блок магазина редакции",
+                    "datetime": 1793354000,
+                },
+            }
+        }
+        payload = {"data": {"content": json.dumps(screen)}}
+        with (
+            patch("parsers.sites.meduza.parse_source", return_value=[]) as primary,
+            patch("parsers.sites.meduza.fetch_json", return_value=payload) as reader,
+        ):
+            items = meduza.parse()
+
+        self.assertEqual(len(items), 2)
+        self.assertEqual(items[0]["source"], "Meduza")
+        self.assertEqual(items[0]["section"], "Новости")
+        self.assertTrue(items[0]["url"].startswith("https://meduza.io/"))
+        self.assertTrue(items[0]["article_fetch_pending"])
+        primary.assert_called_once_with(meduza.CONFIG, print_empty=False)
+        reader.assert_called_once()
+        self.assertEqual(
+            reader.call_args.kwargs["request_headers"],
+            meduza.READER_HEADERS,
+        )
+
+    def test_meduza_resolves_rotating_official_mirror(self):
+        index = BeautifulSoup(
+            '<a href="https://current-random-mirror.example">Meduza</a>',
+            "html.parser",
+        )
+        feed = BeautifulSoup(
+            """
+            <rss><channel><item>
+              <title>Редакция сообщила важные подробности события</title>
+              <link>https://current-random-mirror.example/news/2026/10/30/test</link>
+              <pubDate>Fri, 30 Oct 2026 12:00:00 +0300</pubDate>
+              <category>Новости</category>
+            </item></channel></rss>
+            """,
+            "xml",
+        )
+        with patch(
+            "parsers.sites.meduza.fetch_soup",
+            side_effect=(index, feed),
+        ) as fetch:
+            items = meduza._official_mirror_items()
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(
+            items[0]["url"],
+            "https://meduza.io/news/2026/10/30/test",
+        )
+        self.assertTrue(items[0]["article_fetch_pending"])
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(
+            fetch.call_args_list[1].args[0],
+            "https://current-random-mirror.example/rss2/all",
+        )
+
+    def test_meduza_rejects_unsafe_mirror_address(self):
+        index = BeautifulSoup(
+            '<a href="http://localhost:8080/private">Meduza</a>',
+            "html.parser",
+        )
+        self.assertEqual(meduza._mirror_url(index), "")
+
+    def test_meduza_reader_ignores_future_and_malformed_documents(self):
+        payload = {
+            "data": {
+                "content": json.dumps({
+                    "documents": {
+                        "future": {
+                            "url": "news/2026/11/01/future",
+                            "title": "Материал из будущего не должен попасть в выдачу",
+                            "datetime": 1793520000,
+                        },
+                        "broken": {
+                            "url": "news/2026/10/30/broken",
+                            "title": "Материал без корректного времени публикации",
+                            "datetime": "не дата",
+                        },
+                    }
+                })
+            }
+        }
+        with patch("parsers.sites.meduza.fetch_json", return_value=payload):
+            items = meduza._reader_items(
+                now=datetime(2026, 10, 30, 15, tzinfo=timezone.utc)
+            )
+
+        self.assertEqual(items, [])
 
     def test_browser_feed_fallback_keeps_original_domain_and_rss_text(self):
         feed = BeautifulSoup(
@@ -295,6 +415,12 @@ class VpnRssMediaTests(unittest.TestCase):
         self.assertEqual(verstka.CONFIG.direct_feed_fallback_urls, ())
         self.assertFalse(verstka.CONFIG.browser_fallback)
         self.assertTrue(verstka.CONFIG.prefer_rss_full_text)
+        self.assertEqual(
+            meduza.CONFIG.direct_feed_fallback_urls,
+            ("https://meduza.io/rss2/all",),
+        )
+        self.assertEqual(meduza.CONFIG.feed_timeout, 12)
+        self.assertEqual(meduza.CONFIG.feed_attempts, 1)
         self.assertEqual(
             moscow_times.CONFIG_EN.feed_url,
             "https://www.themoscowtimes.com/rss/news",

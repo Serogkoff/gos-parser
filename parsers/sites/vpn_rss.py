@@ -54,14 +54,17 @@ class VpnRssSource:
     feed_url_rewrites: tuple = ()
     browser_fallback: bool = False
     browser_warmup_url: str = ""
+    feed_timeout: int = 30
+    feed_attempts: int = 2
 
 
-def parse_source(config, now=None):
+def parse_source(config, now=None, print_empty=True):
     """Читает RSS, а полные тексты только новых материалов — через VPN."""
     proxy_url = _proxy_url(config.name)
     feed = _load_feed(config, proxy_url)
     if feed is None:
-        print("  ✅ 0")
+        if print_empty:
+            print("  ✅ 0")
         return []
 
     discovered = parse_feed(feed, config, now=now)
@@ -99,7 +102,8 @@ def parse_source(config, now=None):
         result.append(enriched)
 
     result = deduplicate_news(result)
-    print(f"  ✅ {len(result)}")
+    if result or print_empty:
+        print(f"  ✅ {len(result)}")
     return result
 
 
@@ -337,10 +341,10 @@ def _load_feed(config, proxy_url):
         feed = fetch_soup(
             feed_url,
             f"{config.name} · RSS",
-            timeout=30,
+            timeout=config.feed_timeout,
             verify=True,
             parser="xml",
-            attempts=2,
+            attempts=config.feed_attempts,
             proxy_url=proxy_url,
         )
         if feed is not None and feed.find("item") is not None:
@@ -353,7 +357,7 @@ def _load_feed(config, proxy_url):
         feed = fetch_soup(
             feed_url,
             f"{config.name} · резервный RSS",
-            timeout=30,
+            timeout=config.feed_timeout,
             verify=True,
             parser="xml",
             attempts=1,

@@ -28,6 +28,23 @@ class HttpClientRetryTests(unittest.TestCase):
             "application/json",
         )
 
+    @patch("utils.http_client.requests.get")
+    def test_fetch_json_can_use_minimal_service_headers(self, get):
+        response = Mock()
+        response.content = b'{"data": {}}'
+        response.json.return_value = {"data": {}}
+        response.raise_for_status.return_value = None
+        get.return_value = response
+        headers = {"Accept": "application/json", "User-Agent": "Mozilla/5.0"}
+
+        fetch_json(
+            "https://reader.example/api",
+            "Reader",
+            request_headers=headers,
+        )
+
+        self.assertEqual(get.call_args.kwargs["headers"], headers)
+
     @patch("utils.http_client.time.sleep")
     @patch("utils.http_client.requests.get")
     def test_retries_one_transient_timeout(self, get, sleep):
