@@ -7,44 +7,6 @@ from utils.article_reader import extract_article
 
 
 class AgencyArticleReaderTests(unittest.TestCase):
-    def test_meduza_uses_reader_after_vpn_and_browser_fail(self):
-        payload = {
-            "data": {
-                "title": "Редакция сообщила новые подробности события",
-                "content": (
-                    "Первый большой абзац публикации содержит важные "
-                    "подробности произошедшего события.\n\n"
-                    "Второй большой абзац [содержит ссылку]"
-                    "(https://example.com/context) и дополнительный контекст."
-                ),
-            }
-        }
-        with (
-            mock.patch("utils.article_reader.fetch_soup", return_value=None),
-            mock.patch("utils.article_reader.fetch_soup_js", return_value=None),
-            mock.patch("utils.article_reader.fetch_json", return_value=payload) as reader,
-        ):
-            article = extract_article(
-                "https://meduza.io/news/2026/10/30/test?utm_source=rss",
-                "Запасной заголовок",
-            )
-
-        self.assertFalse(article["error"])
-        self.assertEqual(len(article["paragraphs"]), 2)
-        self.assertEqual(
-            article["title"],
-            "Редакция сообщила новые подробности события",
-        )
-        self.assertNotIn("](https://", " ".join(article["paragraphs"]))
-        self.assertEqual(
-            reader.call_args.args[0],
-            "https://r.jina.ai/http://meduza.io/news/2026/10/30/test",
-        )
-        self.assertEqual(
-            reader.call_args.kwargs["request_headers"],
-            {"Accept": "application/json", "User-Agent": "Mozilla/5.0"},
-        )
-
     def test_belta_reads_only_verified_article_body(self):
         soup = BeautifulSoup(
             """

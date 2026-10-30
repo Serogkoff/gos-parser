@@ -6,7 +6,7 @@ from urllib.parse import urlencode, urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
 
-from utils.http_client import fetch_json, fetch_soup
+from utils.http_client import fetch_soup
 from utils.js_client import fetch_soup_js
 from utils.proxy import kyodo_proxy_url
 
@@ -438,11 +438,6 @@ def extract_article(url, fallback_title=""):
             )
             used_browser = True
 
-    if soup is None and _is_meduza_url(url):
-        article = _extract_meduza_reader_article(url, fallback_title)
-        if article:
-            return article
-
     if soup is None:
         return {
             "title": fallback_title,
@@ -615,60 +610,6 @@ def _is_vpn_media_url(url):
             "theins.ru",
         )
     )
-
-
-def _is_meduza_url(url):
-    hostname = (urlsplit(url).hostname or "").casefold()
-    return hostname == "meduza.io" or hostname.endswith(".meduza.io")
-
-
-def _extract_meduza_reader_article(url, fallback_title):
-    """Получает текст Meduza через reader только после отказа VPN-маршрута."""
-    parts = urlsplit(url)
-    canonical_url = urlunsplit(("http", "meduza.io", parts.path, "", ""))
-    payload = fetch_json(
-        f"https://r.jina.ai/{canonical_url}",
-        "Просмотр Meduza через резервный reader",
-        timeout=45,
-        attempts=1,
-        request_headers={
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0",
-        },
-    )
-    try:
-        content = payload["data"]["content"]
-        title = " ".join(str(payload["data"].get("title", "")).split())
-    except (KeyError, TypeError):
-        return None
-    if not isinstance(content, str):
-        return None
-
-    paragraphs = []
-    seen = set()
-    for block in re.split(r"\n\s*\n", content):
-        text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", block)
-        text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
-        text = re.sub(r"^[#>*_`\s-]+|[*_`\s]+$", "", text)
-        text = " ".join(text.split())
-        folded = text.casefold()
-        if (
-            len(text) < 45
-            or folded in seen
-            or any(part in folded for part in SKIP_PARTS)
-            or "поддержите «медузу»" in folded
-        ):
-            continue
-        seen.add(folded)
-        paragraphs.append(text)
-
-    if not paragraphs:
-        return None
-    return {
-        "title": title or fallback_title,
-        "paragraphs": paragraphs[:100],
-        "error": "",
-    }
 
 
 def _ng_mirror_url(url):
