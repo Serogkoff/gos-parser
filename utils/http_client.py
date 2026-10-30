@@ -104,10 +104,15 @@ def fetch_json(
     verify=True,
     attempts=DEFAULT_ATTEMPTS,
     proxy_url="",
+    request_headers=None,
 ):
     """Скачивает JSON через общий HTTP-клиент проекта."""
     attempts = max(1, int(attempts))
-    headers = {**HEADERS, "Accept": "application/json"}
+    headers = (
+        dict(request_headers)
+        if request_headers is not None
+        else {**HEADERS, "Accept": "application/json"}
+    )
 
     for attempt in range(1, attempts + 1):
         try:
