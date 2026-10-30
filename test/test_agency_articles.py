@@ -7,6 +7,37 @@ from utils.article_reader import extract_article
 
 
 class AgencyArticleReaderTests(unittest.TestCase):
+    def test_belta_reads_only_verified_article_body(self):
+        soup = BeautifulSoup(
+            """
+            <html><head>
+              <meta property="og:title" content="Беларусь расширяет сотрудничество">
+            </head><body>
+              <h1>Беларусь расширяет сотрудничество</h1>
+              <div itemprop="articleBody">
+                <div>30 октября, Минск /Корр. БЕЛТА/. Стороны подписали новое соглашение о сотрудничестве.</div>
+                <div>Документ предусматривает реализацию совместных проектов в промышленности и энергетике.</div>
+                <div>Представители двух стран продолжат переговоры по новым проектам в следующем месяце.-0-</div>
+              </div>
+              <div class="rubricNews">Читайте также другие новости рубрики и подпишитесь на обновления сайта.</div>
+            </body></html>
+            """,
+            "html.parser",
+        )
+        with mock.patch(
+            "utils.article_reader.fetch_soup",
+            return_value=soup,
+        ):
+            article = extract_article(
+                "https://belta.by/economics/view/test-808536-2026/",
+                "Беларусь расширяет сотрудничество",
+            )
+
+        self.assertFalse(article["error"])
+        self.assertEqual(len(article["paragraphs"]), 3)
+        self.assertIn("Корр. БЕЛТА", article["paragraphs"][0])
+        self.assertNotIn("Читайте также", " ".join(article["paragraphs"]))
+
     def test_ria_reads_only_full_text_blocks(self):
         soup = BeautifulSoup(
             """

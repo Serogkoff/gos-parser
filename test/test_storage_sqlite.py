@@ -1259,6 +1259,58 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual(len(rebuilt), 1)
         self.assertEqual(storage.load_found_news()[0]["keywords"], ["Курил"])
 
+    def test_keyword_change_updates_only_matching_sqlite_rows(self):
+        items = [
+            {
+                "source": "МИД РФ",
+                "title": "Заявление о Курильских островах",
+                "url": "https://mid.ru/news/keyword-fast-1",
+                "date": "2026-10-30",
+            },
+            {
+                "source": "Yonhap",
+                "title": "새로운 소식",
+                "summary": "Россия и Япония провели переговоры",
+                "url": "https://yna.co.kr/keyword-fast-2",
+                "date": "2026-10-30",
+            },
+            {
+                "source": "МЧС",
+                "title": "Спасатели завершили учения",
+                "url": "https://mchs.gov.ru/news/keyword-fast-3",
+                "date": "2026-10-30",
+            },
+        ]
+        self._write_json(self.all_json, items)
+        self._write_json(
+            self.found_json,
+            [{**items[0], "keywords": ["остров"]}],
+        )
+        storage.initialize_database()
+
+        with patch.object(
+            storage._NEWS_PERSISTENCE,
+            "_load_all_news",
+            side_effect=AssertionError("полная база не должна загружаться"),
+        ):
+            count = storage.update_found_keyword("Япония", True)
+
+        self.assertEqual(count, 2)
+        found = {item["url"]: item for item in storage.load_found_news()}
+        self.assertEqual(
+            found[items[0]["url"]]["keywords"],
+            ["остров"],
+        )
+        self.assertEqual(
+            found[items[1]["url"]]["keywords"],
+            ["Япония"],
+        )
+
+        self.assertEqual(storage.update_found_keyword("Япония", False), 1)
+        remaining = storage.load_found_news()
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0]["keywords"], ["остров"])
+
     def test_source_settings_default_to_enabled_and_can_be_paused(self):
         self._write_json(self.all_json, [])
         self._write_json(self.found_json, [])

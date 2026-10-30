@@ -23,6 +23,7 @@ class SourceGroupTests(unittest.TestCase):
         self.assertEqual(source_group("РИА Новости"), AGENCIES_GROUP)
         self.assertEqual(source_group("ТАСС"), AGENCIES_GROUP)
         self.assertEqual(source_group("Интерфакс"), AGENCIES_GROUP)
+        self.assertEqual(source_group("БЕЛТА"), AGENCIES_GROUP)
         self.assertEqual(source_group("Yonhap"), AGENCIES_GROUP)
         self.assertEqual(source_group("Киодо (共同通信)"), AGENCIES_GROUP)
         self.assertEqual(

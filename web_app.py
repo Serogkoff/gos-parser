@@ -45,7 +45,7 @@ from utils.diagnostics import alert_summary, source_alerts, system_alerts
 from utils.keywords import (
     add_keyword,
     load_keywords,
-    rebuild_found_news,
+    refresh_found_keyword,
     remove_keyword,
 )
 from utils.logger import (
@@ -2751,7 +2751,7 @@ def render_news_page(
     elif source_group == AGENCIES_GROUP:
         group_title = "Новости информагентств"
         group_eyebrow = (
-            "РИА Новости · ТАСС · Интерфакс · Yahoo! JAPAN · "
+            "РИА Новости · ТАСС · Интерфакс · БЕЛТА · Yahoo! JAPAN · "
             "Yonhap · Киодо"
         )
         group_home = "/agencies"
@@ -3313,10 +3313,11 @@ def keywords_api():
 
     if request.method == "POST":
         keywords = add_keyword(keyword)
+        found_count = refresh_found_keyword(keyword, True)
     else:
         keywords = remove_keyword(keyword)
-    found = rebuild_found_news()
-    return jsonify(keywords=keywords, found_count=len(found))
+        found_count = refresh_found_keyword(keyword, False)
+    return jsonify(keywords=keywords, found_count=found_count)
 
 
 @app.route("/api/bookmarks", methods=["GET", "POST", "DELETE"])

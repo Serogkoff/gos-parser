@@ -61,6 +61,7 @@ AGENCY_SOURCES = frozenset({
     "РИА Новости",
     "ТАСС",
     "Интерфакс",
+    "БЕЛТА",
     "Yonhap",
     "Киодо (共同通信)",
     "Yahoo! JAPAN · トップ",

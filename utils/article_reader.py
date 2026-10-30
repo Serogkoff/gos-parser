@@ -24,7 +24,8 @@ CONTAINER_SELECTORS = (
 )
 
 SKIP_PARTS = (
-    "cookie", "подпис", "социальн", "поделиться", "обратн", "телефон",
+    "cookie", "подписка", "подписаться", "подпишитесь", "социальн",
+    "поделиться", "обратн", "телефон",
     "адрес", "наверх", "навигац", "все материалы сайта доступны по лицензии",
     "creative commons",
 )
@@ -60,6 +61,9 @@ YAHOO_PHOTO_MARKERS = (
 )
 
 VERIFIED_ARTICLE_SELECTORS = {
+    "belta.by": (
+        "[itemprop='articleBody']",
+    ),
     "globalaffairs.ru": (
         "[itemprop='articleBody']",
         ".article__body",

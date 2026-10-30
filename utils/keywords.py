@@ -9,6 +9,7 @@ from utils.storage import (
     _write_json_atomic,
     load_all_news,
     replace_found_news,
+    update_found_keyword,
 )
 
 
@@ -109,3 +110,8 @@ def rebuild_found_news():
     with STORAGE_LOCK:
         found = search_keywords(load_all_news())
         return replace_found_news(found)
+
+
+def refresh_found_keyword(keyword, enabled):
+    """Быстро применяет одно изменение списка слов к SQLite-совпадениям."""
+    return update_found_keyword(keyword, enabled)

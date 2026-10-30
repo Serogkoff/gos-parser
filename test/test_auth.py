@@ -383,7 +383,7 @@ class AuthenticationTests(unittest.TestCase):
 
         with (
             patch.object(web_app, "add_keyword", return_value=["Япония"]),
-            patch.object(web_app, "rebuild_found_news", return_value=[]),
+            patch.object(web_app, "refresh_found_keyword", return_value=0),
         ):
             allowed = self.client.post(
                 "/api/keywords",

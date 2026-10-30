@@ -764,6 +764,11 @@ def replace_found_news(items):
     return _NEWS_PERSISTENCE.replace_found_news(items)
 
 
+def update_found_keyword(keyword, enabled):
+    """Обновляет совпадения одного ключевого слова без полной пересборки."""
+    return _NEWS_PERSISTENCE.update_found_keyword(keyword, enabled)
+
+
 _DATABASE_MAINTENANCE = DatabaseMaintenance(
     initialize_database=lambda: initialize_database(),
     connect=lambda: _connect(),

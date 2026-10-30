@@ -44,6 +44,7 @@ AGENCY_EMBLEMS = {
     "РИА Новости": "ria.png",
     "ТАСС": "tass.png",
     "Интерфакс": "interfax.png",
+    "БЕЛТА": "belta.png",
     "Yonhap": "yonhap.png",
     "Киодо (共同通信)": "kyodo.png",
 }

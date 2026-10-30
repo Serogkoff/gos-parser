@@ -353,6 +353,125 @@ class NewsPersistenceStorage:
                 self.insert_found_items(connection, found_news)
             return self.sort_items(found_news)
 
+    def update_found_keyword(self, keyword, enabled):
+        """Точечно обновляет совпадения одного слова без загрузки всей БД."""
+        keyword = " ".join(str(keyword or "").split())
+        keyword_folded = keyword.casefold()
+        if not keyword_folded:
+            return 0
+
+        with self._lock:
+            self._initialize_database()
+            with self._connection_factory() as connection:
+                if enabled:
+                    changed = self._add_found_keyword(
+                        connection,
+                        keyword,
+                        keyword_folded,
+                    )
+                else:
+                    changed = self._remove_found_keyword(
+                        connection,
+                        keyword_folded,
+                    )
+                if changed:
+                    self.bump_news_revision(connection)
+                row = connection.execute(
+                    "SELECT COUNT(*) AS count FROM found_items"
+                ).fetchone()
+        return int(row["count"])
+
+    def _add_found_keyword(self, connection, keyword, keyword_folded):
+        # Подстрочный поиск всё равно должен просмотреть заголовки, но SQLite
+        # делает это внутри одного запроса: Python больше не читает и не
+        # декодирует сотни тысяч payload_json и не пересоздаёт found_items.
+        rows = connection.execute(
+            """SELECT n.news_key, n.payload_json,
+                      f.payload_json AS found_payload
+               FROM news_items AS n
+               LEFT JOIN found_items AS f ON f.news_key = n.news_key
+               WHERE INSTR(CASEFOLD(n.title), ?) > 0
+                  OR (
+                      n.source = 'Yonhap'
+                      AND INSTR(
+                          CASEFOLD(COALESCE(json_extract(
+                              n.payload_json, '$.summary'
+                          ), '')),
+                          ?
+                      ) > 0
+                  )""",
+            (keyword_folded, keyword_folded),
+        ).fetchall()
+
+        changed_items = []
+        changed_keys = []
+        for row in rows:
+            current = (
+                self.decode_item(row["found_payload"])
+                if row["found_payload"] is not None
+                else None
+            )
+            existing_keywords = list(
+                (current or {}).get("keywords", []) or []
+            )
+            if any(
+                str(value).casefold() == keyword_folded
+                for value in existing_keywords
+            ):
+                continue
+
+            item = self.decode_item(row["payload_json"])
+            if item is None:
+                continue
+            item["keywords"] = [*existing_keywords, keyword]
+            changed_items.append(item)
+            changed_keys.append(row["news_key"])
+
+        if not changed_items:
+            return False
+
+        self.delete_keys(connection, "found_items", changed_keys)
+        self.insert_found_items(
+            connection,
+            changed_items,
+            bump_revision=False,
+        )
+        return True
+
+    def _remove_found_keyword(self, connection, keyword_folded):
+        rows = connection.execute(
+            """SELECT f.news_key, f.payload_json
+               FROM found_items AS f
+               JOIN found_item_keywords AS k ON k.news_key = f.news_key
+               WHERE k.keyword_folded = ?""",
+            (keyword_folded,),
+        ).fetchall()
+        if not rows:
+            return False
+
+        remaining_items = []
+        affected_keys = []
+        for row in rows:
+            item = self.decode_item(row["payload_json"])
+            if item is None:
+                continue
+            item["keywords"] = [
+                value
+                for value in item.get("keywords", []) or []
+                if str(value).casefold() != keyword_folded
+            ]
+            affected_keys.append(row["news_key"])
+            if item["keywords"]:
+                remaining_items.append(item)
+
+        self.delete_keys(connection, "found_items", affected_keys)
+        self.insert_found_items(
+            connection,
+            remaining_items,
+            bump_revision=False,
+        )
+        return bool(affected_keys)
+
     def replace_collections(self, connection, all_news, found_news):
         """Заменяет обе коллекции в одной транзакции: либо всё, либо ничего."""
         first_seen_by_key = {
