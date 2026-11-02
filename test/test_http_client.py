@@ -162,7 +162,8 @@ class HttpClientProxyTests(unittest.TestCase):
         },
         clear=False,
     )
-    def test_builds_safe_url_from_separate_settings(self):
+    @patch("utils.proxy._read_env_value", return_value="")
+    def test_builds_safe_url_from_separate_settings(self, _read_env_value):
         self.assertEqual(
             kyodo_proxy_url(),
             "socks5h://kyodo%20user:p%40ss%3Aword@203.0.113.7:1080",
