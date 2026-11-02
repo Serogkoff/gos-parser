@@ -54,6 +54,7 @@ def fetch_soup_js(
     warmup_url="",
     browser_like=False,
     reject_http_errors=False,
+    browser_channel="",
 ):
     """
     Открывает страницу в headless-браузере (для сайтов, которые
@@ -80,6 +81,10 @@ def fetch_soup_js(
                     "--no-first-run",
                 ],
             }
+            if browser_channel:
+                # Некоторые государственные сайты различают встроенный
+                # Chromium Playwright и установленный системный Edge.
+                launch_options["channel"] = browser_channel
             if browser_like:
                 launch_options["args"].append(
                     "--disable-blink-features=AutomationControlled"

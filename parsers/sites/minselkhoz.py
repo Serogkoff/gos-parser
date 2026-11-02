@@ -4,9 +4,11 @@ from urllib.parse import urlsplit
 
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
+from utils.js_client import fetch_soup_js
 from utils.parser_links import find_article_url
 
 SOURCE_NAME = "Минсельхоз"
+BASE_URL = "https://mcx.gov.ru/press-service/news/"
 
 MONTHS = {
     'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4,
@@ -32,11 +34,31 @@ def _is_article_url(url):
 def parse():
     news, seen = [], set()
     cutoff = datetime.now() - timedelta(days=30)
+    browser_required = False
 
     for p in range(2):
-        u = f"https://mcx.gov.ru/press-service/news/?PAGEN_1={p + 1}" if p else "https://mcx.gov.ru/press-service/news/"
+        u = f"{BASE_URL}?PAGEN_1={p + 1}" if p else BASE_URL
 
-        soup = fetch_soup(u, SOURCE_NAME)
+        soup = None if browser_required else fetch_soup(
+            u,
+            SOURCE_NAME,
+            timeout=(8, 15),
+            attempts=1,
+        )
+        if soup is None or not soup.select_one(".newsList__wrapContent"):
+            print("  ℹ️ Лента Минсельхоза недоступна напрямую — открываю Edge")
+            soup = fetch_soup_js(
+                u,
+                SOURCE_NAME,
+                wait_ms=5000,
+                timeout_ms=90000,
+                wait_until="domcontentloaded",
+                use_partial_on_timeout=True,
+                browser_like=True,
+                reject_http_errors=True,
+                browser_channel="msedge",
+            )
+            browser_required = True
         if soup is None:
             continue
 

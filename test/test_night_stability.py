@@ -57,6 +57,8 @@ class NightStabilityTests(unittest.TestCase):
         self.assertIn("Минэнерго", main.BROWSER_SOURCE_NAMES)
         self.assertIn("Минспорт", main.BROWSER_SOURCE_NAMES)
         self.assertIn("Минцифры", main.BROWSER_SOURCE_NAMES)
+        self.assertIn("Минсельхоз", main.BROWSER_SOURCE_NAMES)
+        self.assertIn("Минстрой", main.BROWSER_SOURCE_NAMES)
         self.assertIn("СК РФ", main.BROWSER_SOURCE_NAMES)
         self.assertIn("Вёрстка", main.BROWSER_SOURCE_NAMES)
         self.assertNotIn("РИА Новости", main.BROWSER_SOURCE_NAMES)
