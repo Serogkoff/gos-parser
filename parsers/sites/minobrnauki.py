@@ -4,11 +4,13 @@ from urllib.parse import urlencode, urljoin, urlsplit
 
 from utils.filters import is_junk
 from utils.http_client import fetch_soup
+from utils.js_client import fetch_soup_js
 
 
 SOURCE_NAME = "Минобрнауки"
-BASE_URL = "https://www.minobrnauki.gov.ru/press-center/news/"
+BASE_URL = "https://minobrnauki.gov.ru/press-center/news/"
 MAX_PAGES = 6
+PAGE_SIZE = 9
 
 ARTICLE_PATH = re.compile(
     r"^/press-center/news/[^/]+/\d+/?$",
@@ -39,17 +41,24 @@ MONTHS = {
 }
 
 
-def parse():
+def parse(now=None):
     news = []
     seen_urls = set()
-    now = datetime.now()
+    now = now or datetime.now()
     cutoff = now - timedelta(days=30)
 
     for page in range(1, MAX_PAGES + 1):
-        query = urlencode({"PAGEN_1": page, "SIZEN_1": 20})
-        page_url = f"{BASE_URL}?{query}"
-        soup = fetch_soup(page_url, SOURCE_NAME)
+        if page == 1:
+            # После обновления сайта параметры старого размера страницы
+            # возвращают 403, хотя сама первая страница доступна.
+            page_url = BASE_URL
+        else:
+            query = urlencode({"PAGEN_1": page, "SIZEN_1": PAGE_SIZE})
+            page_url = f"{BASE_URL}?{query}"
+        soup = _load_page(page_url)
         if soup is None:
+            if page > 1:
+                break
             continue
 
         page_items = 0
@@ -120,6 +129,30 @@ def _article_url(href):
         return ""
 
     return urljoin(BASE_URL, parts.path.rstrip("/") + "/")
+
+
+def _load_page(page_url):
+    """Читает список напрямую, а при новом 403 повторяет как браузер."""
+    soup = fetch_soup(
+        page_url,
+        SOURCE_NAME,
+        timeout=25,
+        attempts=1,
+    )
+    if soup is not None:
+        return soup
+
+    print("  ℹ️ Минобрнауки отклонило HTTP-запрос — открываю браузером")
+    return fetch_soup_js(
+        page_url,
+        SOURCE_NAME,
+        wait_ms=1500,
+        timeout_ms=35000,
+        wait_until="domcontentloaded",
+        use_partial_on_timeout=True,
+        browser_like=True,
+        reject_http_errors=True,
+    )
 
 
 def _extract_title(link):
