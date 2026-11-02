@@ -160,6 +160,35 @@ class VpnRssMediaTests(unittest.TestCase):
         self.assertEqual(items, [])
         self.assertEqual(output.getvalue(), "")
 
+    def test_feed_uses_backup_proxy_after_primary_failure(self):
+        feed = BeautifulSoup(
+            """
+            <rss><channel><item>
+              <title>Материал получен через резервный VPN-канал</title>
+              <link>https://example.test/news/backup</link>
+              <pubDate>Thu, 01 Oct 2026 09:11:56 +0300</pubDate>
+            </item></channel></rss>
+            """,
+            "xml",
+        )
+        with (
+            patch("parsers.sites.vpn_rss.kyodo_proxy_url", return_value="primary"),
+            patch(
+                "parsers.sites.vpn_rss.kyodo_proxy_candidates",
+                return_value=("primary", "backup"),
+            ),
+            patch(
+                "parsers.sites.vpn_rss.fetch_soup",
+                side_effect=(None, feed, None, None),
+            ) as fetch,
+            patch("parsers.sites.vpn_rss.load_source_url_aliases", return_value={}),
+        ):
+            items = parse_source(self.config)
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(fetch.call_args_list[0].kwargs["proxy_url"], "primary")
+        self.assertEqual(fetch.call_args_list[1].kwargs["proxy_url"], "backup")
+
     def test_meduza_reader_restores_feed_when_both_rss_routes_fail(self):
         screen = {
             "documents": {

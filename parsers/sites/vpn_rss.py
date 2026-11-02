@@ -14,7 +14,7 @@ from utils.http_client import fetch_soup
 from utils.js_client import fetch_response_soup_js
 from utils.logger import get_logger
 from utils.news import deduplicate_news, normalize_url
-from utils.proxy import kyodo_proxy_url
+from utils.proxy import kyodo_proxy_candidates, kyodo_proxy_url
 from utils.storage import load_source_url_aliases
 
 
@@ -162,24 +162,31 @@ def parse_feed(soup, config, now=None):
 def load_article(item, config, proxy_url=""):
     """Загружает страницу и дополняет RSS-карточку чистым полным текстом."""
     result = dict(item)
-    soup = fetch_soup(
-        item["url"],
-        f"{config.name} · полный текст",
-        timeout=35,
-        verify=True,
-        attempts=2,
-        proxy_url=proxy_url,
-    )
-    if soup is None and config.browser_fallback:
-        soup = fetch_response_soup_js(
+    soup = None
+    for candidate in _proxy_candidates(proxy_url):
+        soup = fetch_soup(
             item["url"],
-            f"{config.name} · полный текст · браузер",
-            timeout_ms=45000,
-            wait_ms=2500,
-            proxy_url=proxy_url,
-            parser="html.parser",
-            warmup_url=config.browser_warmup_url,
+            f"{config.name} · полный текст",
+            timeout=35,
+            verify=True,
+            attempts=2,
+            proxy_url=candidate,
         )
+        if soup is not None:
+            break
+    if soup is None and config.browser_fallback:
+        for candidate in _proxy_candidates(proxy_url):
+            soup = fetch_response_soup_js(
+                item["url"],
+                f"{config.name} · полный текст · браузер",
+                timeout_ms=45000,
+                wait_ms=2500,
+                proxy_url=candidate,
+                parser="html.parser",
+                warmup_url=config.browser_warmup_url,
+            )
+            if soup is not None:
+                break
     if soup is None:
         return _rss_fallback(result, config)
 
@@ -337,18 +344,19 @@ def _rss_fallback(item, config):
 def _load_feed(config, proxy_url):
     """Tries official feed aliases, then the existing browser VPN transport."""
     feed_urls = (config.feed_url, *config.feed_fallback_urls)
-    for feed_url in feed_urls:
-        feed = fetch_soup(
-            feed_url,
-            f"{config.name} · RSS",
-            timeout=config.feed_timeout,
-            verify=True,
-            parser="xml",
-            attempts=config.feed_attempts,
-            proxy_url=proxy_url,
-        )
-        if feed is not None and feed.find("item") is not None:
-            return feed
+    for candidate in _proxy_candidates(proxy_url):
+        for feed_url in feed_urls:
+            feed = fetch_soup(
+                feed_url,
+                f"{config.name} · RSS",
+                timeout=config.feed_timeout,
+                verify=True,
+                parser="xml",
+                attempts=config.feed_attempts,
+                proxy_url=candidate,
+            )
+            if feed is not None and feed.find("item") is not None:
+                return feed
 
     # Некоторые редакции публикуют аварийное зеркало RSS для сетей, где
     # основной домен блокируется или закрыт Cloudflare. Такие адреса читаем
@@ -368,19 +376,31 @@ def _load_feed(config, proxy_url):
 
     if not config.browser_fallback:
         return None
-    for feed_url in feed_urls:
-        feed = fetch_response_soup_js(
-            feed_url,
-            f"{config.name} · RSS · браузер",
-            timeout_ms=45000,
-            wait_ms=2500,
-            proxy_url=proxy_url,
-            parser="xml",
-            warmup_url=config.browser_warmup_url,
-        )
-        if feed is not None and feed.find("item") is not None:
-            return feed
+    for candidate in _proxy_candidates(proxy_url):
+        for feed_url in feed_urls:
+            feed = fetch_response_soup_js(
+                feed_url,
+                f"{config.name} · RSS · браузер",
+                timeout_ms=45000,
+                wait_ms=2500,
+                proxy_url=candidate,
+                parser="xml",
+                warmup_url=config.browser_warmup_url,
+            )
+            if feed is not None and feed.find("item") is not None:
+                return feed
     return None
+
+
+def _proxy_candidates(proxy_url):
+    """Не добавляет резервные маршруты в тестовые/явные вызовы."""
+    try:
+        configured = kyodo_proxy_candidates()
+    except ValueError:
+        configured = ()
+    if proxy_url and proxy_url not in configured:
+        return (proxy_url,)
+    return configured or ((proxy_url,) if proxy_url else ("",))
 
 
 def _rewrite_feed_url(value, rewrites):
